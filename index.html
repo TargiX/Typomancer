@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Narrative Flow</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+      body {
+        font-family: 'JetBrains Mono', monospace;
+        background-color: #070a11;
+        color: #e2e8f0;
+      }
+      /* Grotesk for display/headings — pairs with the mono data readouts */
+      .font-display { font-family: 'Space Grotesk', 'JetBrains Mono', monospace; }
+      /* Subtle dotted-grid texture for premium panel depth */
+      .tex-grid {
+        background-image: radial-gradient(rgba(148,163,184,0.06) 1px, transparent 1px);
+        background-size: 22px 22px;
+      }
+      /* Custom scrollbar for log */
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #1e293b; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #475569; 
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #64748b; 
+      }
+      
+      .cursor-blink {
+        animation: blink 1s step-end infinite;
+      }
+      
+      @keyframes blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0; }
+      }
+
+      /* SHAKE INTENSITIES */
+      .shake-mild {
+        animation: shake-mild 0.4s cubic-bezier(.36,.07,.19,.97) both;
+      }
+      .shake-medium {
+        animation: shake-medium 0.4s cubic-bezier(.36,.07,.19,.97) both;
+      }
+      .shake-heavy {
+        animation: shake-heavy 0.5s cubic-bezier(.36,.07,.19,.97) both;
+      }
+
+      @keyframes shake-mild {
+        0% { transform: translate3d(0, 0, 0); }
+        10%, 90% { transform: translate3d(-1px, 0, 0); }
+        20%, 80% { transform: translate3d(2px, 0, 0); }
+        30%, 50%, 70% { transform: translate3d(-2px, 0, 0); }
+        40%, 60% { transform: translate3d(2px, 0, 0); }
+        100% { transform: translate3d(0, 0, 0); }
+      }
+      
+      @keyframes shake-medium {
+        0% { transform: translate(0, 0); }
+        10% { transform: translate(-3px, -1px); }
+        20% { transform: translate(3px, 1px); }
+        30% { transform: translate(-3px, 2px); }
+        40% { transform: translate(3px, -1px); }
+        50% { transform: translate(-3px, 1px); }
+        60% { transform: translate(2px, -2px); }
+        100% { transform: translate(0, 0); }
+      }
+
+      @keyframes shake-heavy {
+        0% { transform: translate(0, 0) rotate(0deg); }
+        10% { transform: translate(-5px, -3px) rotate(-1deg); }
+        20% { transform: translate(5px, 3px) rotate(1deg); }
+        30% { transform: translate(-6px, 4px) rotate(-2deg); }
+        40% { transform: translate(6px, -3px) rotate(2deg); }
+        50% { transform: translate(-5px, 2px) rotate(-1deg); }
+        60% { transform: translate(4px, -4px) rotate(1deg); }
+        80% { transform: translate(-2px, 1px) rotate(0deg); }
+        100% { transform: translate(0, 0) rotate(0deg); }
+      }
+
+      /* DEBRIS PARTICLES (Error) */
+      @keyframes fall-and-fade {
+        0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+        100% { transform: translateY(200px) rotate(360deg); opacity: 0; }
+      }
+      
+      .debris {
+        position: absolute;
+        pointer-events: none;
+        animation: fall-and-fade 0.8s ease-in forwards;
+        z-index: 100;
+      }
+
+      /* SPARK PARTICLES (Overclock) */
+      @keyframes particle-explode {
+        0% { transform: translate(0, 0) scale(1); opacity: 1; }
+        100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
+      }
+      
+      .char-particle {
+        position: fixed; /* Fixed relative to viewport to handle scroll easily */
+        pointer-events: none;
+        border-radius: 50%;
+        z-index: 9999;
+        animation: particle-explode 0.6s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+      }
+
+      /* CRACK OVERLAY */
+      .crack-path {
+        fill: none;
+        stroke: rgba(255, 255, 255, 0.6);
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        filter: drop-shadow(0 0 2px rgba(0,0,0,0.8));
+      }
+      .crack-path.deep {
+         stroke: rgba(200, 240, 255, 0.9);
+         stroke-width: 3;
+      }
+
+      /* TENSE Mood Effect */
+      @keyframes flicker {
+        0% { opacity: 0.98; box-shadow: inset 0 0 10px rgba(0,0,0,0.1); }
+        5% { opacity: 1; box-shadow: inset 0 0 10px rgba(0,0,0,0.0); }
+        10% { opacity: 0.96; }
+        15% { opacity: 1; }
+        20% { opacity: 0.99; }
+        50% { opacity: 1; }
+        100% { opacity: 1; }
+      }
+      .flicker-effect {
+        animation: flicker 4s infinite;
+      }
+
+      /* HOPEFUL Mood Effect */
+      @keyframes pulse-glow {
+        0%, 100% { box-shadow: inset 0 0 20px rgba(16, 185, 129, 0.05); }
+        50% { box-shadow: inset 0 0 40px rgba(16, 185, 129, 0.15); }
+      }
+      .glow-effect {
+        animation: pulse-glow 4s ease-in-out infinite;
+      }
+      
+      /* Impact Flash */
+      @keyframes flash-red {
+          0% { background-color: rgba(220, 38, 38, 0.3); }
+          100% { background-color: transparent; }
+      }
+      .flash-overlay {
+          animation: flash-red 0.2s ease-out forwards;
+      }
+
+      /* COMBO pop — retriggered on each correct keystroke */
+      @keyframes combo-pop {
+          0% { transform: scale(1); }
+          35% { transform: scale(1.28); }
+          100% { transform: scale(1); }
+      }
+      .combo-pop {
+          animation: combo-pop 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+      }
+
+      /* Floating consequence deltas (evidence/heat/trust) drifting up over the scene */
+      @keyframes delta-float {
+          0% { transform: translateY(6px) scale(0.9); opacity: 0; }
+          15% { transform: translateY(0) scale(1); opacity: 1; }
+          70% { opacity: 1; }
+          100% { transform: translateY(-46px) scale(1); opacity: 0; }
+      }
+      .delta-float {
+          animation: delta-float 1.9s ease-out forwards;
+      }
+
+      /* Fade-up entrance used across menus/panels */
+      @keyframes fade-in-up {
+          0% { transform: translateY(10px); opacity: 0; }
+          100% { transform: translateY(0); opacity: 1; }
+      }
+      .animate-fade-in-up {
+          animation: fade-in-up 0.4s ease-out both;
+      }
+
+      /* Start-typing cue: a quick neon gate before each active segment appears */
+      @keyframes type-cue-lock {
+          0% { transform: translateY(12px) scale(0.92); opacity: 0; filter: blur(8px); }
+          18% { transform: translateY(0) scale(1); opacity: 1; filter: blur(0); }
+          72% { transform: translateY(0) scale(1); opacity: 1; filter: blur(0); }
+          100% { transform: translateY(-10px) scale(1.03); opacity: 0; filter: blur(5px); }
+      }
+      @keyframes type-cue-word {
+          0% { letter-spacing: 0.55em; text-shadow: 0 0 4px rgba(52,211,153,0.4); }
+          45% { letter-spacing: 0.22em; text-shadow: 0 0 28px rgba(52,211,153,0.95), 0 0 46px rgba(34,211,238,0.55); }
+          100% { letter-spacing: 0.28em; text-shadow: 0 0 16px rgba(52,211,153,0.75); }
+      }
+      @keyframes type-cue-glyph {
+          0% { transform: rotate(0deg) scale(0.5); opacity: 0; }
+          25% { transform: rotate(90deg) scale(1.15); opacity: 1; }
+          100% { transform: rotate(180deg) scale(1); opacity: 0.8; }
+      }
+      @keyframes type-cue-scan {
+          0% { transform: translateX(-120%); opacity: 0; }
+          20% { opacity: 1; }
+          100% { transform: translateX(120%); opacity: 0; }
+      }
+      .type-cue-lockup {
+          position: relative;
+          animation: type-cue-lock 1.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+      }
+      .type-cue-lockup::before,
+      .type-cue-lockup::after {
+          content: "";
+          position: absolute;
+          left: 50%;
+          width: min(42vw, 340px);
+          height: 1px;
+          transform: translateX(-50%);
+          background: linear-gradient(90deg, transparent, rgba(52,211,153,0.9), rgba(34,211,238,0.75), transparent);
+          overflow: hidden;
+      }
+      .type-cue-lockup::before { top: -18px; }
+      .type-cue-lockup::after { bottom: -18px; }
+      .type-cue-word {
+          color: #d1fae5;
+          font-size: clamp(3.2rem, 9vw, 7.4rem);
+          font-weight: 700;
+          line-height: 0.85;
+          animation: type-cue-word 1.5s ease-out both;
+      }
+      .type-cue-glyph {
+          display: grid;
+          place-items: center;
+          width: 44px;
+          height: 44px;
+          color: #67e8f9;
+          font-size: 34px;
+          text-shadow: 0 0 18px rgba(103,232,249,0.95);
+          animation: type-cue-glyph 1.5s ease-out both;
+      }
+      .type-cue-sub {
+          color: #5eead4;
+          font-size: 0.68rem;
+          font-weight: 800;
+          letter-spacing: 0.32em;
+          text-transform: uppercase;
+          opacity: 0.9;
+      }
+
+      /* ===== Cyber / gamer buttons — cut corners, accent frame, glow, running sheen ===== */
+      .btn-cyber {
+          position: relative;
+          isolation: isolate;
+          background: transparent;
+          border: 0;
+          cursor: pointer;
+          clip-path: polygon(11px 0, 100% 0, 100% calc(100% - 11px), calc(100% - 11px) 100%, 0 100%, 0 11px);
+          transition: transform 0.1s ease, filter 0.2s ease;
+      }
+      .btn-cyber::before { /* accent frame */
+          content: "";
+          position: absolute;
+          inset: 0;
+          clip-path: inherit;
+          z-index: -2;
+          transition: background 0.2s ease, opacity 0.2s ease;
+      }
+      .btn-cyber::after { /* inner face, inset to reveal the frame */
+          content: "";
+          position: absolute;
+          inset: 1.5px;
+          clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+          z-index: -1;
+          background-size: 220% 100%;
+          transition: filter 0.2s ease;
+      }
+      .btn-cyber:hover { filter: drop-shadow(0 0 16px var(--btn-glow, rgba(52,211,153,0.55))); }
+      .btn-cyber:active { transform: translateY(1px); }
+
+      /* Primary — bright emerald face with a slow running sheen */
+      .btn-cyber-primary { --btn-glow: rgba(52,211,153,0.6); }
+      .btn-cyber-primary::before { background: linear-gradient(180deg, #bbf7d0, #10b981); }
+      .btn-cyber-primary::after {
+          background-image: linear-gradient(110deg, #34d399 0%, #10b981 42%, #6ee7b7 50%, #10b981 58%, #059669 100%);
+          animation: btn-sheen 5s linear infinite;
+      }
+      .btn-cyber-primary:hover::after { filter: brightness(1.08); }
+      @keyframes btn-sheen {
+          0% { background-position: 160% 0; }
+          100% { background-position: -60% 0; }
+      }
+
+      /* Ghost — dark glass face, emerald frame that lights up on hover */
+      .btn-cyber-ghost { --btn-glow: rgba(52,211,153,0.35); }
+      .btn-cyber-ghost::before { background: linear-gradient(180deg, rgba(52,211,153,0.45), rgba(52,211,153,0.12)); }
+      .btn-cyber-ghost::after { background-image: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01)); background-color: #0b101a; }
+      .btn-cyber-ghost:hover::before { background: linear-gradient(180deg, rgba(52,211,153,0.95), rgba(52,211,153,0.4)); }
+
+      /* Danger ghost — for destructive / failure screens */
+      .btn-cyber-danger { --btn-glow: rgba(244,63,94,0.4); }
+      .btn-cyber-danger::before { background: linear-gradient(180deg, rgba(244,63,94,0.5), rgba(244,63,94,0.15)); }
+      .btn-cyber-danger::after { background-image: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01)); background-color: #0b101a; }
+      .btn-cyber-danger:hover::before { background: linear-gradient(180deg, rgba(244,63,94,0.95), rgba(244,63,94,0.45)); }
+
+      /* ===== System beacon — live signal monitor ===== */
+      @keyframes scope-scroll {
+          from { transform: translateX(0); }
+          to { transform: translateX(-50%); }
+      }
+      .scope-scroll { animation: scope-scroll 1.8s linear infinite; }
+      @keyframes beacon-scan {
+          0% { transform: translateY(-120%); }
+          100% { transform: translateY(360%); }
+      }
+      .beacon-scan { animation: beacon-scan 2.8s ease-in-out infinite; }
+      @keyframes beacon-flicker {
+          0%, 100% { opacity: 1; }
+          92% { opacity: 1; }
+          94% { opacity: 0.55; }
+          96% { opacity: 1; }
+          97% { opacity: 0.7; }
+      }
+      .beacon-flicker { animation: beacon-flicker 4s linear infinite; }
+
+      /* Focus meter — holographic oil-slick shimmer when the charge is full ("use it now") */
+      @keyframes focus-holo {
+          0% { background-position: 0% 50%; }
+          100% { background-position: 200% 50%; }
+      }
+      .focus-holo {
+          background-image: linear-gradient(100deg, #22d3ee 0%, #4ade80 18%, #bef264 33%, #a78bfa 50%, #22d3ee 66%, #4ade80 84%, #22d3ee 100%);
+          background-size: 200% 100%;
+          animation: focus-holo 1.4s linear infinite;
+      }
+      @keyframes focus-ready-pulse {
+          0%, 100% { box-shadow: 0 0 10px rgba(74,222,128,0.45); }
+          50% { box-shadow: 0 0 20px rgba(74,222,128,0.85); }
+      }
+      .focus-ready-pulse { animation: focus-ready-pulse 1.2s ease-in-out infinite; }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "react": "https://aistudiocdn.com/react@^19.2.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "vite": "https://esm.sh/vite@^7.2.7",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
