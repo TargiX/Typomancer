@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { GameState, StorySegment, GameStats, StoryLogItem, UserProfile, Perk, GameModifiers, LevelReport, UserUpgrades, StoryMood, SegmentType, Language, MissionState, ComicFrame } from './types';
+import { GameState, StorySegment, GameStats, StoryLogItem, UserProfile, Perk, GameModifiers, LevelReport, UserUpgrades, StoryMood, SegmentType, Language, MissionState, ComicFrame, StoryGenreId } from './types';
 import { generateStoryStart, generateCharacterProfile, generateLevelSummary, generateNextLevelStart } from './services/geminiService';
+import { GENRE_ORDER, getGenrePack } from './services/genreConfig';
+import { getGenreSkin, PerkGroupId, UpgradeId } from './services/genreSkin';
 import { audioEngine } from './services/audioEngine';
 import TypingEngine from './components/TypingEngine';
 import RunComic from './components/RunComic';
@@ -60,6 +62,7 @@ const TRANSLATIONS = {
         new_run: "[SPACE] NEW RUN",
         focus: "Focus",
         effect: "Effect",
+        currency_suffix: "CR",
         type_cue: "TYPE",
         type_subcue: "BEGIN INPUT",
         share_comic: "SHARE YOUR COMIC",
@@ -70,7 +73,12 @@ const TRANSLATIONS = {
         comic_copied: "COPIED",
         comic_close: "Close",
         comic_replay: "Mission Replay",
-        comic_watermark: "NARRATIVE FLOW · your run, generated live"
+        comic_watermark: "NARRATIVE FLOW · your run, generated live",
+        genre_title: "SIMULATION LINK",
+        genre_subtitle: "Jack into a different world through the same operator deck. Hardware stays yours — only the simulation behind the glass changes.",
+        genre_back: "[ESC] MAIN MENU",
+        genre_persists_note: "The Black Market and Focus protocols stay cyberpunk. Worlds change the story and art, not your gear.",
+        sim_badge: "SIM LINK"
     },
     ru: {
         game_title: "НАРРАТИВНЫЙ ПОТОК",
@@ -125,6 +133,7 @@ const TRANSLATIONS = {
         new_run: "[SPACE] НОВЫЙ ЗАБЕГ",
         focus: "Фокус",
         effect: "Эффект",
+        currency_suffix: "CR",
         type_cue: "TYPE",
         type_subcue: "НАЧИНАЙ ВВОД",
         share_comic: "ПОДЕЛИТЬСЯ КОМИКСОМ",
@@ -135,90 +144,87 @@ const TRANSLATIONS = {
         comic_copied: "СКОПИРОВАНО",
         comic_close: "Закрыть",
         comic_replay: "Повтор миссии",
-        comic_watermark: "NARRATIVE FLOW · твой забег, сгенерирован вживую"
+        comic_watermark: "NARRATIVE FLOW · твой забег, сгенерирован вживую",
+        genre_title: "СВЯЗЬ С СИМУЛЯЦИЕЙ",
+        genre_subtitle: "Подключись к другому миру через тот же операторский пульт. Железо остаётся твоим — меняется только симуляция за стеклом.",
+        genre_back: "[ESC] В МЕНЮ",
+        genre_persists_note: "Чёрный рынок и протоколы Фокуса остаются киберпанком. Миры меняют историю и арт, а не твой софт.",
+        sim_badge: "СИМ-СВЯЗЬ"
     }
 };
 
-// --- TIERED PERK DEFINITIONS (Bilingual) ---
+// --- TIERED PERK DEFINITIONS (mechanics only; display names come from genre skins) ---
 const PERK_DEFINITIONS = [
     {
-        groupId: 'neural_buffer',
-        baseName: { en: 'Neural Buffer', ru: 'Нейро-Буфер' },
+        groupId: 'neural_buffer' as PerkGroupId,
         type: 'defense',
         tiers: [
-            { desc: { en: 'First mistake per round is ignored.', ru: 'Первая ошибка в раунде игнорируется.' }, grace: 1 },
-            { desc: { en: 'First 2 mistakes per round are ignored.', ru: 'Первые 2 ошибки в раунде игнорируются.' }, grace: 2 },
-            { desc: { en: 'First 3 mistakes per round are ignored.', ru: 'Первые 3 ошибки в раунде игнорируются.' }, grace: 3 }
+            { grace: 1 },
+            { grace: 2 },
+            { grace: 3 }
         ]
     },
     {
-        groupId: 'ghost_protocol',
-        baseName: { en: 'Ghost Protocol', ru: 'Протокол Призрак' },
+        groupId: 'ghost_protocol' as PerkGroupId,
         type: 'stealth',
         tiers: [
-            { desc: { en: 'Security Trace grows 20% slower.', ru: 'Трассировка угрозы растет на 20% медленнее.' }, mult: 0.8 },
-            { desc: { en: 'Security Trace grows 35% slower.', ru: 'Трассировка угрозы растет на 35% медленнее.' }, mult: 0.65 },
-            { desc: { en: 'Security Trace grows 50% slower.', ru: 'Трассировка угрозы растет на 50% медленнее.' }, mult: 0.5 }
+            { mult: 0.8 },
+            { mult: 0.65 },
+            { mult: 0.5 }
         ]
     },
     {
-        groupId: 'adrenaline_spike',
-        baseName: { en: 'Adrenaline Spike', ru: 'Выброс Адреналина' },
+        groupId: 'adrenaline_spike' as PerkGroupId,
         type: 'offense',
         tiers: [
-            { desc: { en: 'Typing >80 WPM regenerates +2 HP.', ru: 'Скорость >80 СЛ/М восстанавливает +2 ОЗ.' }, thresh: 80, regen: 2 },
-            { desc: { en: 'Typing >70 WPM regenerates +3 HP.', ru: 'Скорость >70 СЛ/М восстанавливает +3 ОЗ.' }, thresh: 70, regen: 3 },
-            { desc: { en: 'Typing >60 WPM regenerates +4 HP.', ru: 'Скорость >60 СЛ/М восстанавливает +4 ОЗ.' }, thresh: 60, regen: 4 }
+            { thresh: 80, regen: 2 },
+            { thresh: 70, regen: 3 },
+            { thresh: 60, regen: 4 }
         ]
     },
     {
-        groupId: 'titanium_firewall',
-        baseName: { en: 'Titanium Firewall', ru: 'Титановый Файрвол' },
+        groupId: 'titanium_firewall' as PerkGroupId,
         type: 'defense',
         tiers: [
-            { desc: { en: 'Max Health floor increased to 35.', ru: 'Минимум макс. здоровья увеличен до 35.' }, maxHp: 35 },
-            { desc: { en: 'Max Health floor increased to 50.', ru: 'Минимум макс. здоровья увеличен до 50.' }, maxHp: 50 },
-            { desc: { en: 'Max Health floor increased to 75.', ru: 'Минимум макс. здоровья увеличен до 75.' }, maxHp: 75 }
+            { maxHp: 35 },
+            { maxHp: 50 },
+            { maxHp: 75 }
         ]
     },
     {
-        groupId: 'critical_override',
-        baseName: { en: 'Critical Override', ru: 'Критический Взлом' },
+        groupId: 'critical_override' as PerkGroupId,
         type: 'utility',
         tiers: [
-            { desc: { en: '5% chance to auto-hack a segment instantly.', ru: '5% шанс мгновенно взломать сегмент.' }, chance: 0.05 },
-            { desc: { en: '12% chance to auto-hack a segment instantly.', ru: '12% шанс мгновенно взломать сегмент.' }, chance: 0.12 },
-            { desc: { en: '20% chance to auto-hack a segment instantly.', ru: '20% шанс мгновенно взломать сегмент.' }, chance: 0.20 }
+            { chance: 0.05 },
+            { chance: 0.12 },
+            { chance: 0.20 }
         ]
     },
     {
-        groupId: 'focus_lattice',
-        baseName: { en: 'Focus Lattice', ru: 'Решетка Фокуса' },
+        groupId: 'focus_lattice' as PerkGroupId,
         type: 'utility',
         tiers: [
-            { desc: { en: 'Focus Mode lasts 1s longer and forgives +1 typo.', ru: 'Фокус-Мод длится на 1с дольше и прощает +1 ошибку.' }, duration: 1000, forgiveness: 1 },
-            { desc: { en: 'Focus Mode lasts 2s longer and forgives +2 typos.', ru: 'Фокус-Мод длится на 2с дольше и прощает +2 ошибки.' }, duration: 2000, forgiveness: 2 },
-            { desc: { en: 'Focus Mode lasts 3s longer and forgives +3 typos.', ru: 'Фокус-Мод длится на 3с дольше и прощает +3 ошибки.' }, duration: 3000, forgiveness: 3 }
+            { duration: 1000, forgiveness: 1 },
+            { duration: 2000, forgiveness: 2 },
+            { duration: 3000, forgiveness: 3 }
         ]
     },
     {
-        groupId: 'error_siphon',
-        baseName: { en: 'Error Siphon', ru: 'Сифон Ошибок' },
+        groupId: 'error_siphon' as PerkGroupId,
         type: 'offense',
         tiers: [
-            { desc: { en: 'Mistakes feed +2 Focus charge instead of only punishing you.', ru: 'Ошибки дают +2 заряда Фокуса вместо чистого наказания.' }, charge: 2 },
-            { desc: { en: 'Mistakes feed +4 Focus charge.', ru: 'Ошибки дают +4 заряда Фокуса.' }, charge: 4 },
-            { desc: { en: 'Mistakes feed +7 Focus charge.', ru: 'Ошибки дают +7 заряда Фокуса.' }, charge: 7 }
+            { charge: 2 },
+            { charge: 4 },
+            { charge: 7 }
         ]
     },
     {
-        groupId: 'evidence_lens',
-        baseName: { en: 'Evidence Lens', ru: 'Линза Улик' },
+        groupId: 'evidence_lens' as PerkGroupId,
         type: 'stealth',
         tiers: [
-            { desc: { en: 'Clean segments generate 15% more evidence.', ru: 'Чистые сегменты дают на 15% больше улик.' }, evidence: 0.15 },
-            { desc: { en: 'Clean segments generate 30% more evidence.', ru: 'Чистые сегменты дают на 30% больше улик.' }, evidence: 0.30 },
-            { desc: { en: 'Clean segments generate 50% more evidence.', ru: 'Чистые сегменты дают на 50% больше улик.' }, evidence: 0.50 }
+            { evidence: 0.15 },
+            { evidence: 0.30 },
+            { evidence: 0.50 }
         ]
     }
 ];
@@ -265,49 +271,13 @@ const DEFAULT_PROFILE: UserProfile = {
     language: 'en'
 };
 
-const META_UPGRADES = {
-    synapticWeave: {
-        name: { en: "Synaptic Weave", ru: "Синаптическая Сеть" },
-        desc: { en: "Increases Max Health permanently.", ru: "Постоянно увеличивает макс. здоровье." },
-        baseCost: 100,
-        effectPerLevel: 2,
-        maxLevel: 10
-    },
-    cryptoMiner: {
-        name: { en: "Crypto Miner", ru: "Крипто-Майнер" },
-        desc: { en: "Increases Credit earnings permanently.", ru: "Постоянно увеличивает заработок кредитов." },
-        baseCost: 150,
-        effectPerLevel: 0.1,
-        maxLevel: 10
-    },
-    signalDampener: {
-        name: { en: "Signal Dampener", ru: "Глушитель Сигнала" },
-        desc: { en: "Slows down Security Trace accumulation.", ru: "Замедляет накопление уровня угрозы." },
-        baseCost: 200,
-        effectPerLevel: 0.05,
-        maxLevel: 10
-    },
-    bufferExpansion: {
-        name: { en: "Buffer Expansion", ru: "Расширение Буфера" },
-        desc: { en: "Increases Focus charge capacity.", ru: "Увеличивает емкость заряда Фокуса." },
-        baseCost: 120,
-        effectPerLevel: 5,
-        maxLevel: 10
-    },
-    focusLens: {
-        name: { en: "Focus Lens", ru: "Линза Фокуса" },
-        desc: { en: "Extends Focus Mode and adds soft typo forgiveness.", ru: "Продлевает Фокус-Мод и добавляет мягкое прощение ошибок." },
-        baseCost: 180,
-        effectPerLevel: 500,
-        maxLevel: 8
-    },
-    patternScanner: {
-        name: { en: "Pattern Scanner", ru: "Сканер Паттернов" },
-        desc: { en: "Breach drills yield more credits and evidence.", ru: "Сегменты взлома дают больше кредитов и улик." },
-        baseCost: 220,
-        effectPerLevel: 0.08,
-        maxLevel: 8
-    }
+const META_UPGRADES: Record<UpgradeId, { baseCost: number; effectPerLevel: number; maxLevel: number }> = {
+    synapticWeave: { baseCost: 100, effectPerLevel: 2, maxLevel: 10 },
+    cryptoMiner: { baseCost: 150, effectPerLevel: 0.1, maxLevel: 10 },
+    signalDampener: { baseCost: 200, effectPerLevel: 0.05, maxLevel: 10 },
+    bufferExpansion: { baseCost: 120, effectPerLevel: 5, maxLevel: 10 },
+    focusLens: { baseCost: 180, effectPerLevel: 500, maxLevel: 8 },
+    patternScanner: { baseCost: 220, effectPerLevel: 0.08, maxLevel: 8 }
 };
 
 const CAMPAIGN_FINAL_LEVEL = 4;
@@ -427,11 +397,41 @@ const App: React.FC = () => {
   const [campaignState, setCampaignState] = useState<MissionState>(DEFAULT_MISSION_STATE);
   const [comicFrames, setComicFrames] = useState<ComicFrame[]>([]);
   const [showComic, setShowComic] = useState(false);
+  const [selectedGenre, setSelectedGenre] = useState<StoryGenreId>('cyberpunk');
+  const runGenreRef = useRef<StoryGenreId>('cyberpunk');
 
   const logEndRef = useRef<HTMLDivElement>(null);
 
-  // Shortcut for current language translations
-  const UI = TRANSLATIONS[language];
+  const genrePack = getGenrePack(selectedGenre);
+  /** Operator deck chrome — always cyberpunk, Animus-style. */
+  const hubSkin = getGenreSkin('cyberpunk');
+  /** World behind the glass — endings/sim readout only. */
+  const worldSkin = getGenreSkin(selectedGenre);
+  const inSimulation =
+    gameState === GameState.PLAYING ||
+    gameState === GameState.LOADING ||
+    gameState === GameState.LEVEL_COMPLETE ||
+    gameState === GameState.STARTER_PERK_SELECTION ||
+    gameState === GameState.VICTORY ||
+    gameState === GameState.GAME_OVER;
+
+  const UI = useMemo(() => {
+    const base = TRANSLATIONS[language];
+    // Hub/meta always stable. Only the simulation outcome layer borrows world copy.
+    return {
+      ...base,
+      // Market & gear always from operator deck
+      black_market: hubSkin.market.menuButton[language],
+      market_title: hubSkin.market.title[language],
+      market_subtitle: hubSkin.market.subtitle[language],
+      install: hubSkin.market.install[language],
+      avail_credits: hubSkin.market.availCredits[language],
+      currency_suffix: hubSkin.market.currency[language],
+      // While jacked in, show the simulation's campaign readout on end screens
+      victory_title: inSimulation ? genrePack.ui.victoryTitle[language] : base.victory_title,
+      connection_severed: inSimulation ? genrePack.ui.connectionSevered[language] : base.connection_severed
+    };
+  }, [language, hubSkin, genrePack, inSimulation]);
 
   useEffect(() => {
     const saved = localStorage.getItem('narrativeFlowProfile');
@@ -444,14 +444,18 @@ const App: React.FC = () => {
                 upgrades: { ...DEFAULT_PROFILE.upgrades, ...parsed.upgrades }
             });
             if (parsed.language) setLanguage(parsed.language);
+            if (parsed.lastGenre && GENRE_ORDER.includes(parsed.lastGenre)) {
+                setSelectedGenre(parsed.lastGenre);
+                runGenreRef.current = parsed.lastGenre;
+            }
         } catch (e) { console.error("Profile load fail", e); }
     }
   }, []);
 
   useEffect(() => {
-    const profileToSave = { ...userProfile, language };
+    const profileToSave = { ...userProfile, language, lastGenre: selectedGenre };
     localStorage.setItem('narrativeFlowProfile', JSON.stringify(profileToSave));
-  }, [userProfile, language]);
+  }, [userProfile, language, selectedGenre]);
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -486,6 +490,12 @@ const App: React.FC = () => {
                     handleSelectPerk(offeredPerks[index]);
                 }
             }
+        } else if (gameState === GameState.GENRE_SELECTION) {
+            if (e.key === 'Escape') setGameState(GameState.MENU);
+            const index = parseInt(e.key) - 1;
+            if (index >= 0 && index < GENRE_ORDER.length) {
+                handleGenreSelect(GENRE_ORDER[index]);
+            }
         } else if (gameState === GameState.MENU) {
             if (e.key === '1' || e.key === 'Enter') initializeSession();
             if (e.key === '2') setGameState(GameState.BLACK_MARKET);
@@ -515,13 +525,15 @@ const App: React.FC = () => {
       setLanguage(prev => prev === 'en' ? 'ru' : 'en');
   };
 
-  const generatePerkObject = (def: any, tierIndex: number): Perk => {
-      const tierData = def.tiers[tierIndex];
+  const generatePerkObject = (def: typeof PERK_DEFINITIONS[number], tierIndex: number, _genreOverride?: StoryGenreId): Perk => {
+      const tierData = def.tiers[tierIndex] as any;
+      // Perk firmware lives on the operator deck — always cyberpunk names.
+      const perkSkin = hubSkin.perks[def.groupId];
       return {
           id: `${def.groupId}_${tierIndex + 1}`,
           groupId: def.groupId,
-          name: `${def.baseName[language]} ${['I','II','III'][tierIndex]}`, // Localized Name
-          description: tierData.desc[language], // Localized Desc
+          name: `${perkSkin.name[language]} ${['I','II','III'][tierIndex]}`,
+          description: perkSkin.tiers[tierIndex][language],
           type: def.type as any,
           rarity: tierIndex === 0 ? 'common' : tierIndex === 1 ? 'rare' : 'legendary',
           tier: tierIndex + 1,
@@ -611,20 +623,26 @@ const App: React.FC = () => {
           .slice(0, 3)
           .map(d => generatePerkObject(d, 0));
       setOfferedPerks(starters);
-      setGameState(GameState.STARTER_PERK_SELECTION);
+      setGameState(GameState.GENRE_SELECTION);
       if (!musicActive) handleToggleMusic();
+  };
+
+  const handleGenreSelect = (genre: StoryGenreId) => {
+      setSelectedGenre(genre);
+      runGenreRef.current = genre;
+      setGameState(GameState.STARTER_PERK_SELECTION);
   };
 
   const handleStarterPerkSelect = (perk: Perk) => {
       setActivePerks([perk]);
-      beginStoryGeneration();
+      beginStoryGeneration(runGenreRef.current);
   };
 
-  const beginStoryGeneration = async () => {
+  const beginStoryGeneration = async (genre: StoryGenreId = runGenreRef.current) => {
     setGameState(GameState.LOADING);
     const [start, charProfile] = await Promise.all([
-        generateStoryStart(language),
-        generateCharacterProfile(language)
+        generateStoryStart(language, genre),
+        generateCharacterProfile(language, genre)
     ]);
     setInitialSegment(start);
     setCharacterDesc(charProfile);
@@ -634,15 +652,15 @@ const App: React.FC = () => {
   const getEndingTitle = (report: LevelReport): string => {
       const mission = report.mission || campaignState;
       if (mission.evidence >= 55 && mission.heat < 55 && mission.trust >= 45) {
-          return language === 'ru' ? 'Тихая публикация' : 'Ghost Publication';
+          return worldSkin.endings.ghost[language];
       }
       if (mission.evidence >= 55 && mission.route === 'loud') {
-          return language === 'ru' ? 'Громкий слив' : 'Loud Leak';
+          return worldSkin.endings.loud[language];
       }
       if (mission.corruption >= 45 || mission.trust < 18) {
-          return language === 'ru' ? 'Сломанная связь' : 'Broken Link';
+          return worldSkin.endings.broken[language];
       }
-      return language === 'ru' ? 'Выживший свидетель' : 'Surviving Witness';
+      return worldSkin.endings.survivor[language];
   };
 
   const handleLevelComplete = async (finalRoundStats: GameStats, finalTrace: number, finalMission?: MissionState) => {
@@ -687,7 +705,7 @@ const App: React.FC = () => {
           setGameState(GameState.LEVEL_COMPLETE);
       }
 
-      const summary = await generateLevelSummary(finalRoundStats.level, report, storyLog.map(l => l.text).join(" "), language);
+      const summary = await generateLevelSummary(finalRoundStats.level, report, storyLog.map(l => l.text).join(" "), language, runGenreRef.current);
       const completedReport = { ...report, narrativeSummary: summary, endingTitle: getEndingTitle({ ...report, narrativeSummary: summary }) };
       setNarrativeContext(summary);
       addToLog(`[${UI.level.toUpperCase()} ${finalRoundStats.level} ${UI.seq_complete}]: ${summary}`, 'neutral', 0, 0, 0, `${UI.evidence}: ${mission.evidence} · ${UI.heat}: ${mission.heat}%`);
@@ -710,12 +728,14 @@ const App: React.FC = () => {
       setCurrentLevel(nextLvl);
       setLevelBuffer([]);
       try {
-          const nextStartSegment = await generateNextLevelStart(nextLvl, narrativeContext, language, campaignState);
+          const nextStartSegment = await generateNextLevelStart(nextLvl, narrativeContext, language, campaignState, runGenreRef.current);
           setInitialSegment(nextStartSegment);
           setGameState(GameState.PLAYING);
-      } catch (e) {
+        } catch (e) {
+          const fallback = getGenrePack(runGenreRef.current).local[language].levelStart[nextLvl - 1]
+              || (language === 'ru' ? "Связь разорвана. Вы в новом секторе." : "The connection resets. You are in a new sector.");
           setInitialSegment({ 
-              text: language === 'ru' ? "Связь разорвана. Вы в новом секторе." : "The connection resets. You are in a new sector.", 
+              text: fallback,
               mood: StoryMood.TENSE, 
               type: SegmentType.NARRATIVE,
               skill: 'flow',
@@ -767,14 +787,16 @@ const App: React.FC = () => {
   const buildComicData = () => {
     const isVictory = gameState === GameState.VICTORY;
     const mission = (isVictory ? victoryReport?.mission : finalStats?.mission) || campaignState;
+    const campaignTitle = genrePack.ui.mainTitle[language];
     if (isVictory && victoryReport) {
+      const ending = victoryReport.endingTitle || genrePack.ui.victoryTitle[language];
       return {
         outcome: 'victory' as const,
-        endingTitle: victoryReport.endingTitle || UI.victory_title,
+        endingTitle: ending,
         tagline: victoryReport.narrativeSummary,
         shareText: language === 'ru'
-          ? `Мой забег в Narrative Flow: «${victoryReport.endingTitle || UI.victory_title}»`
-          : `My Narrative Flow run: “${victoryReport.endingTitle || UI.victory_title}”`,
+          ? `Мой забег в Narrative Flow (${genrePack.name.ru}): «${ending}» — ${campaignTitle}`
+          : `My Narrative Flow run (${genrePack.name.en}): “${ending}” — ${campaignTitle}`,
         stats: [
           { label: UI.wpm, value: String(Math.round(victoryReport.avgWpm)) },
           { label: UI.evidence, value: String(mission.evidence) },
@@ -786,10 +808,10 @@ const App: React.FC = () => {
     return {
       outcome: 'defeat' as const,
       endingTitle: UI.critical_failure,
-      tagline: UI.connection_severed,
+      tagline: genrePack.ui.connectionSevered[language],
       shareText: language === 'ru'
-        ? `Мой забег в Narrative Flow оборвался на уровне ${finalStats?.level || 1}.`
-        : `My Narrative Flow run was severed on level ${finalStats?.level || 1}.`,
+        ? `Мой забег в Narrative Flow (${genrePack.name.ru}) оборвался на уровне ${finalStats?.level || 1}.`
+        : `My Narrative Flow run (${genrePack.name.en}) was severed on level ${finalStats?.level || 1}.`,
       stats: [
         { label: UI.level, value: String(finalStats?.level || 1) },
         { label: UI.evidence, value: String(mission.evidence) },
@@ -799,10 +821,10 @@ const App: React.FC = () => {
     };
   };
 
-  const describeUpgradeEffect = (key: keyof UserUpgrades, level: number): string => {
+  const describeUpgradeEffect = (key: UpgradeId, level: number): string => {
       switch (key) {
-          case 'synapticWeave': return `+${level * META_UPGRADES.synapticWeave.effectPerLevel} HP`;
-          case 'cryptoMiner': return `+${Math.round(level * META_UPGRADES.cryptoMiner.effectPerLevel * 100)}% CR`;
+          case 'synapticWeave': return `+${level * META_UPGRADES.synapticWeave.effectPerLevel} ${UI.health}`;
+          case 'cryptoMiner': return `+${Math.round(level * META_UPGRADES.cryptoMiner.effectPerLevel * 100)}% ${UI.credits}`;
           case 'signalDampener': return `-${Math.round(level * META_UPGRADES.signalDampener.effectPerLevel * 100)}% ${UI.heat}`;
           case 'bufferExpansion': return `+${level * META_UPGRADES.bufferExpansion.effectPerLevel} ${UI.focus}`;
           case 'focusLens': return `+${(level * META_UPGRADES.focusLens.effectPerLevel) / 1000}s ${UI.focus}`;
@@ -880,6 +902,33 @@ const App: React.FC = () => {
       );
   };
 
+  const renderGenreCard = (genreId: StoryGenreId, index: number) => {
+      const pack = getGenrePack(genreId);
+      return (
+        <button
+            key={genreId}
+            type="button"
+            onClick={() => handleGenreSelect(genreId)}
+            className="group relative p-5 rounded-lg border bg-slate-800/80 text-left flex flex-col h-full transition-all hover:bg-slate-800 focus-visible:outline-none"
+            style={{
+                borderColor: `${pack.accent}55`,
+                boxShadow: `inset 0 0 0 1px ${pack.accent}14`
+            }}
+        >
+            <div className="absolute top-2 left-2 text-slate-500 font-mono text-xs opacity-50 group-hover:opacity-100">[{index + 1}]</div>
+            <div className="flex items-start gap-3 mt-4 mb-3">
+                <span className="text-2xl leading-none" aria-hidden>{pack.chip}</span>
+                <div>
+                    <h4 className="text-lg font-bold text-white">{pack.name[language]}</h4>
+                    <p className="text-[11px] mt-1 font-mono uppercase tracking-wider" style={{ color: pack.accent }}>{pack.ui.mainTitle[language]}</p>
+                </div>
+            </div>
+            <p className="text-sm text-slate-400 leading-relaxed flex-1">{pack.tagline[language]}</p>
+            <p className="mt-4 text-[11px] text-slate-500 border-t border-slate-700/80 pt-3">{pack.ui.campaignGoal[language]}</p>
+        </button>
+      );
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 flex flex-col md:flex-row font-mono overflow-hidden">
       
@@ -899,9 +948,24 @@ const App: React.FC = () => {
             </div>
             <div className="min-w-0">
               <h1 className="font-display text-[15px] font-bold tracking-[0.12em] text-white leading-none truncate">{UI.game_title}</h1>
-              <p className="mt-1.5 text-[9px] uppercase tracking-[0.22em] text-slate-500 truncate">{UI.subtitle}</p>
+              <p className="mt-1.5 text-[9px] uppercase tracking-[0.22em] text-slate-500 truncate">
+                {inSimulation ? genrePack.ui.mainTitle[language] : UI.subtitle}
+              </p>
             </div>
           </div>
+
+          {inSimulation && (
+            <div
+              className="inline-flex items-center gap-2 self-start px-2.5 py-1 rounded-full border text-[10px] font-bold tracking-widest uppercase"
+              style={{ borderColor: `${genrePack.accent}66`, color: genrePack.accent, background: `${genrePack.accent}14` }}
+              title={language === 'ru' ? 'Активная симуляция за стеклом пульта' : 'Active simulation behind the operator glass'}
+            >
+              <span aria-hidden>{genrePack.chip}</span>
+              <span>{UI.sim_badge}</span>
+              <span className="opacity-70">//</span>
+              <span>{genrePack.name[language]}</span>
+            </div>
+          )}
 
           {/* Status panel */}
           <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] space-y-4">
@@ -909,7 +973,7 @@ const App: React.FC = () => {
               <div>
                 <div className="text-[9px] uppercase tracking-[0.22em] text-slate-500">{UI.wallet}</div>
                 <div className="font-display mt-1 text-2xl font-bold tabular-nums text-white leading-none">
-                  {Math.floor(userProfile.credits || 0)}<span className="text-sm text-emerald-400 ml-1 align-baseline">CR</span>
+                  {Math.floor(userProfile.credits || 0)}<span className="text-sm text-emerald-400 ml-1 align-baseline">{UI.currency_suffix}</span>
                 </div>
               </div>
               {gameState === GameState.PLAYING && (
@@ -1073,25 +1137,26 @@ const App: React.FC = () => {
                         </div>
                         <div className="text-right">
                             <div className="text-xs text-slate-500 uppercase">{UI.avail_credits}</div>
-                            <div className="text-2xl font-bold text-yellow-400">{Math.floor(userProfile.credits)} CR</div>
+                            <div className="text-2xl font-bold text-yellow-400">{Math.floor(userProfile.credits)} {UI.currency_suffix}</div>
                         </div>
                     </div>
                     <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {(Object.entries(META_UPGRADES) as [keyof UserUpgrades, typeof META_UPGRADES.synapticWeave][]).map(([key, def], idx) => {
+                        {(Object.entries(META_UPGRADES) as [UpgradeId, typeof META_UPGRADES.synapticWeave][]).map(([key, def], idx) => {
                             const currentLvl = userProfile.upgrades[key];
                             const nextCost = Math.floor(def.baseCost * (1 + (currentLvl * 0.5)));
                             const isMaxed = currentLvl >= def.maxLevel;
                             const canAfford = userProfile.credits >= nextCost;
+                            const copy = hubSkin.upgrades[key];
                             return (
                                 <div key={key} className="bg-slate-900/50 border border-slate-800 p-6 rounded-lg relative overflow-hidden group hover:border-purple-500/50 transition-colors">
                                     <div className="absolute top-2 right-2 text-[10px] text-slate-600 font-mono">[{idx + 1}]</div>
                                     <div className="flex justify-between items-start mb-4">
-                                        <h3 className="text-xl font-bold text-slate-200">{def.name[language]}</h3>
+                                        <h3 className="text-xl font-bold text-slate-200">{copy.name[language]}</h3>
                                         <div className="text-xs font-mono bg-slate-800 px-2 py-1 rounded text-purple-400 border border-purple-500/30">
                                             Lvl {currentLvl}/{def.maxLevel}
                                         </div>
                                     </div>
-                                    <p className="text-slate-400 text-sm mb-6 h-10">{def.desc[language]}</p>
+                                    <p className="text-slate-400 text-sm mb-6 h-10">{copy.desc[language]}</p>
                                     <div className="flex items-center justify-between mt-auto">
                                         <div className="text-xs text-slate-500">
                                             {UI.effect}: <span className="text-emerald-400">{describeUpgradeEffect(key, currentLvl)}</span>
@@ -1107,7 +1172,7 @@ const App: React.FC = () => {
                                                 className={`px-4 py-2 font-bold rounded flex items-center gap-2 transition-all ${canAfford ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-[0_0_15px_rgba(147,51,234,0.4)]' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}
                                             >
                                                 <span>{UI.install}</span>
-                                                <span className={canAfford ? 'text-yellow-300' : ''}>{nextCost} CR</span>
+                                                <span className={canAfford ? 'text-yellow-300' : ''}>{nextCost} {UI.currency_suffix}</span>
                                             </button>
                                         )}
                                     </div>
@@ -1118,7 +1183,8 @@ const App: React.FC = () => {
                             );
                         })}
                     </div>
-                    <div className="p-4 border-t border-slate-800 bg-slate-900/80 flex justify-center">
+                    <div className="p-4 border-t border-slate-800 bg-slate-900/80 flex flex-col items-center gap-2">
+                        <p className="text-[11px] text-slate-600 text-center max-w-xl">{UI.genre_persists_note}</p>
                         <button 
                             onClick={() => setGameState(GameState.MENU)}
                             className="px-6 py-2 text-slate-400 hover:text-white transition-colors uppercase tracking-widest text-sm font-bold"
@@ -1129,9 +1195,36 @@ const App: React.FC = () => {
                 </div>
             )}
 
+            {gameState === GameState.GENRE_SELECTION && (
+                <div className="w-full max-w-4xl bg-slate-900/95 border border-fuchsia-500/25 rounded-xl p-8 backdrop-blur-xl shadow-2xl animate-fade-in-up">
+                    <div className="border-b border-slate-700 pb-4 mb-6 text-center">
+                        <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">{UI.genre_title}</h2>
+                        <p className="text-slate-400 text-sm">{UI.genre_subtitle}</p>
+                        <p className="text-slate-600 text-xs mt-2">{UI.genre_persists_note}</p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {GENRE_ORDER.map((genreId, index) => renderGenreCard(genreId, index))}
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setGameState(GameState.MENU)}
+                        className="mt-6 w-full py-2 text-slate-500 hover:text-white transition-colors uppercase tracking-widest text-xs font-bold"
+                    >
+                        {UI.genre_back}
+                    </button>
+                </div>
+            )}
+
             {gameState === GameState.STARTER_PERK_SELECTION && (
                  <div className="w-full max-w-4xl bg-slate-900/95 border border-cyan-500/30 rounded-xl p-8 backdrop-blur-xl shadow-2xl animate-fade-in-up">
                     <div className="border-b border-slate-700 pb-4 mb-6 text-center">
+                        <div className="inline-flex items-center gap-2 px-3 py-1 mb-3 rounded-full border text-[10px] font-bold tracking-widest uppercase"
+                             style={{ borderColor: `${genrePack.accent}66`, color: genrePack.accent, background: `${genrePack.accent}14` }}>
+                            <span>{genrePack.chip}</span>
+                            <span>{UI.sim_badge}</span>
+                            <span className="opacity-70">//</span>
+                            <span>{genrePack.name[language]}</span>
+                        </div>
                         <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">{UI.loadout_title}</h2>
                         <p className="text-slate-400 text-sm">{UI.loadout_subtitle}</p>
                     </div>
@@ -1218,6 +1311,7 @@ const App: React.FC = () => {
                     missionSeed={campaignState}
                     onMissionUpdate={setCampaignState}
                     onCaptureFrame={captureComicFrame}
+                    genre={selectedGenre}
                 />
             )}
 
@@ -1225,7 +1319,7 @@ const App: React.FC = () => {
                 <div className="w-full max-w-3xl bg-slate-900/90 p-10 rounded-2xl border border-emerald-500/40 backdrop-blur-xl shadow-[0_0_60px_rgba(16,185,129,0.18)] animate-fade-in-up">
                     <div className="text-center border-b border-slate-700 pb-6 mb-6">
                         <div className="inline-block px-3 py-1 bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 rounded-full text-xs tracking-widest mb-4">
-                            {UI.victory_title}
+                            {genrePack.ui.victoryTitle[language]}
                         </div>
                         <h2 className="text-4xl font-bold text-white mb-3">{victoryReport.endingTitle}</h2>
                         <p className="text-slate-300 text-lg italic">"{victoryReport.narrativeSummary}"</p>
@@ -1267,7 +1361,7 @@ const App: React.FC = () => {
             {gameState === GameState.GAME_OVER && (
                 <div className="text-center space-y-6 bg-slate-900/80 p-10 rounded-2xl border border-red-900/50 backdrop-blur-xl max-w-lg w-full shadow-2xl animate-fade-in-up">
                     <h2 className="text-5xl font-bold text-red-500 tracking-tighter">{UI.critical_failure}</h2>
-                    <p className="text-slate-300">{UI.connection_severed}</p>
+                    <p className="text-slate-300">{genrePack.ui.connectionSevered[language]}</p>
                     <div className="grid grid-cols-2 gap-4 py-4">
                         <div className="bg-slate-800/50 p-4 rounded border border-slate-700">
                             <div className="text-xs text-slate-500 uppercase">{UI.reached}</div>
@@ -1312,7 +1406,7 @@ const App: React.FC = () => {
         return (
           <RunComic
             frames={comicFrames}
-            title={UI.game_title}
+            title={genrePack.ui.mainTitle[language]}
             endingTitle={data.endingTitle}
             outcome={data.outcome}
             tagline={data.tagline}

@@ -2,6 +2,7 @@ export type Language = 'en' | 'ru';
 
 export enum GameState {
   MENU = 'MENU',
+  GENRE_SELECTION = 'GENRE_SELECTION',
   PLAYING = 'PLAYING',
   LEVEL_COMPLETE = 'LEVEL_COMPLETE',
   GAME_OVER = 'GAME_OVER',
@@ -11,6 +12,8 @@ export enum GameState {
   STARTER_PERK_SELECTION = 'STARTER_PERK_SELECTION',
   BLACK_MARKET = 'BLACK_MARKET'
 }
+
+export type StoryGenreId = 'cyberpunk' | 'space_horror' | 'noir' | 'dark_fable';
 
 export enum StoryMood {
   NEUTRAL = 'NEUTRAL',

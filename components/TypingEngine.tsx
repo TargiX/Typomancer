@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { StorySegment, BranchingStory, GameStats, StoryMood, GameModifiers, SegmentType, DecisionPoint, Language, MissionState, DecisionImpact, ComicFrame } from '../types';
+import { StorySegment, BranchingStory, GameStats, StoryMood, GameModifiers, SegmentType, DecisionPoint, Language, MissionState, DecisionImpact, ComicFrame, StoryGenreId } from '../types';
 import { generateNextSegments, generateSceneImage, generateStrategicDecision } from '../services/geminiService';
 import { audioEngine } from '../services/audioEngine';
 
@@ -61,6 +61,7 @@ interface TypingEngineProps {
   missionSeed: MissionState;
   onMissionUpdate?: (missionState: MissionState) => void;
   onCaptureFrame?: (frame: ComicFrame) => void;
+  genre: StoryGenreId;
 }
 
 const DECISION_ROUND = 5;
@@ -115,7 +116,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     language,
     missionSeed,
     onMissionUpdate,
-    onCaptureFrame
+    onCaptureFrame,
+    genre
 }) => {
   const [history, setHistory] = useState<StorySegment[]>([]);
   const [activeSegment, setActiveSegment] = useState<StorySegment>(initialSegment);
@@ -162,7 +164,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const forgivenMistakesRef = useRef(0);
   const forgivenIndicesRef = useRef<Set<number>>(new Set());
 
-  // Localization Dictionary for Engine
+  // Operator deck chrome — always cyberpunk (Animus frame). Genre only changes the story feed.
   const T = {
       en: {
           overclock_active: "FOCUS MODE ACTIVE",
@@ -340,13 +342,13 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     let isMounted = true;
     const fetchImage = async () => {
         setIsImageLoading(true);
-        const base64 = await generateSceneImage(activeSegment.text, characterDescription);
+        const base64 = await generateSceneImage(activeSegment.text, characterDescription, genre);
         if (isMounted && base64) { setCurrentImage(base64); currentImageRef.current = base64; }
         if (isMounted) setIsImageLoading(false);
     };
     fetchImage();
     return () => { isMounted = false; };
-  }, [activeSegment, characterDescription]);
+  }, [activeSegment, characterDescription, genre]);
 
   useEffect(() => {
     if (isWaitingForAi || transitionLockRef.current || isDecisionActive || typeCueActive) return;
@@ -395,10 +397,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       if (round >= 10) return;
       try {
         if (nextRound === DECISION_ROUND) {
-             const decision = await generateStrategicDecision(context, currentLevel, language, missionRef.current);
+             const decision = await generateStrategicDecision(context, currentLevel, language, missionRef.current, genre);
              if (isMounted) setNextDecision(decision);
         } else {
-             const branch = await generateNextSegments(context, nextLevel, nextRound, language, prevLevelSummary, missionRef.current);
+             const branch = await generateNextSegments(context, nextLevel, nextRound, language, prevLevelSummary, missionRef.current, genre);
              if (isMounted) setNextBranch(branch);
         }
       } catch (e) {
@@ -407,7 +409,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     };
     bufferNext();
     return () => { isMounted = false; };
-  }, [activeSegment, history, currentLevel, round, prevLevelSummary, language]); 
+  }, [activeSegment, history, currentLevel, round, prevLevelSummary, language, genre]); 
 
   useEffect(() => {
       if (inputValue.length === 0 && !transitionLockRef.current && round <= 10 && !isCriticalHack && !isDecisionActive && !typeCueActive) {
