@@ -1,0 +1,473 @@
+/* Styles owned by the App screens design pass (menu, black market, perks, results, deck frame).
+   Keyframe names must be prefixed with `screens-` to avoid collisions. */
+
+.screens-app-shell {
+  position: relative;
+  isolation: isolate;
+}
+
+.screens-cut-panel {
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+}
+
+.screens-cut-card {
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.screens-stat-tile {
+  clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.screens-cut-chip,
+.screens-icon-tile {
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+
+.screens-emblem-tile {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  box-shadow:
+    inset 0 0 18px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+.screens-emblem-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1);
+  transition: transform 300ms ease;
+}
+
+.screens-emblem-fallback {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
+.screens-card-art-frame {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  background: #070a11;
+}
+
+.screens-card-art {
+  display: flex;
+  max-width: none;
+  border-radius: 0;
+  clip-path: none;
+  box-shadow: none;
+}
+
+.screens-card-art.screens-emblem-failed {
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  box-shadow:
+    inset 0 0 18px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+.screens-card-art .screens-emblem-image {
+  transform: scale(1.001);
+  transition: transform 300ms ease;
+}
+
+.screens-card-banner {
+  width: 100%;
+}
+
+.screens-card-banner::after,
+.screens-upgrade-art-rail::after {
+  position: absolute;
+  z-index: 1;
+  content: "";
+  pointer-events: none;
+}
+
+.screens-card-banner::after {
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 42%;
+  background: linear-gradient(to bottom, transparent 0%, rgba(11, 16, 26, 0.35) 62%, #0b101a 100%);
+}
+
+.screens-perk-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  padding: 0;
+  align-content: start;
+}
+
+.screens-perk-card-banner {
+  grid-row: 1;
+  height: 158px;
+}
+
+.screens-perk-meta {
+  grid-row: 2;
+  margin: 12px 20px 0;
+}
+
+.screens-perk-title {
+  grid-row: 3;
+  margin: 8px 20px 0;
+}
+
+.screens-perk-description {
+  grid-row: 4;
+  margin: 10px 20px 20px;
+}
+
+.screens-perk-legend {
+  grid-row: 5;
+  margin: 0 20px 20px;
+}
+
+.screens-perk-card:has(.screens-perk-card-banner .screens-emblem-failed) {
+  grid-template-columns: 60px minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  column-gap: 12px;
+  padding: 20px;
+}
+
+.screens-perk-card:has(.screens-perk-card-banner .screens-emblem-failed) .screens-perk-card-banner {
+  grid-row: 1 / span 2;
+  grid-column: 1;
+  width: 60px;
+  height: 60px;
+  aspect-ratio: auto;
+}
+
+.screens-perk-card:has(.screens-perk-card-banner .screens-emblem-failed) .screens-card-banner::after {
+  display: none;
+}
+
+.screens-perk-card:has(.screens-perk-card-banner .screens-emblem-failed) .screens-perk-meta {
+  grid-row: 1;
+  grid-column: 2;
+  margin: 0;
+}
+
+.screens-perk-card:has(.screens-perk-card-banner .screens-emblem-failed) .screens-perk-title {
+  grid-row: 2;
+  grid-column: 2;
+  align-self: start;
+  margin: 6px 0 0;
+}
+
+.screens-perk-card:has(.screens-perk-card-banner .screens-emblem-failed) .screens-perk-description {
+  grid-row: 3;
+  grid-column: 1 / -1;
+  margin: 16px 0 0;
+}
+
+.screens-perk-card:has(.screens-perk-card-banner .screens-emblem-failed) .screens-perk-legend {
+  grid-row: 4;
+  grid-column: 1 / -1;
+  margin: 16px 0 0;
+}
+
+.screens-perk-card:hover .screens-perk-card-banner .screens-emblem-image {
+  transform: scale(1.06);
+}
+
+.screens-world-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  padding: 0;
+  align-content: start;
+}
+
+.screens-world-card-banner {
+  grid-row: 1;
+  height: 150px;
+}
+
+.screens-world-heading {
+  grid-row: 2;
+  margin: 12px 20px 0;
+}
+
+.screens-world-description {
+  grid-row: 3;
+  margin: 12px 20px 0;
+}
+
+.screens-world-goal {
+  grid-row: 4;
+  margin: 16px 20px 20px;
+}
+
+.screens-world-card:has(.screens-world-card-banner .screens-emblem-failed) {
+  grid-template-columns: 68px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 218px;
+  column-gap: 12px;
+  padding: 20px;
+}
+
+.screens-world-card:has(.screens-world-card-banner .screens-emblem-failed) .screens-world-card-banner {
+  grid-row: 1;
+  grid-column: 1;
+  width: 68px;
+  height: 68px;
+}
+
+.screens-world-card:has(.screens-world-card-banner .screens-emblem-failed) .screens-card-banner::after {
+  display: none;
+}
+
+.screens-world-card:has(.screens-world-card-banner .screens-emblem-failed) .screens-world-heading {
+  grid-row: 1;
+  grid-column: 2;
+  margin: 0;
+}
+
+.screens-world-card:has(.screens-world-card-banner .screens-emblem-failed) .screens-world-description {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  margin: 16px 0 0;
+}
+
+.screens-world-card:has(.screens-world-card-banner .screens-emblem-failed) .screens-world-goal {
+  grid-row: 3;
+  grid-column: 1 / -1;
+  margin: 16px 0 0;
+}
+
+.screens-world-card:hover .screens-world-card-banner .screens-emblem-image {
+  transform: scale(1.05);
+}
+
+.screens-upgrade-card {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  padding: 0;
+}
+
+.screens-upgrade-art-rail {
+  grid-column: 1;
+  grid-row: 1;
+  min-height: 100%;
+}
+
+.screens-upgrade-art-rail::after {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 40%;
+  background: linear-gradient(to right, transparent 0%, rgba(11, 16, 26, 0.32) 62%, #0b101a 100%);
+}
+
+.screens-upgrade-content {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 20px 20px 20px 18px;
+}
+
+.screens-upgrade-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+}
+
+.screens-upgrade-card:has(> .screens-upgrade-art-rail:empty) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.screens-upgrade-art-rail:empty {
+  display: none;
+}
+
+.screens-upgrade-card:has(> .screens-upgrade-art-rail:empty) .screens-upgrade-content {
+  grid-column: 1;
+  padding: 20px;
+}
+
+.screens-upgrade-card:hover .screens-upgrade-art-rail .screens-emblem-image {
+  transform: scale(1.05);
+}
+
+@media (min-width: 768px) and (max-width: 1199px) {
+  .screens-upgrade-heading {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.group:hover .screens-emblem-image {
+  transform: scale(1.04);
+}
+
+.screens-daily-button {
+  min-height: 64px;
+}
+
+.screens-daily-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+  filter: saturate(0.55);
+  box-shadow: none;
+}
+
+.screens-daily-button:disabled:hover {
+  color: rgb(167 243 208);
+  transform: none;
+}
+
+.screens-perk-legendary::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+  opacity: 0.16;
+  background: linear-gradient(112deg, transparent 25%, rgba(251, 191, 36, 0.32) 48%, transparent 68%);
+  transform: translateX(-130%);
+  animation: screens-shimmer 8s ease-in-out infinite;
+}
+
+.screens-living-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: #070a11;
+}
+
+.screens-ambient-blob {
+  position: absolute;
+  width: min(64vw, 920px);
+  aspect-ratio: 1;
+  border-radius: 999px;
+  filter: blur(120px);
+  opacity: 0.055;
+  will-change: transform;
+  animation: screens-drift 58s ease-in-out infinite alternate;
+}
+
+.screens-ambient-blob-emerald {
+  top: -34%;
+  left: 17%;
+  background: radial-gradient(circle, #34d399 0%, rgba(52, 211, 153, 0) 68%);
+}
+
+.screens-ambient-blob-indigo {
+  right: -21%;
+  bottom: -42%;
+  background: radial-gradient(circle, #6366f1 0%, rgba(99, 102, 241, 0) 68%);
+  animation-delay: -29s;
+  animation-direction: alternate-reverse;
+}
+
+.screens-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 48%, rgba(0, 0, 0, 0.3) 100%);
+}
+
+.screens-deck-frame {
+  position: fixed;
+  inset: 10px;
+  z-index: 80;
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.08);
+}
+
+.screens-deck-corner {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-color: rgba(52, 211, 153, 0.75);
+  border-style: solid;
+  border-width: 0;
+  filter: drop-shadow(0 0 5px rgba(52, 211, 153, 0.2));
+}
+
+.screens-deck-corner-tl {
+  top: -1px;
+  left: -1px;
+  border-top-width: 2px;
+  border-left-width: 2px;
+}
+
+.screens-deck-corner-tr {
+  top: -1px;
+  right: -1px;
+  border-top-width: 2px;
+  border-right-width: 2px;
+}
+
+.screens-deck-corner-bl {
+  bottom: -1px;
+  left: -1px;
+  border-bottom-width: 2px;
+  border-left-width: 2px;
+}
+
+.screens-deck-corner-br {
+  right: -1px;
+  bottom: -1px;
+  border-right-width: 2px;
+  border-bottom-width: 2px;
+}
+
+@keyframes screens-drift {
+  0% {
+    transform: translate3d(-2%, -1%, 0) scale(0.98);
+  }
+  50% {
+    transform: translate3d(5%, 3%, 0) scale(1.04);
+  }
+  100% {
+    transform: translate3d(-1%, 6%, 0) scale(1);
+  }
+}
+
+@keyframes screens-shimmer {
+  0%,
+  65% {
+    transform: translateX(-130%);
+  }
+  85%,
+  100% {
+    transform: translateX(130%);
+  }
+}
+
+@media (max-width: 767px) {
+  .screens-deck-frame {
+    inset: 6px;
+  }
+
+  .screens-ambient-blob {
+    width: 120vw;
+    filter: blur(96px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screens-ambient-blob,
+  .screens-perk-legendary::after {
+    animation: none;
+  }
+
+  .screens-emblem-image {
+    transition: none;
+  }
+}

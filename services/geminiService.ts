@@ -10,7 +10,7 @@ import {
   TypingSkill,
   StoryGenreId
 } from "../types";
-import { getGenrePack } from "./genreConfig";
+import { getGenrePack, type LocalBranchTemplate } from "./genreConfig";
 
 type Schema = Record<string, unknown>;
 
@@ -48,6 +48,33 @@ const ai = {
 const TEXT_MODEL = "gemini-flash-lite-latest";
 const FINAL_LEVEL = 4;
 let remoteImageGenerationUnavailable = false;
+let lastImageDataUrl: string | null = null;
+let lastGenre: StoryGenreId | null = null;
+let callCounter = 0;
+const sceneImageCache = new Map<string, string>();
+const SCENE_IMAGE_CACHE_CAPACITY = 20;
+
+const cheapStringHash = (value: string): string => {
+  let hash = 5381;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) + hash) ^ value.charCodeAt(index);
+  }
+  return (hash >>> 0).toString(36);
+};
+
+const getSceneImageCacheKey = (genre: StoryGenreId, sceneDescription: string): string => (
+  cheapStringHash(`${genre}\u0000${sceneDescription}`)
+);
+
+const cacheSceneImage = (key: string, dataUrl: string) => {
+  sceneImageCache.delete(key);
+  sceneImageCache.set(key, dataUrl);
+
+  if (sceneImageCache.size > SCENE_IMAGE_CACHE_CAPACITY) {
+    const oldestKey = sceneImageCache.keys().next().value;
+    if (oldestKey) sceneImageCache.delete(oldestKey);
+  }
+};
 
 const segmentSchema: Schema = {
   type: Type.OBJECT,
@@ -145,7 +172,14 @@ const getLocalBranch = (
   mission?: MissionState
 ): BranchingStory => {
   const pack = getGenrePack(genre);
-  const templates = pack.branches[language];
+  const allTemplates = pack.branches[language];
+  // Pacing: the core loop is typing STORY prose. Code/number drills (BREACH/SIGNAL)
+  // are rare spice that only appears from mid-run and peaks at the climax — never in
+  // the opening rounds, where the player should just read and type the story.
+  const isDrill = (t: LocalBranchTemplate) => t.type === SegmentType.BREACH || t.type === SegmentType.SIGNAL;
+  const proseTemplates = allTemplates.filter(t => !isDrill(t));
+  const drillsAllowed = level >= FINAL_LEVEL || round >= 8 || (round >= 5 && ((level * 7 + round * 3) % 3 === 0));
+  const templates = drillsAllowed && proseTemplates.length ? allTemplates : (proseTemplates.length ? proseTemplates : allTemplates);
   const template = pick(templates, (level * 17) + (round * 5) + (mission?.heat || 0) + (mission?.evidence || 0));
   const type = template.type || SegmentType.NARRATIVE;
   const heat = mission?.heat || 0;
@@ -216,8 +250,6 @@ const generateLocalSceneImage = (sceneDescription: string, characterDescription:
   const seed = [...sceneDescription].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
   const hueA = 170 + pack.svgHueOffset + (seed % 70);
   const hueB = 280 + pack.svgHueOffset + (seed % 50);
-  const title = sceneDescription.slice(0, 72).replace(/[<&>]/g, '');
-  const character = characterDescription.slice(0, 92).replace(/[<&>]/g, '');
   const scanLines = Array.from({ length: 12 }).map((_, i) => `<rect x="0" y="${i * 50}" width="960" height="1" fill="rgba(255,255,255,0.08)"/>`).join('');
   const nodes = Array.from({ length: 18 }).map((_, i) => {
     const x = (seed * (i + 3) * 37) % 960;
@@ -241,10 +273,7 @@ const generateLocalSceneImage = (sceneDescription: string, characterDescription:
       ${nodes}
       ${scanLines}
       <rect x="42" y="34" width="876" height="468" rx="22" fill="none" stroke="hsla(${hueA}, 95%, 70%, .28)" stroke-width="2"/>
-      <text x="64" y="78" fill="hsla(${hueA}, 95%, 75%, .95)" font-family="monospace" font-size="24" font-weight="700">LOCAL VISUAL FEED</text>
-      <text x="64" y="428" fill="#e2e8f0" font-family="monospace" font-size="26" font-weight="700">${title}</text>
-      <text x="64" y="464" fill="#94a3b8" font-family="monospace" font-size="16">${character}</text>
-      <text x="64" y="110" fill="#64748b" font-family="monospace" font-size="13">procedural fallback // no image API required</text>
+      <text x="64" y="78" fill="hsla(${hueA}, 95%, 75%, .95)" font-family="monospace" font-size="13" font-weight="700">SIM FEED // OFFLINE CACHE</text>
       <circle cx="820" cy="118" r="56" fill="none" stroke="hsla(${hueB}, 95%, 75%, .45)" stroke-width="3" filter="url(#glow)"/>
       <path d="M785 118 h70 M820 83 v70" stroke="hsla(${hueB},95%,75%,.7)" stroke-width="2"/>
     </svg>
@@ -280,7 +309,7 @@ export const generateStoryStart = async (language: Language, genre: StoryGenreId
     });
   }
   const model = TEXT_MODEL;
-  const prompt = `You are the Game Master of a ${pack.storyGenre}. Write the first sentence. The player is ${pack.heroName}, a ${pack.heroBrief[language]}. Action-oriented. 10-16 words. OUTPUT LANGUAGE: ${language === 'ru' ? 'Russian' : 'English'}. Return ONLY the raw text string.`;
+  const prompt = `You are the Game Master of a ${pack.storyGenre}. WORLD RULES (follow strictly): ${pack.worldRules} Write the first sentence. The player is ${pack.heroName}, a ${pack.heroBrief[language]}. Action-oriented. 10-16 words. OUTPUT LANGUAGE: ${language === 'ru' ? 'Russian' : 'English'}. Return ONLY the raw text string.`;
 
   try {
     const response = await ai.models.generateContent({ model, contents: prompt, config: { temperature: 1.0 } });
@@ -318,7 +347,7 @@ export const generateNextLevelStart = async (
     });
   }
   const model = TEXT_MODEL;
-  const prompt = `CONTEXT: The player is starting Level ${nextLevel} of a ${pack.storyGenre}. HERO: ${pack.heroName}. PREVIOUS OUTCOME: "${prevSummary}" MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, corruption=${mission?.corruption ?? 0}, route=${mission?.route ?? 'balanced'}. TASK: Write the first sentence of Level ${nextLevel}. Establish the new location/danger and reflect the meters. Immediate action. 10-16 words. OUTPUT LANGUAGE: ${language === 'ru' ? 'Russian' : 'English'}. Return ONLY text.`;
+  const prompt = `CONTEXT: The player is starting Level ${nextLevel} of a ${pack.storyGenre}. WORLD RULES (follow strictly): ${pack.worldRules} HERO: ${pack.heroName}. PREVIOUS OUTCOME: "${prevSummary}" MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, corruption=${mission?.corruption ?? 0}, route=${mission?.route ?? 'balanced'}. TASK: Write the first sentence of Level ${nextLevel}. Establish the new location/danger and reflect the meters. Immediate action. 10-16 words. OUTPUT LANGUAGE: ${language === 'ru' ? 'Russian' : 'English'}. Return ONLY text.`;
 
   try {
     const response = await ai.models.generateContent({ model, contents: prompt, config: { temperature: 1.0 } });
@@ -346,7 +375,7 @@ export const generateLevelSummary = async (
   else if (stats.traceLevel > 50) performanceDesc = "messy and loud";
 
   const mission = stats.mission;
-  const prompt = `CONTEXT: The player finished Level ${level} of a ${pack.storyGenre}. HERO: ${pack.heroName}. STORY SO FAR: ${prevStoryContext.slice(-360)}... PLAYER PERFORMANCE: speed=${Math.round(stats.avgWpm)} WPM, mistakes=${stats.totalMistakes}, status=${performanceDesc}. MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, corruption=${mission?.corruption ?? 0}, route=${mission?.route ?? 'balanced'}, flags=${(mission?.flags || []).slice(-5).join(',')}. TASK: Write a punchy 2-sentence summary. Sentence 1: consequences of this level based on typing and choices. Sentence 2: setup for ${level >= FINAL_LEVEL ? 'the ending' : `Level ${level + 1}`}. OUTPUT LANGUAGE: ${language === 'ru' ? 'Russian' : 'English'}. Return ONLY text.`;
+  const prompt = `CONTEXT: The player finished Level ${level} of a ${pack.storyGenre}. WORLD RULES (follow strictly): ${pack.worldRules} HERO: ${pack.heroName}. STORY SO FAR: ${prevStoryContext.slice(-360)}... PLAYER PERFORMANCE: speed=${Math.round(stats.avgWpm)} WPM, mistakes=${stats.totalMistakes}, status=${performanceDesc}. MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, corruption=${mission?.corruption ?? 0}, route=${mission?.route ?? 'balanced'}, flags=${(mission?.flags || []).slice(-5).join(',')}. TASK: Write a punchy 2-sentence summary. Sentence 1: consequences of this level based on typing and choices. Sentence 2: setup for ${level >= FINAL_LEVEL ? 'the ending' : `Level ${level + 1}`}. OUTPUT LANGUAGE: ${language === 'ru' ? 'Russian' : 'English'}. Return ONLY text.`;
 
   try {
     const response = await ai.models.generateContent({ model, contents: prompt, config: { temperature: 1.0 } });
@@ -377,7 +406,20 @@ export const generateNextSegments = async (
   if (round <= 2 && prevLevelSummary) narrativeInstruction = `Continue from previous level outcome: "${prevLevelSummary}".`;
   else if (round >= 9) narrativeInstruction = "Climax of the current scene. Raise stakes before the escape.";
 
-  const prompt = `SETTING: ${pack.storyGenre}. HERO: ${pack.heroName}. CURRENT STATUS: Level ${level} | Round ${round}/10. RECENT CONTEXT: "...${recentHistory}" LAST EVENT: "${lastSentence}" MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, corruption=${mission?.corruption ?? 0}, signal=${mission?.signal ?? 0}, route=${mission?.route ?? 'balanced'}, recent consequences=${(mission?.consequenceLog || []).slice(-3).join(' | ')}. TASK: Generate the next segment options. INSTRUCTION: ${narrativeInstruction} SPECIAL MECHANIC: Mix typing drills. Use NARRATIVE for flow, BREACH for exact code, DIALOG for punctuation, SIGNAL for numbers/symbols. RULES: 1. No repeated events. 2. NARRATIVE/DIALOG: 8-18 words. 3. BREACH/SIGNAL: 2-8 tokens, symbols allowed. 4. goodPath should reward clean play with control/evidence/trust. mediumPath should show messy survival. badPath should show concrete consequences that can echo later. 5. Include objective, skill, and a short consequenceHint. 6. OUTPUT LANGUAGE FOR NARRATIVE/DIALOG: ${language === 'ru' ? 'Russian' : 'English'}. Keep BREACH/SIGNAL in technical English. Return JSON only.`;
+  // PACING: the core loop is typing readable STORY prose whose branch reflects how
+  // cleanly the player typed. Code/number drills (BREACH/SIGNAL) are rare tension
+  // spice, forbidden in the opening rounds and only building toward the climax.
+  const isClimax = round >= 8 || level >= FINAL_LEVEL;
+  let typeRule: string;
+  if (level <= 1 || round <= 3) {
+    typeRule = "TYPE RULE: use type NARRATIVE or DIALOG ONLY — flowing story prose or spoken dialogue. Do NOT use BREACH or SIGNAL yet: no code, no hex, no number strings. The player is reading and typing an actual story right now.";
+  } else if (isClimax) {
+    typeRule = "TYPE RULE: this is near the climax — you MAY use ONE BREACH or SIGNAL drill among the three paths to spike tension, but at least two paths must stay NARRATIVE/DIALOG prose.";
+  } else {
+    typeRule = "TYPE RULE: keep it mostly NARRATIVE/DIALOG prose; a single BREACH or SIGNAL drill is allowed only occasionally and never in more than one of the three paths.";
+  }
+
+  const prompt = `SETTING: ${pack.storyGenre}. WORLD RULES (follow strictly, never drift into another genre): ${pack.worldRules} HERO: ${pack.heroName}. CURRENT STATUS: Level ${level} | Round ${round}/10. RECENT CONTEXT: "...${recentHistory}" LAST EVENT: "${lastSentence}" MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, corruption=${mission?.corruption ?? 0}, signal=${mission?.signal ?? 0}, route=${mission?.route ?? 'balanced'}, recent consequences=${(mission?.consequenceLog || []).slice(-3).join(' | ')}. TASK: Generate the next story segment options. CORE LOOP: the player TYPES the sentence you write and the branch reflects their typing — so the main content is readable story prose, NOT puzzles. INSTRUCTION: ${narrativeInstruction} ${typeRule} RULES: 1. No repeated events. 2. NARRATIVE/DIALOG: 8-18 words, ordinary sentence case (do NOT write in all-caps). 3. If (and only if) a BREACH/SIGNAL drill is allowed here: 2-6 short tokens whose content matches the WORLD RULES for this world (never terminal/hex code unless the world is cyberpunk). 4. goodPath rewards clean play with control/evidence/trust. mediumPath shows messy survival. badPath shows concrete consequences that can echo later. 5. Include objective, skill, and a short consequenceHint. 6. Every sentence must stay strictly inside the SETTING's world and era — respect the FORBIDDEN vocabulary. 7. OUTPUT LANGUAGE FOR NARRATIVE/DIALOG: ${language === 'ru' ? 'Russian' : 'English'}. Keep BREACH/SIGNAL tokens in English. Return JSON only.`;
 
   try {
     const apiCall = ai.models.generateContent({
@@ -416,7 +458,7 @@ export const generateStrategicDecision = async (
   const recentHistory = fullHistory.slice(-6).join(" ");
   const lastSentence = fullHistory[fullHistory.length - 1] || "You encounter a new obstacle.";
 
-  const prompt = `SETTING: ${pack.storyGenre}. HERO: ${pack.heroName}. STATUS: Level ${level} | Mid-Level Branching Point. RECENT CONTEXT: "${recentHistory}" LAST EVENT: "${lastSentence}" MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, corruption=${mission?.corruption ?? 0}, route=${mission?.route ?? 'balanced'}. TASK: Create a major tactical decision with two approaches. Aggressive: loud, risky, stronger evidence/credits, raises heat/corruption. Stealth: quiet, technical, lowers heat, raises trust, usually less loot. OUTCOMES: text they must type next. Aggressive outcome is action text. Stealth outcome can be code/BREACH. Include preview and impact numbers. OUTPUT LANGUAGE: ${language === 'ru' ? 'Russian' : 'English'}. Keep code in English. JSON schema: { "introText": string, "options": [ { "id":"aggressive", "text": string, "type":"aggressive", "preview": string, "impact": {"heat":number,"trust":number,"evidence":number,"corruption":number,"signal":number,"trace":number,"health":number,"credits":number,"route":"loud","flag":string}, "outcome": StorySegment }, { "id":"stealth", "text": string, "type":"stealth", "preview": string, "impact": {"heat":number,"trust":number,"evidence":number,"corruption":number,"signal":number,"trace":number,"health":number,"credits":number,"route":"silent","flag":string}, "outcome": StorySegment } ] }`;
+  const prompt = `SETTING: ${pack.storyGenre}. WORLD RULES (follow strictly, never drift into another genre): ${pack.worldRules} HERO: ${pack.heroName}. STATUS: Level ${level} | Mid-Level Branching Point. RECENT CONTEXT: "${recentHistory}" LAST EVENT: "${lastSentence}" MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, corruption=${mission?.corruption ?? 0}, route=${mission?.route ?? 'balanced'}. TASK: Create a major tactical decision with two approaches. Aggressive: loud, risky, stronger evidence/credits, raises heat/corruption. Stealth: quiet, technical, lowers heat, raises trust, usually less loot. OUTCOMES: text they must type next. Aggressive outcome is action text. Stealth outcome can be code/BREACH. Include preview and impact numbers. OUTPUT LANGUAGE: ${language === 'ru' ? 'Russian' : 'English'}. Keep code in English. JSON schema: { "introText": string, "options": [ { "id":"aggressive", "text": string, "type":"aggressive", "preview": string, "impact": {"heat":number,"trust":number,"evidence":number,"corruption":number,"signal":number,"trace":number,"health":number,"credits":number,"route":"loud","flag":string}, "outcome": StorySegment }, { "id":"stealth", "text": string, "type":"stealth", "preview": string, "impact": {"heat":number,"trust":number,"evidence":number,"corruption":number,"signal":number,"trace":number,"health":number,"credits":number,"route":"silent","flag":string}, "outcome": StorySegment } ] }`;
 
   try {
     const response = await ai.models.generateContent({ model, contents: prompt, config: { responseMimeType: "application/json", temperature: 1.0 } });
@@ -444,8 +486,24 @@ export const generateSceneImage = async (
   genre: StoryGenreId = 'cyberpunk'
 ): Promise<string | null> => {
   const pack = getGenrePack(genre);
-  if (remoteImageGenerationUnavailable) return generateLocalSceneImage(sceneDescription, characterDescription, genre);
-  if (!ai) return generateLocalSceneImage(sceneDescription, characterDescription, genre);
+  const cacheKey = getSceneImageCacheKey(genre, sceneDescription);
+  const genreChanged = genre !== lastGenre;
+
+  if (genreChanged) {
+    lastGenre = genre;
+    callCounter = 1;
+  } else {
+    callCounter += 1;
+  }
+
+  // Image generation costs roughly $0.03-$0.04 per call: about 40 calls used to
+  // cost ~$1.50/run, while generating every third scene drops that to roughly $0.40/run.
+  const shouldGenerateRemotely = genreChanged || ((callCounter - 1) % 3 === 0);
+  if (!shouldGenerateRemotely && lastImageDataUrl) return lastImageDataUrl;
+
+  if (remoteImageGenerationUnavailable || !ai) {
+    return lastImageDataUrl || sceneImageCache.get(cacheKey) || generateLocalSceneImage(sceneDescription, characterDescription, genre);
+  }
   const model = 'gemini-3.1-flash-lite-image';
   const prompt = `${pack.artStyle}. Character: ${characterDescription}. Scene: ${sceneDescription}. Readable silhouette, high contrast, dramatic angle. Do not render any words, captions, letters, or watermarks.`;
 
@@ -459,12 +517,27 @@ export const generateSceneImage = async (
     for (const part of parts) {
       const inline = (part as any).inlineData;
       if (inline?.data) {
-        return `data:${inline.mimeType || 'image/png'};base64,${inline.data}`;
+        const imageDataUrl = `data:${inline.mimeType || 'image/png'};base64,${inline.data}`;
+        lastImageDataUrl = imageDataUrl;
+        cacheSceneImage(cacheKey, imageDataUrl);
+        return imageDataUrl;
       }
     }
+    const cachedImage = sceneImageCache.get(cacheKey);
+    if (cachedImage) {
+      lastImageDataUrl = cachedImage;
+      return cachedImage;
+    }
+    if (lastImageDataUrl) return lastImageDataUrl;
     remoteImageGenerationUnavailable = true;
     return generateLocalSceneImage(sceneDescription, characterDescription, genre);
   } catch (error) {
+    const cachedImage = sceneImageCache.get(cacheKey);
+    if (cachedImage) {
+      lastImageDataUrl = cachedImage;
+      return cachedImage;
+    }
+    if (lastImageDataUrl) return lastImageDataUrl;
     remoteImageGenerationUnavailable = true;
     return generateLocalSceneImage(sceneDescription, characterDescription, genre);
   }

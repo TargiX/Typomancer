@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { StorySegment, BranchingStory, GameStats, StoryMood, GameModifiers, SegmentType, DecisionPoint, Language, MissionState, DecisionImpact, ComicFrame, StoryGenreId } from '../types';
 import { generateNextSegments, generateSceneImage, generateStrategicDecision } from '../services/geminiService';
 import { audioEngine } from '../services/audioEngine';
+import { DECISION_MADE, SEGMENT_COMPLETE, track } from '../services/analytics';
 
 const CRACK_PATHS = [
     "M 10,10 L 30,30 L 25,45", 
@@ -62,6 +63,7 @@ interface TypingEngineProps {
   onMissionUpdate?: (missionState: MissionState) => void;
   onCaptureFrame?: (frame: ComicFrame) => void;
   genre: StoryGenreId;
+  strictCase?: boolean;
 }
 
 const DECISION_ROUND = 5;
@@ -99,7 +101,17 @@ const normalizeTypingChar = (char: string) => {
   return char;
 };
 
-const charsMatch = (typed: string, expected: string) => typed === expected || normalizeTypingChar(typed) === normalizeTypingChar(expected);
+// By default typing is case-insensitive so the player never needs Shift/CapsLock.
+// Perfectionist mode (strict=true) demands exact case for a bigger XP reward.
+// Smart-quote / dash / ё normalization always applies (fairness, not difficulty).
+const charsMatch = (typed: string, expected: string, strict = false) => {
+  if (typed === expected) return true;
+  const nt = normalizeTypingChar(typed);
+  const ne = normalizeTypingChar(expected);
+  if (nt === ne) return true;
+  if (strict) return false;
+  return nt.toLowerCase() === ne.toLowerCase();
+};
 
 const TypingEngine: React.FC<TypingEngineProps> = ({ 
     initialSegment, 
@@ -117,7 +129,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     missionSeed,
     onMissionUpdate,
     onCaptureFrame,
-    genre
+    genre,
+    strictCase = false
 }) => {
   const [history, setHistory] = useState<StorySegment[]>([]);
   const [activeSegment, setActiveSegment] = useState<StorySegment>(initialSegment);
@@ -145,6 +158,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const [comboPulse, setComboPulse] = useState(0);
   const [deltaPopups, setDeltaPopups] = useState<DeltaPopup[]>([]);
   const [typeCueActive, setTypeCueActive] = useState(true);
+  // Remember WHICH segment got the TYPE cue (not a boolean) — StrictMode re-runs the
+  // effect for the same segment, and a plain flag would cancel the cue instantly.
+  const typeCueShownRef = useRef<StorySegment | null>(null);
   const deltaCounter = useRef(0);
   const [round, setRound] = useState(1);
   const [totalWPM, setTotalWPM] = useState(0);
@@ -161,8 +177,13 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [focusHintPos, setFocusHintPos] = useState<{ left: number; top: number } | null>(null);
   const transitionLockRef = useRef(false); 
+  const gameOverTriggeredRef = useRef(false);
   const forgivenMistakesRef = useRef(0);
   const forgivenIndicesRef = useRef<Set<number>>(new Set());
+  // Active-skill: Firewall grants a stock of "shield" charges that soak the next
+  // mistakes (persists across segments until spent). Purge Trace is instant.
+  const firewallGraceRef = useRef(0);
+  const [firewallGrace, setFirewallGrace] = useState(0);
 
   // Operator deck chrome — always cyberpunk (Animus frame). Genre only changes the story feed.
   const T = {
@@ -198,6 +219,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           compromised: "compromised",
           focus_ready: "TAB ⚡ FOCUS",
           focus_title: "Type correctly to build Focus. Press TAB when full.",
+          skill_focus: "FOCUS — pause trace, soften mistakes, 2x rewards (TAB, full Energy)",
+          skill_firewall: "FIREWALL — shield the next 3 mistakes (costs Energy)",
+          skill_purge: "PURGE TRACE — instantly cut Security Trace by 25% (costs Energy)",
           route_balanced: "BALANCED",
           route_silent: "SILENT",
           route_loud: "LOUD",
@@ -236,6 +260,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           compromised: "скомпрометировано",
           focus_ready: "TAB ⚡ ФОКУС",
           focus_title: "Печатай верно, чтобы зарядить Фокус. Нажми TAB при полном заряде.",
+          skill_focus: "ФОКУС — пауза трассы, мягче ошибки, x2 награды (TAB, вся Energy)",
+          skill_firewall: "FIREWALL — щит на следующие 3 ошибки (тратит Energy)",
+          skill_purge: "СБРОС ТРАССЫ — мгновенно −25% к трассировке (тратит Energy)",
           route_balanced: "БАЛАНС",
           route_silent: "ТИХО",
           route_loud: "ГРОМКО",
@@ -258,6 +285,15 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   }, [missionState, onMissionUpdate]);
 
   useEffect(() => {
+      // Show the TYPE cue only once — on the first segment of the level. Repeating
+      // it on every segment interrupts the flow and blocks input for 1.5s each round.
+      if (typeCueShownRef.current && typeCueShownRef.current !== activeSegment) {
+          setTypeCueActive(false);
+          setStartTime(Date.now());
+          inputRef.current?.focus();
+          return;
+      }
+      typeCueShownRef.current = activeSegment;
       setTypeCueActive(true);
       inputRef.current?.focus();
       const cueTimer = window.setTimeout(() => {
@@ -319,7 +355,31 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       if (overclockTimerRef.current) clearTimeout(overclockTimerRef.current);
       overclockTimerRef.current = window.setTimeout(() => {
           setIsOverclockActive(false);
-      }, modifiers.focusDurationMs); 
+      }, modifiers.focusDurationMs);
+  };
+
+  // Active skills share the Energy bar (overclockCharge). Focus costs the full bar;
+  // the instant skills cost a fraction, so you choose what to spend Energy on.
+  const skillCost = (fraction: number) => Math.ceil(modifiers.maxOverclock * fraction);
+  const FIREWALL_COST = () => skillCost(0.4);
+  const PURGE_COST = () => skillCost(0.55);
+
+  const useFirewall = () => {
+      const cost = FIREWALL_COST();
+      if (isOverclockActive || isDecisionActive || overclockCharge < cost) return;
+      setOverclockCharge(c => Math.max(0, c - cost));
+      firewallGraceRef.current += 3;
+      setFirewallGrace(firewallGraceRef.current);
+      triggerShieldEffect();
+      inputRef.current?.focus();
+  };
+
+  const usePurgeTrace = () => {
+      const cost = PURGE_COST();
+      if (isOverclockActive || isDecisionActive || overclockCharge < cost) return;
+      setOverclockCharge(c => Math.max(0, c - cost));
+      setTracePercent(p => clamp(p - 25));
+      inputRef.current?.focus();
   };
 
   useLayoutEffect(() => {
@@ -367,7 +427,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
             audioEngine.setIntensity(newVal);
             if (newVal >= 100) {
                 clearInterval(timerRef.current!);
-                triggerGameOver(0);
                 return 100;
             }
             return newVal;
@@ -383,7 +442,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [isWaitingForAi, transitionLockRef.current, stealthLevel, modifiers.traceSpeedMultiplier, inputValue.length, startTime, isOverclockActive, isDecisionActive, activeSegment.pressure, typeCueActive]); 
-
 
   useEffect(() => {
     let isMounted = true;
@@ -464,9 +522,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const comboMultiplier = combo >= 50 ? 3 : combo >= 25 ? 2 : combo >= 10 ? 1.5 : 1;
 
   const comboAccent = () => {
-    if (combo >= 50) return { text: 'text-yellow-300', glow: 'rgba(234,179,8,0.95)' };
-    if (combo >= 25) return { text: 'text-fuchsia-300', glow: 'rgba(232,121,249,0.9)' };
-    if (combo >= 10) return { text: 'text-cyan-300', glow: 'rgba(34,211,238,0.85)' };
+    if (combo >= 50) return { text: 'text-emerald-200', glow: 'rgba(52,211,153,0.95)' };
+    if (combo >= 25) return { text: 'text-emerald-300', glow: 'rgba(52,211,153,0.82)' };
+    if (combo >= 10) return { text: 'text-emerald-400', glow: 'rgba(52,211,153,0.68)' };
     return { text: 'text-slate-200', glow: 'rgba(148,163,184,0.5)' };
   };
 
@@ -529,9 +587,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       if (safeImpact.trace) setTracePercent(p => clamp(p + safeImpact.trace!));
       if (safeImpact.health) setHealth(h => clamp(h + safeImpact.health!, 0, modifiers.maxHealth));
       if (safeImpact.credits) setCredits(c => c + safeImpact.credits!);
-      spawnDelta(UI.evidence, safeImpact.evidence || 0, '#6ee7b7');
-      spawnDelta(UI.heat, safeImpact.heat || 0, '#fca5a5', '%');
-      spawnDelta(UI.trust, safeImpact.trust || 0, '#67e8f9');
+      spawnDelta(UI.evidence, safeImpact.evidence || 0, '#34d399');
+      spawnDelta(UI.heat, safeImpact.heat || 0, '#fbbf24', '%');
+      spawnDelta(UI.trust, safeImpact.trust || 0, '#38bdf8');
       return meta;
   };
 
@@ -539,7 +597,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       let uncorrectedTypos = 0;
       let forgivenTypos = 0;
       inputValue.split('').forEach((char, i) => {
-          if (!charsMatch(char, activeSegment.text[i])) {
+          if (!charsMatch(char, activeSegment.text[i], strictCase)) {
               if (forgivenIndicesRef.current.has(i)) forgivenTypos += 1;
               else uncorrectedTypos += 1;
           }
@@ -602,10 +660,18 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       commitMission({ heat: heatDelta, trust: trustDelta, evidence: evidenceDelta, corruption: corruptionDelta, signal: signalDelta }, note);
       setTracePercent(p => clamp(p + traceDelta));
 
-      spawnDelta(UI.evidence, evidenceDelta, '#6ee7b7');
-      spawnDelta(UI.heat, heatDelta, '#fca5a5', '%');
-      spawnDelta(UI.trust, trustDelta, '#67e8f9');
-      if (corruptionDelta) spawnDelta(UI.corruption, corruptionDelta, '#d8b4fe');
+      spawnDelta(UI.evidence, evidenceDelta, '#34d399');
+      spawnDelta(UI.heat, heatDelta, '#fbbf24', '%');
+      spawnDelta(UI.trust, trustDelta, '#38bdf8');
+      if (corruptionDelta) spawnDelta(UI.corruption, corruptionDelta, '#a78bfa');
+
+      track(SEGMENT_COMPLETE, {
+          performance,
+          wpm,
+          round,
+          level: currentLevel,
+          type: segment.type
+      });
 
       return { meta, evidenceDelta, heatDelta, traceDelta };
   };
@@ -625,7 +691,16 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
        const expectedChar = activeSegment.text[charIndex];
        const typedChar = val[charIndex];
 
-       if (!charsMatch(typedChar, expectedChar)) {
+       if (!charsMatch(typedChar, expectedChar, strictCase)) {
+         // Firewall shield charges soak mistakes first (persist across segments).
+         if (firewallGraceRef.current > 0) {
+             firewallGraceRef.current -= 1;
+             setFirewallGrace(firewallGraceRef.current);
+             forgivenIndicesRef.current.add(charIndex);
+             triggerShieldEffect();
+             setInputValue(val);
+             return;
+         }
          const forgivenessBudget = modifiers.mistakeGraceCount + (isOverclockActive ? modifiers.focusMistakeForgiveness : 0);
          if (forgivenMistakesRef.current < forgivenessBudget) {
              forgivenMistakesRef.current += 1;
@@ -674,6 +749,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const handleDecisionSelect = (index: number) => {
       if (!nextDecision) return;
       const choice = nextDecision.options[index];
+      track(DECISION_MADE, { choice: choice.id || choice.type });
       const meta = applyDecisionImpact(choice.impact, choice.text, choice.id || choice.type);
       addToLog(`[DECISION] ${nextDecision.introText}`, 'neutral', 0, 0, 0, choice.preview || meta);
       addToLog(`> ${choice.text}`, 'neutral', 0, 0, 0, meta, choice.outcome.type);
@@ -710,7 +786,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
               tx: `${Math.cos(angle) * dist}px`,
               ty: `${Math.sin(angle) * dist}px`,
               size: 2 + Math.random() * 4,
-              color: Math.random() > 0.5 ? '#22d3ee' : '#ffffff'
+              color: Math.random() > 0.5 ? '#34d399' : '#ffffff'
           });
       }
       setSparks(prev => [...prev, ...newSparks]);
@@ -721,9 +797,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
 
   const triggerShieldEffect = () => {
       if (containerRef.current) {
-          containerRef.current.classList.add('shadow-[inset_0_0_20px_rgba(56,189,248,0.5)]');
+          containerRef.current.classList.add('shadow-[inset_0_0_20px_rgba(52,211,153,0.5)]');
           setTimeout(() => {
-              containerRef.current?.classList.remove('shadow-[inset_0_0_20px_rgba(56,189,248,0.5)]');
+              containerRef.current?.classList.remove('shadow-[inset_0_0_20px_rgba(52,211,153,0.5)]');
           }, 200);
       }
   };
@@ -742,6 +818,12 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         mission: missionRef.current
     });
   };
+
+  useEffect(() => {
+    if (tracePercent < 100 || gameOverTriggeredRef.current) return;
+    gameOverTriggeredRef.current = true;
+    triggerGameOver(0);
+  }, [tracePercent]);
 
   const triggerImpact = (currentMistakes: number) => {
     let intensity = 'shake-mild';
@@ -876,21 +958,23 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
 
   const renderActive = () => {
     return activeSegment.text.split('').map((char, index) => {
-      let className = isOverclockActive ? "text-cyan-900" : activeSegment.type === SegmentType.BREACH ? "text-emerald-900" : "text-slate-500";
+      // Focus mode = clarity: the UPCOMING text turns bright and crisp (easier to read
+      // ahead), instead of dimming. Typed chars stay saturated so progress is obvious.
+      let className = isOverclockActive ? "text-emerald-50 drop-shadow-[0_0_6px_rgba(52,211,153,0.35)]" : activeSegment.type === SegmentType.BREACH ? "text-emerald-500/60" : "text-slate-500";
       const isCursor = index === inputValue.length;
       if (index < inputValue.length) {
-        if (charsMatch(inputValue[index], char)) {
-          className = isOverclockActive ? "text-cyan-500" : activeSegment.type === SegmentType.BREACH ? "text-emerald-400" : "text-blue-400";
+        if (charsMatch(inputValue[index], char, strictCase)) {
+          className = isOverclockActive || activeSegment.type === SegmentType.BREACH ? "text-emerald-400" : activeSegment.type === SegmentType.DIALOG ? "text-sky-400" : activeSegment.type === SegmentType.SIGNAL ? "text-amber-400" : "text-slate-200";
         } else {
           if (forgivenIndicesRef.current.has(index)) {
-             className = "text-white bg-purple-500 rounded-sm shadow-[0_0_10px_rgba(168,85,247,0.5)]";
+             className = "text-white bg-emerald-500 shadow-[0_0_10px_rgba(52,211,153,0.45)]";
           } else {
-             className = "text-white bg-red-600 rounded-sm";
+             className = "text-white bg-rose-600";
           }
         }
       } else if (isCursor) {
-        className = isCriticalHack ? "text-white bg-yellow-400 animate-ping" : 
-                    isOverclockActive ? "text-white bg-cyan-400 animate-pulse shadow-[0_0_15px_rgba(34,211,238,0.8)]" :
+        className = isCriticalHack ? "text-white bg-rose-500 animate-ping" :
+                    isOverclockActive ? "text-white bg-emerald-400 animate-pulse shadow-[0_0_15px_rgba(52,211,153,0.8)]" :
                     "text-white bg-slate-700 animate-pulse";
       }
       return (
@@ -902,29 +986,29 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   };
 
   const getContainerStyles = () => {
-    let base = "relative flex-1 min-h-0 p-6 md:p-8 rounded-b-xl border-x-2 border-b-2 overflow-y-auto leading-relaxed cursor-text bg-slate-950/80";
-    if (activeSegment.type === SegmentType.BREACH) base += " font-mono text-xl md:text-2xl"; 
-    else base += " font-mono text-xl md:text-2xl"; 
-    
+    // Wrapper only (border/surface). Padding, scroll and text sizing live on the
+    // inner scroll element so the HP/EN edge-rails can sit still (scrollbar-style).
+    let base = "engine-type-panel relative flex-1 min-h-0 border-x border-b bg-[#0b101a]/95";
+
     // Trace effect logic
-    if (tracePercent > 80) base += " shadow-[inset_0_0_50px_rgba(220,38,38,0.2)]";
+    if (tracePercent > 80) base += " shadow-[inset_0_0_50px_rgba(244,63,94,0.2)]";
 
     let borderColor = "border-slate-800";
     if (isOverclockActive) {
-        borderColor = "border-cyan-400";
+        borderColor = "border-emerald-400/70";
         // Shadow is handled by overlay now
     } else if (activeSegment.type === SegmentType.BREACH) {
         borderColor = "border-emerald-500/50";
     } else if (mistakesInSegment >= 8) {
-        borderColor = "border-red-600";
+        borderColor = "border-rose-500/80";
     } else if (mistakesInSegment >= 3) {
-        borderColor = "border-red-600/50";
+        borderColor = "border-rose-500/40";
     } else if (health < 30) {
-        borderColor = "border-red-900";
+        borderColor = "border-rose-900/70";
     } else {
-        if (activeSegment.mood === StoryMood.DARK) borderColor = "border-red-900/50";
+        if (activeSegment.mood === StoryMood.DARK) borderColor = "border-rose-900/50";
         if (activeSegment.mood === StoryMood.HOPEFUL) borderColor = "border-emerald-900/50";
-        if (isWaitingForAi) borderColor = "border-yellow-500/50";
+        if (isWaitingForAi) borderColor = "border-white/[0.08]";
     }
     return `${base} ${borderColor}`;
   };
@@ -932,39 +1016,39 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const getHealthColor = () => {
     const pct = (health / modifiers.maxHealth) * 100;
     if (pct > 60) return "bg-emerald-500";
-    if (pct > 30) return "bg-yellow-500";
-    return "bg-red-500 animate-pulse";
+    if (pct > 30) return "bg-amber-400";
+    return "bg-rose-500 animate-pulse";
   };
   
   const getTraceColor = () => {
-      if (isOverclockActive) return "bg-cyan-400 shadow-[0_0_20px_rgba(34,211,238,1)]";
-      if (tracePercent < 50) return "bg-emerald-500";
-      if (tracePercent < 80) return "bg-yellow-500";
-      return "bg-red-500 animate-pulse";
+      if (isOverclockActive) return "bg-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.85)]";
+      if (tracePercent < 50) return "bg-emerald-400";
+      if (tracePercent < 80) return "bg-amber-400";
+      return "bg-rose-500 animate-pulse";
   };
 
-  const getImageBorderColor = () => {
-    if (isOverclockActive) return "border-cyan-400"; // Shadow moved to overlay
-    if (mistakesInSegment >= 8) return "border-red-600";
-    if (activeSegment.type === SegmentType.BREACH) return "border-emerald-500/50";
-    if (mistakesInSegment >= 3) return "border-red-600/50";
-    if (health < 30) return "border-red-900";
-    if (isWaitingForAi) return "border-yellow-500/50";
-    if (activeSegment.mood === StoryMood.HOPEFUL) return "border-emerald-900/50";
-    if (activeSegment.mood === StoryMood.DARK) return "border-red-900/50";
-    return "border-slate-800";
+  const getSceneInnerGlow = () => {
+    if (isOverclockActive) return "rgba(52,211,153,0.42)";
+    if (mistakesInSegment >= 8) return "rgba(244,63,94,0.48)";
+    if (mistakesInSegment >= 3) return "rgba(244,63,94,0.28)";
+    if (health < 30) return "rgba(244,63,94,0.22)";
+    if (isWaitingForAi) return "rgba(251,191,36,0.22)";
+    if (activeSegment.mood === StoryMood.HOPEFUL) return "rgba(52,211,153,0.22)";
+    if (activeSegment.mood === StoryMood.DARK) return "rgba(244,63,94,0.22)";
+    if (activeSegment.type === SegmentType.BREACH) return "rgba(52,211,153,0.24)";
+    return "rgba(7,10,17,0.2)";
   };
 
   return (
     <div ref={containerRef} className="w-full max-w-5xl mx-auto flex flex-col gap-0 h-full min-h-0 relative">
-      {showFlash && <div className="absolute inset-0 z-[60] pointer-events-none flash-overlay rounded-xl"></div>}
+      {showFlash && <div className="absolute inset-0 z-[60] pointer-events-none flash-overlay"></div>}
       
       {isOverclockActive && (
            <>
-               <div className="absolute inset-0 z-[5] pointer-events-none rounded-xl bg-cyan-900/10 backdrop-contrast-125"></div>
+               <div className="absolute inset-0 z-[5] pointer-events-none bg-emerald-950/10 backdrop-contrast-125"></div>
                <div className="absolute -top-8 right-0 z-50 pointer-events-none flex items-center gap-3 animate-fade-in-up">
-                   <div className="h-px w-12 bg-gradient-to-l from-cyan-400/50 to-transparent"></div>
-                   <div className="text-cyan-400 font-bold text-lg animate-pulse tracking-widest drop-shadow-[0_0_10px_rgba(34,211,238,0.8)]">
+                   <div className="h-px w-12 bg-gradient-to-l from-emerald-400/50 to-transparent"></div>
+                   <div className="font-display text-emerald-400 font-bold text-lg animate-pulse tracking-widest drop-shadow-[0_0_10px_rgba(52,211,153,0.7)]">
                        {UI.overclock_active}
                    </div>
                </div>
@@ -972,26 +1056,30 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       )}
 
       {isDecisionActive && nextDecision && (
-           <div className="absolute inset-0 z-[80] bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-8 rounded-xl animate-fade-in-up">
+           <div className="engine-decision-overlay absolute inset-0 z-[80] bg-[#070a11]/95 backdrop-blur-md flex flex-col items-center justify-center p-5 md:p-8 animate-fade-in-up">
                <div className="w-full max-w-3xl space-y-8">
-                   <div className="text-center border-b border-slate-700 pb-6">
-                        <div className="inline-block px-3 py-1 bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 rounded-full text-xs font-bold tracking-widest mb-4 animate-pulse">{UI.tactical_intervention}</div>
-                        <h2 className="text-2xl md:text-3xl font-bold text-white leading-relaxed">"{nextDecision.introText}"</h2>
+                   <div className="text-center border-b border-white/[0.06] pb-6">
+                        <div className="mb-4 text-[10px] font-bold uppercase tracking-[0.22em] text-emerald-400 animate-pulse">{UI.tactical_intervention}</div>
+                        <h2 className="font-display text-2xl md:text-3xl font-bold text-white leading-relaxed">"{nextDecision.introText}"</h2>
                    </div>
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                       <div className="group relative p-6 bg-red-900/20 border border-red-500/30 rounded-lg hover:bg-red-900/40 hover:border-red-500 transition-all cursor-pointer" onClick={() => handleDecisionSelect(0)}>
-                           <div className="absolute -top-3 -left-3 w-8 h-8 bg-red-500 text-white font-bold flex items-center justify-center rounded-full shadow-lg ring-4 ring-slate-950">1</div>
-                           <h3 className="text-xl font-bold text-red-400 mb-2 group-hover:text-red-300">{UI.aggressive}</h3>
+                       <div className="engine-decision-card engine-decision-card--aggressive group relative p-6 bg-white/[0.02] border border-rose-500/35 hover:border-rose-400/75 transition-all cursor-pointer" onClick={() => handleDecisionSelect(0)}>
+                           <h3 className="font-display text-xl font-bold text-rose-400 mb-2 group-hover:text-rose-300">{UI.aggressive}</h3>
                            <p className="text-slate-300 text-lg">"{nextDecision.options[0].text}"</p>
-                           <div className="mt-4 text-xs text-red-300/80 font-mono">{nextDecision.options[0].preview || describeImpact(nextDecision.options[0].impact)}</div>
-                           <div className="mt-3 text-xs text-red-500/70 font-mono uppercase tracking-widest">{UI.press_1}</div>
+                           <div className="mt-4 text-xs text-rose-300/80 font-mono">{nextDecision.options[0].preview || describeImpact(nextDecision.options[0].impact)}</div>
+                           <div className="mt-5 flex items-center gap-2.5 font-mono uppercase tracking-[0.18em]">
+                               <span className="keycap text-lg">1</span>
+                               <span className="text-[12px] text-slate-300 group-hover:text-white transition-colors">{UI.press_1.replace('[1]', '').trim()}</span>
+                           </div>
                        </div>
-                       <div className="group relative p-6 bg-cyan-900/20 border border-cyan-500/30 rounded-lg hover:bg-cyan-900/40 hover:border-cyan-500 transition-all cursor-pointer" onClick={() => handleDecisionSelect(1)}>
-                           <div className="absolute -top-3 -left-3 w-8 h-8 bg-cyan-500 text-white font-bold flex items-center justify-center rounded-full shadow-lg ring-4 ring-slate-950">2</div>
-                           <h3 className="text-xl font-bold text-cyan-400 mb-2 group-hover:text-cyan-300">{UI.stealth}</h3>
+                       <div className="engine-decision-card engine-decision-card--stealth group relative p-6 bg-white/[0.02] border border-emerald-500/35 hover:border-emerald-400/75 transition-all cursor-pointer" onClick={() => handleDecisionSelect(1)}>
+                           <h3 className="font-display text-xl font-bold text-emerald-400 mb-2 group-hover:text-emerald-300">{UI.stealth}</h3>
                            <p className="text-slate-300 text-lg">"{nextDecision.options[1].text}"</p>
-                           <div className="mt-4 text-xs text-cyan-300/80 font-mono">{nextDecision.options[1].preview || describeImpact(nextDecision.options[1].impact)}</div>
-                           <div className="mt-3 text-xs text-cyan-500/70 font-mono uppercase tracking-widest">{UI.press_2}</div>
+                           <div className="mt-4 text-xs text-emerald-300/80 font-mono">{nextDecision.options[1].preview || describeImpact(nextDecision.options[1].impact)}</div>
+                           <div className="mt-5 flex items-center gap-2.5 font-mono uppercase tracking-[0.18em]">
+                               <span className="keycap text-lg">2</span>
+                               <span className="text-[12px] text-slate-300 group-hover:text-white transition-colors">{UI.press_2.replace('[2]', '').trim()}</span>
+                           </div>
                        </div>
                    </div>
                </div>
@@ -1004,7 +1092,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       </div>
       <div className="fixed inset-0 pointer-events-none z-[100]">
           {sparks.map(s => (
-              <div key={s.id} className="char-particle bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,1)]" style={{ left: `${s.left}px`, top: `${s.top}px`, width: `${s.size}px`, height: `${s.size}px`, backgroundColor: s.color, '--tx': s.tx, '--ty': s.ty } as any} />
+              <div key={s.id} className="char-particle bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,1)]" style={{ left: `${s.left}px`, top: `${s.top}px`, width: `${s.size}px`, height: `${s.size}px`, backgroundColor: s.color, '--tx': s.tx, '--ty': s.ty } as any} />
           ))}
       </div>
       {focusHintPos && (
@@ -1012,63 +1100,66 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
               className="fixed pointer-events-none z-[110] flex flex-col items-center -translate-x-1/2 -translate-y-full"
               style={{ left: focusHintPos.left, top: focusHintPos.top }}
           >
-              <span
-                  className="bg-gradient-to-r from-cyan-400 to-lime-400 text-slate-950 text-[9px] font-black tracking-wider px-2 py-0.5 rounded whitespace-nowrap animate-bounce"
-                  style={{ boxShadow: '0 0 12px rgba(132,204,22,0.75)' }}
-              >
-                  {UI.focus_ready}
+              <span className="engine-focus-hint flex items-center gap-1.5 bg-[#0b101a]/95 border border-emerald-400/35 text-emerald-300 text-[9px] font-bold uppercase tracking-[0.18em] px-2.5 py-1 whitespace-nowrap animate-bounce">
+                  <span className="keycap">TAB</span>
+                  <span>{UI.focus_ready.replace('TAB ⚡', '').trim()}</span>
               </span>
-              <span className="w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-t-[4px] border-t-lime-400 animate-bounce"></span>
+              <span className="w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-t-[4px] border-t-emerald-400 animate-bounce"></span>
           </div>
       )}
       {isCriticalHack && (
           <div className="absolute top-[20%] left-1/2 -translate-x-1/2 z-[70] pointer-events-none">
-              <div className="bg-yellow-400 text-black font-bold px-4 py-1 rounded shadow-[0_0_20px_rgba(250,204,21,0.8)] animate-bounce">{UI.critical_override}</div>
+              <div className="engine-critical-alert bg-rose-500 text-[#16070b] font-bold px-4 py-1 shadow-[0_0_20px_rgba(244,63,94,0.55)] animate-bounce">{UI.critical_override}</div>
           </div>
       )}
-      <div className="flex flex-col text-xs font-mono px-4 py-3 bg-slate-900/90 rounded-t-lg border border-slate-700 mb-2 gap-2">
-        <div className="flex justify-between items-center w-full">
-            <div className="flex items-center gap-6">
-                <div className="flex items-center gap-3 w-40 md:w-48">
-                    <span className={`font-bold ${health < 6 ? 'text-red-500 animate-pulse' : 'text-slate-400'}`}>{UI.hp}</span>
-                    <div className="flex-1 h-3 bg-slate-800 rounded-sm border border-slate-700 overflow-hidden relative">
-                        <div className="absolute inset-0 flex">
-                            {Array.from({length: 10}).map((_, i) => (
-                                <div key={i} className="flex-1 border-r border-slate-900/30 h-full"></div>
-                            ))}
-                        </div>
-                        <div className={`h-full transition-all duration-300 ${getHealthColor()}`} style={{ width: `${(health / modifiers.maxHealth) * 100}%` }}></div>
+      <div className="engine-hud flex flex-col font-mono px-4 py-3 bg-white/[0.02] border border-white/[0.06] mb-2 gap-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div className="flex flex-wrap items-end justify-between gap-4 w-full">
+            <div className="flex flex-wrap items-end gap-5 md:gap-7">
+                <div className="flex items-end gap-6">
+                    <div>
+                        <div className="text-[9px] uppercase tracking-[0.22em] text-slate-500">{UI.level}</div>
+                        <div className="font-display mt-1 text-xl font-bold tabular-nums leading-none text-slate-100">{currentLevel}</div>
                     </div>
-                    <span className="text-[10px] text-slate-500">{health}/{modifiers.maxHealth}</span>
+                    <div>
+                        <div className="text-[9px] uppercase tracking-[0.22em] text-slate-500">{UI.round}</div>
+                        <div className="font-display mt-1 text-xl font-bold tabular-nums leading-none text-slate-100">{round}<span className="ml-1 text-[10px] font-mono text-slate-600">/10</span></div>
+                    </div>
                 </div>
-                <div className="text-blue-400 font-bold hidden md:block border-l border-slate-700 pl-6">{UI.level} {currentLevel} <span className="text-slate-600 mx-2">|</span> {UI.round} {round}/10</div>
-                <div className="flex items-center gap-1.5 border-l border-slate-700 pl-4">
-                    <span className="text-yellow-400 font-bold">{UI.credits}:</span>
-                    <span className="text-slate-200">{Math.floor(credits)}</span>
-                    {isOverclockActive && <span className="text-cyan-400 text-[10px] animate-pulse">(2x)</span>}
+                <div className="border-l border-white/[0.06] pl-5">
+                    <div className="text-[9px] uppercase tracking-[0.22em] text-slate-500">{UI.credits}</div>
+                    <div className="font-display mt-1 text-2xl font-bold tabular-nums leading-none text-emerald-400">
+                        {Math.floor(credits)}
+                        {isOverclockActive && <span className="ml-2 font-mono text-[9px] uppercase tracking-[0.16em] text-emerald-300 animate-pulse">2x</span>}
+                    </div>
                 </div>
             </div>
         </div>
         <div className="flex items-center gap-3 w-full">
-             <span className={`font-bold whitespace-nowrap w-24 ${tracePercent > 80 ? 'text-red-500 animate-pulse' : 'text-slate-500'}`}>{UI.security}</span>
-            <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden relative">
+             <span className={`text-[9px] uppercase tracking-[0.18em] whitespace-nowrap w-24 ${tracePercent > 80 ? 'text-rose-500 animate-pulse' : 'text-slate-500'}`}>{UI.security}</span>
+            <div className="engine-meter-track flex-1 h-1.5 bg-white/[0.05] overflow-hidden relative">
                 <div className={`h-full transition-all duration-100 ease-linear ${getTraceColor()}`} style={{ width: `${tracePercent}%` }}></div>
             </div>
-             <span className="w-8 text-right text-slate-500 font-mono">{Math.floor(tracePercent)}%</span>
-            <div className={`flex items-center gap-2 border-l border-slate-700 pl-3 ml-2 font-bold ${mistakesInSegment >= 7 ? 'text-red-500 animate-pulse' : mistakesInSegment >= 4 ? 'text-yellow-500' : 'text-slate-500'}`}>
-                <span>{UI.err}:</span>
-                <span className="bg-slate-800 px-1.5 rounded">{mistakesInSegment}/10</span>
+             <span className="w-10 text-right text-[10px] tabular-nums text-slate-400 font-mono">{Math.floor(tracePercent)}%</span>
+            <div className={`flex items-center gap-2 border-l border-white/[0.06] pl-3 ml-1 text-[9px] uppercase tracking-[0.18em] ${mistakesInSegment >= 7 ? 'text-rose-500 animate-pulse' : mistakesInSegment >= 4 ? 'text-amber-400' : 'text-slate-500'}`}>
+                <span>{UI.err}</span>
+                <span className="font-display text-sm tabular-nums tracking-normal text-slate-200">{mistakesInSegment}<span className="font-mono text-[9px] text-slate-600">/10</span></span>
             </div>
         </div>
       </div>
-      <div className={`relative h-[56%] w-full bg-black overflow-hidden rounded-t-xl border-2 border-b-0 transition-colors duration-500 ${getImageBorderColor()}`}>
+      {/* Scene wants 56% of the deck, but never at the expense of the typing panel:
+          cap it so HUD + at least ~5 lines of text always fit on short windows. */}
+      <div className="engine-scene-bezel relative h-[52%] min-h-[130px] max-h-[calc(100%-360px)] w-full bg-black overflow-hidden border border-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div className="absolute left-2 top-2 z-[55] h-5 w-5 border-l border-t border-emerald-400/80 pointer-events-none"></div>
+        <div className="absolute right-2 top-2 z-[55] h-5 w-5 border-r border-t border-emerald-400/80 pointer-events-none"></div>
+        <div className="absolute bottom-2 left-2 z-[55] h-5 w-5 border-b border-l border-emerald-400/80 pointer-events-none"></div>
+        <div className="absolute bottom-2 right-2 z-[55] h-5 w-5 border-b border-r border-emerald-400/80 pointer-events-none"></div>
         {/* Live real-time card next to where you type: combo + current WPM */}
         <div className="absolute bottom-4 right-4 z-50 pointer-events-none select-none">
             <div
-                className="rounded-lg border backdrop-blur-sm bg-slate-950/85 px-3.5 py-2 text-center transition-colors duration-300"
+                className="engine-telemetry-card border backdrop-blur-sm bg-[#0b101a]/90 px-3.5 py-2 text-center transition-colors duration-300"
                 style={{
                     borderColor: combo >= 3 ? comboAccent().glow : 'rgba(255,255,255,0.10)',
-                    boxShadow: combo >= 3 ? `0 0 ${Math.min(22, 6 + combo / 2)}px ${comboAccent().glow}` : 'none'
+                    boxShadow: combo >= 3 ? `inset 0 1px 0 rgba(255,255,255,0.04), 0 0 ${Math.min(22, 6 + combo / 2)}px ${comboAccent().glow}` : 'inset 0 1px 0 rgba(255,255,255,0.04)'
                 }}
             >
                 {combo >= 3 && (
@@ -1100,7 +1191,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
             </svg>
         </div>
         {currentImage ? (
-             <img src={currentImage} alt="Narrative Visualization" className={`w-full h-full object-cover transition-opacity duration-700 ${isImageLoading ? 'opacity-80 grayscale' : 'opacity-100'} ${isOverclockActive ? 'contrast-125 brightness-125 saturate-0 sepia hue-rotate-180' : ''}`} />
+             <img src={currentImage} alt="Narrative Visualization" className={`engine-scene-image w-full h-full object-cover transition-opacity duration-700 ${isImageLoading ? 'engine-scene-image--loading opacity-80 grayscale' : 'opacity-100'} ${isOverclockActive ? 'contrast-125 brightness-125 saturate-0 sepia hue-rotate-180' : ''}`} />
         ) : (
              <div className="w-full h-full flex items-center justify-center bg-slate-900 text-slate-700">
                 <div className="flex flex-col items-center gap-2">
@@ -1114,14 +1205,18 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                 <div className="absolute inset-0 bg-emerald-500/10 animate-pulse"></div>
             </div>
         )}
-        <div className="absolute inset-0 ring-1 ring-inset ring-black/20 pointer-events-none shadow-[inset_0_0_50px_rgba(0,0,0,0.8)]"></div>
+        <div className="absolute inset-0 ring-1 ring-inset ring-white/[0.04] pointer-events-none shadow-[inset_0_0_50px_rgba(0,0,0,0.8)]"></div>
         {!isOverclockActive && (
             <div
                 className="absolute inset-0 pointer-events-none mix-blend-soft-light transition-all duration-1000"
                 style={{ background: `radial-gradient(120% 90% at 50% 40%, transparent 30%, ${atmosphere().color} 100%)` }}
             ></div>
         )}
-        {isOverclockActive && <div className="absolute inset-0 bg-cyan-500/10 mix-blend-overlay pointer-events-none shadow-[inset_0_0_30px_rgba(34,211,238,0.4)]"></div>}
+        <div
+            className="absolute inset-0 z-10 pointer-events-none transition-[box-shadow] duration-700"
+            style={{ boxShadow: `inset 0 0 76px 8px ${getSceneInnerGlow()}` }}
+        ></div>
+        {isOverclockActive && <div className="absolute inset-0 bg-emerald-500/10 mix-blend-overlay pointer-events-none shadow-[inset_0_0_30px_rgba(52,211,153,0.4)]"></div>}
         <div className="absolute inset-x-0 top-0 h-2/3 pointer-events-none z-40 overflow-hidden">
             {deltaPopups.map(p => (
                 <span
@@ -1134,13 +1229,40 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
             ))}
         </div>
         <div className="absolute left-4 bottom-4 right-4 z-30 flex flex-wrap items-center gap-2">
-            <span className="px-2 py-1 rounded bg-slate-950/80 border border-slate-700 text-[10px] text-slate-300 uppercase tracking-widest">{skillIcon[activeSegment.skill || 'flow']} {activeSegment.skill || 'flow'}</span>
-            <span className="px-2 py-1 rounded bg-cyan-950/80 border border-cyan-500/30 text-[10px] text-cyan-200">{UI.objective}: {activeSegment.objective}</span>
-            {activeSegment.consequenceHint && <span className="px-2 py-1 rounded bg-purple-950/80 border border-purple-500/30 text-[10px] text-purple-200">{UI.consequence}: {activeSegment.consequenceHint}</span>}
+            <span className="engine-chip engine-chip--skill bg-[#0b101a]/90 border border-white/[0.08] px-2.5 py-1 text-[9px] text-slate-300 uppercase tracking-[0.18em]">{skillIcon[activeSegment.skill || 'flow']} {activeSegment.skill || 'flow'}</span>
+            <span className="engine-chip engine-chip--objective bg-[#0b101a]/90 border border-white/[0.08] px-2.5 py-1 text-[9px] text-slate-300 uppercase tracking-[0.18em]">{UI.objective}: <span className="normal-case tracking-normal text-slate-200">{activeSegment.objective}</span></span>
+            {activeSegment.consequenceHint && <span className="engine-chip engine-chip--consequence bg-[#0b101a]/90 border border-white/[0.08] px-2.5 py-1 text-[9px] text-slate-300 uppercase tracking-[0.18em]">{UI.consequence}: <span className="normal-case tracking-normal text-slate-200">{activeSegment.consequenceHint}</span></span>}
         </div>
       </div>
-      <div ref={textContainerRef} className={getContainerStyles()} onClick={() => inputRef.current?.focus()}>
-        {isOverclockActive && <div className="absolute inset-0 pointer-events-none shadow-[inset_0_0_100px_rgba(34,211,238,0.2)]"></div>}
+      <div className={getContainerStyles()}>
+        {/* HP rail — left edge, scrollbar-style vertical health */}
+        <div className="engine-vrail engine-vrail-left" title={`${UI.hp} ${health}/${modifiers.maxHealth}`}>
+          <div
+            className={`engine-vrail-fill ${health < 6 ? 'animate-pulse' : ''}`}
+            style={{
+              height: `${Math.max(0, (health / modifiers.maxHealth) * 100)}%`,
+              background: (health / modifiers.maxHealth) > 0.6 ? '#34d399' : (health / modifiers.maxHealth) > 0.3 ? '#fbbf24' : '#f43f5e',
+              boxShadow: `0 0 10px ${(health / modifiers.maxHealth) > 0.3 ? 'rgba(52,211,153,0.5)' : 'rgba(244,63,94,0.65)'}`
+            }}
+          ></div>
+        </div>
+        {/* EN rail — right edge, replaces the scrollbar */}
+        <div className={`engine-vrail engine-vrail-right ${overclockCharge >= modifiers.maxOverclock && !isOverclockActive ? 'focus-ready-pulse' : ''}`} title={UI.chg}>
+          {isOverclockActive ? (
+            <div className="focus-holo absolute inset-0"></div>
+          ) : (
+            <div
+              className="engine-vrail-fill"
+              style={{
+                height: `${Math.min(100, (overclockCharge / modifiers.maxOverclock) * 100)}%`,
+                background: overclockCharge >= modifiers.maxOverclock ? '#22d3ee' : 'linear-gradient(0deg, #0e7490, #22d3ee)',
+                boxShadow: overclockCharge >= modifiers.maxOverclock ? '0 0 12px rgba(34,211,238,0.8)' : '0 0 6px rgba(34,211,238,0.35)'
+              }}
+            ></div>
+          )}
+        </div>
+        <div ref={textContainerRef} onClick={() => inputRef.current?.focus()} className="engine-type-scroll no-scrollbar absolute inset-0 overflow-y-auto px-8 md:px-10 py-6 md:py-8 leading-relaxed cursor-text font-mono text-xl md:text-2xl">
+        {isOverclockActive && <div className="absolute inset-0 pointer-events-none shadow-[inset_0_0_100px_rgba(52,211,153,0.2)]"></div>}
         {typeCueActive && !isDecisionActive && (
             <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-slate-950/45 backdrop-blur-[1px]">
                 <div className="type-cue-lockup text-center">
@@ -1150,12 +1272,12 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                 </div>
             </div>
         )}
-        <div className={`whitespace-pre-wrap break-words min-h-full pb-60 max-w-4xl mx-auto relative z-10 transition-all duration-300 ${typeCueActive ? 'opacity-0 translate-y-3' : 'opacity-100 translate-y-0'}`}>
-            {activeSegment.type === SegmentType.BREACH && <div className="text-emerald-500/80 text-xs mb-4 font-bold tracking-widest border-b border-emerald-500/30 pb-1">{UI.breach_init}</div>}
-            {activeSegment.type === SegmentType.DIALOG && <div className="text-cyan-500/80 text-xs mb-4 font-bold tracking-widest border-b border-cyan-500/30 pb-1">{UI.dialog_init}</div>}
-            {activeSegment.type === SegmentType.SIGNAL && <div className="text-yellow-500/80 text-xs mb-4 font-bold tracking-widest border-b border-yellow-500/30 pb-1">{UI.signal_init}</div>}
+        <div className={`whitespace-pre-wrap break-words min-h-full pb-24 max-w-4xl mx-auto relative z-10 transition-all duration-300 ${typeCueActive ? 'opacity-0 translate-y-3' : 'opacity-100 translate-y-0'}`}>
+            {activeSegment.type === SegmentType.BREACH && <div className="text-emerald-400 text-[10px] mb-4 font-bold uppercase tracking-[0.2em] border-b border-emerald-400/30 pb-2">{UI.breach_init}</div>}
+            {activeSegment.type === SegmentType.DIALOG && <div className="text-sky-400 text-[10px] mb-4 font-bold uppercase tracking-[0.2em] border-b border-sky-400/30 pb-2">{UI.dialog_init}</div>}
+            {activeSegment.type === SegmentType.SIGNAL && <div className="text-amber-400 text-[10px] mb-4 font-bold uppercase tracking-[0.2em] border-b border-amber-400/30 pb-2">{UI.signal_init}</div>}
             {history.map((seg, i) => (
-                <span key={i} className={`mr-2 transition-colors duration-500 ${seg.performance === 'good' ? 'text-emerald-400' : seg.performance === 'average' ? 'text-yellow-400' : 'text-red-400'}`}>
+                <span key={i} className={`mr-2 transition-colors duration-500 ${seg.performance === 'good' ? 'text-emerald-400' : seg.performance === 'average' ? 'text-amber-400' : 'text-rose-400'}`}>
                     {seg.text}
                 </span>
             ))}
@@ -1170,34 +1292,64 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                 )}
             </span>
         </div>
-        {!isOverclockActive && activeSegment.mood === StoryMood.DARK && <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-red-900/20 via-transparent to-transparent z-0 transition-opacity duration-1000"></div>}
+        {!isOverclockActive && activeSegment.mood === StoryMood.DARK && <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-rose-900/20 via-transparent to-transparent z-0 transition-opacity duration-1000"></div>}
         {!isOverclockActive && activeSegment.mood === StoryMood.HOPEFUL && <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-emerald-500/5 to-transparent z-0 transition-opacity duration-1000"></div>}
+        </div>
       </div>
 
-      {/* FOCUS charge — full-width acid/holographic bar along the bottom edge of the typing card */}
+      {/* Skill bar — active abilities that spend Energy. Slot 1 Focus (TAB), 2 Firewall, 3 Purge. */}
       {(() => {
-        const focusPct = Math.min(100, (overclockCharge / modifiers.maxOverclock) * 100);
-        const focusFull = overclockCharge >= modifiers.maxOverclock;
-        const acidGradient = 'linear-gradient(90deg, rgba(14,74,74,0.55) 0%, #0e7490 22%, #06b6d4 45%, #22d3ee 64%, #4ade80 82%, #bef264 100%)';
+        const focusReady = overclockCharge >= modifiers.maxOverclock && !isOverclockActive;
+        const fwCost = FIREWALL_COST();
+        const pgCost = PURGE_COST();
+        const skills = [
+          {
+            id: 'focus', name: UI.skill_focus, hotkey: 'TAB', costTier: 3,
+            state: isOverclockActive ? 'active' : focusReady ? 'ready' : 'charging',
+            disabled: isOverclockActive || !focusReady,
+            badge: null as string | null,
+            onUse: () => { if (focusReady) activateOverclock(); },
+            icon: (<><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"></path></>)
+          },
+          {
+            id: 'firewall', name: UI.skill_firewall, hotkey: null, costTier: 1,
+            state: !isOverclockActive && overclockCharge >= fwCost ? 'ready' : 'charging',
+            disabled: isOverclockActive || overclockCharge < fwCost,
+            badge: firewallGrace > 0 ? `×${firewallGrace}` : null,
+            onUse: useFirewall,
+            icon: (<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>)
+          },
+          {
+            id: 'purge', name: UI.skill_purge, hotkey: null, costTier: 2,
+            state: !isOverclockActive && overclockCharge >= pgCost ? 'ready' : 'charging',
+            disabled: isOverclockActive || overclockCharge < pgCost,
+            badge: null as string | null,
+            onUse: usePurgeTrace,
+            icon: (<><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path><path d="M10 11v6M14 11v6"></path></>)
+          }
+        ];
         return (
-          <div className="pointer-events-none absolute bottom-[2px] left-[2px] right-[2px] z-30">
-            <div className="flex items-center justify-between px-5 pb-1.5 text-[9px] font-bold uppercase tracking-[0.22em]">
-              <span className={isOverclockActive ? 'text-lime-200' : focusFull ? 'text-lime-300 animate-pulse' : 'text-slate-500'} title={UI.focus_title}>
-                {isOverclockActive ? UI.overclock_active : focusFull ? `${UI.chg} · TAB ⚡` : UI.chg}
-              </span>
-              <span className="tabular-nums text-slate-600">{Math.round(focusPct)}%</span>
-            </div>
-            <div
-              className={`relative h-2 w-full overflow-hidden rounded-b-[10px] bg-white/[0.05] ${(isOverclockActive || focusFull) ? 'focus-ready-pulse' : ''}`}
-            >
-              {isOverclockActive ? (
-                <div className="focus-holo absolute inset-0" style={{ filter: 'brightness(1.35) saturate(0.85)' }}></div>
-              ) : (
-                <div
-                  className="absolute inset-0 transition-[clip-path] duration-200 ease-out"
-                  style={{ backgroundImage: acidGradient, clipPath: `inset(0 ${100 - focusPct}% 0 0)` }}
-                ></div>
-              )}
+          <div className="engine-skillbar mt-2 flex shrink-0 items-center justify-center gap-2.5 py-2.5 px-3 bg-white/[0.02] border border-white/[0.06] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+            {skills.map(s => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={s.onUse}
+                disabled={s.disabled}
+                className={`engine-skill-slot ${s.state === 'active' ? 'engine-skill-active' : s.state === 'ready' ? 'engine-skill-ready' : 'engine-skill-charging'}`}
+                title={s.name}
+              >
+                <div className="pointer-events-none flex flex-col items-center gap-1">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{s.icon}</svg>
+                  {s.hotkey
+                    ? <span className="keycap" style={{ fontSize: '7px', height: '1.25em', minWidth: '2.1em', padding: '0 0.3em' }}>{s.hotkey}</span>
+                    : <span className="flex gap-0.5">{[0, 1, 2].map(d => <span key={d} className={`h-1 w-1 rounded-full ${d < s.costTier ? 'bg-current opacity-80' : 'bg-white/15'}`}></span>)}</span>}
+                </div>
+                {s.badge && <span className="absolute top-0.5 right-1 font-display text-[10px] font-bold tabular-nums text-emerald-300">{s.badge}</span>}
+              </button>
+            ))}
+            <div className="engine-skill-slot engine-skill-locked" aria-hidden="true">
+              <span className="text-lg leading-none text-slate-600">+</span>
             </div>
           </div>
         );

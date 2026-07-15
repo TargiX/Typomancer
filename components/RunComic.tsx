@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ComicFrame, Language } from '../types';
+import { COMIC_COPY, COMIC_DOWNLOAD, COMIC_OPEN, COMIC_SHARE, track } from '../services/analytics';
 
 interface StatChip {
   label: string;
@@ -26,6 +27,7 @@ interface RunComicProps {
   tagline: string;
   stats: StatChip[];
   shareText: string;
+  dailyLabel?: string;
   language: Language;
   ui: RunComicUI;
   onClose: () => void;
@@ -38,10 +40,11 @@ const PERF_COLORS: Record<string, string> = {
   neutral: '#64748b'
 };
 
-const W = 640;
-const PAD = 28;
-const IMG_H = 360;
-const CAPTION_H = 82;
+const W = 960;
+const PAD = 32;
+const COLS = 2;
+const GUTTER = 14;
+const CAPTION_H = 58;
 const SCALE = 2;
 
 const loadImage = (src: string): Promise<HTMLImageElement> =>
@@ -99,26 +102,44 @@ const pickFrames = (frames: ComicFrame[], max: number): ComicFrame[] => {
 };
 
 const renderComic = async (
-  canvas: HTMLCanvasElement,
-  props: Pick<RunComicProps, 'frames' | 'title' | 'endingTitle' | 'outcome' | 'tagline' | 'stats' | 'ui'>
+  target: HTMLCanvasElement,
+  props: Pick<RunComicProps, 'frames' | 'title' | 'endingTitle' | 'outcome' | 'tagline' | 'stats' | 'dailyLabel' | 'ui'>
 ): Promise<void> => {
-  const { frames, title, endingTitle, outcome, tagline, stats, ui } = props;
+  // Render into a private offscreen canvas and blit at the end. React StrictMode
+  // mounts effects twice, so two async renders can run concurrently — sharing one
+  // visible context interleaves their save/clip/restore stacks and clips text away.
+  const canvas = document.createElement('canvas');
+  const { frames, title, endingTitle, outcome, tagline, stats, dailyLabel, ui } = props;
   const selected = pickFrames(frames, 6);
   const accent = outcome === 'victory' ? '#34d399' : '#f43f5e';
+
+  // Wait for the web fonts before measuring — otherwise wrapText measures with the
+  // fallback font while the final draw uses the loaded (wider) one and captions clip.
+  if (typeof document !== 'undefined' && document.fonts?.ready) {
+    try { await document.fonts.ready; } catch { /* render with fallback metrics */ }
+  }
 
   const measureCtx = canvas.getContext('2d');
   if (!measureCtx) throw new Error('no-2d-context');
 
   const contentW = W - PAD * 2;
 
-  measureCtx.font = '600 15px "JetBrains Mono", monospace';
+  // Comic grid: 2 panels per row; an odd trailing frame becomes a full-width hero panel.
+  const panelW = (contentW - GUTTER * (COLS - 1)) / COLS;
+  const panelImgH = Math.round(panelW * 9 / 16);
+  const heroImgH = Math.round(contentW * 9 / 21);
+  const cellH = panelImgH + CAPTION_H + GUTTER;
+  const hasHero = selected.length % COLS !== 0;
+  const gridRows = Math.floor(selected.length / COLS);
+  const framesH = gridRows * cellH + (hasHero ? heroImgH + CAPTION_H + GUTTER : 0);
+
+  measureCtx.font = '600 16px "JetBrains Mono", monospace';
   const taglineLines = tagline ? wrapText(measureCtx, `“${tagline}”`, contentW, 3) : [];
 
-  measureCtx.font = '700 30px "Space Grotesk", "JetBrains Mono", sans-serif';
+  measureCtx.font = '700 34px "Space Grotesk", "JetBrains Mono", sans-serif';
   const endingLines = wrapText(measureCtx, endingTitle, contentW, 2);
 
-  const headerH = 44 + endingLines.length * 34 + (taglineLines.length ? 10 + taglineLines.length * 22 : 0) + 24;
-  const framesH = selected.length * (IMG_H + CAPTION_H + 16);
+  const headerH = 46 + endingLines.length * 38 + (taglineLines.length ? 10 + taglineLines.length * 23 : 0) + 26;
   const footerH = 150;
   const totalH = headerH + framesH + footerH;
 
@@ -154,101 +175,109 @@ const renderComic = async (
   ctx.fillStyle = accent;
   ctx.fillText(title.toUpperCase(), PAD, y);
   ctx.textAlign = 'right';
-  ctx.fillStyle = 'rgba(148,163,184,0.7)';
-  ctx.fillText(ui.replay_label.toUpperCase(), W - PAD, y);
+  ctx.fillStyle = dailyLabel ? accent : 'rgba(148,163,184,0.7)';
+  ctx.fillText((dailyLabel || ui.replay_label).toUpperCase(), W - PAD, y);
   ctx.textAlign = 'left';
 
-  y += 26;
-  ctx.font = '700 30px "Space Grotesk", "JetBrains Mono", sans-serif';
+  y += 28;
+  ctx.font = '700 34px "Space Grotesk", "JetBrains Mono", sans-serif';
   ctx.fillStyle = '#f8fafc';
   for (const line of endingLines) {
     ctx.fillText(line, PAD, y);
-    y += 34;
+    y += 38;
   }
 
   if (taglineLines.length) {
     y += 6;
-    ctx.font = 'italic 600 15px "JetBrains Mono", monospace';
+    ctx.font = 'italic 600 16px "JetBrains Mono", monospace';
     ctx.fillStyle = 'rgba(203,213,225,0.82)';
     for (const line of taglineLines) {
       ctx.fillText(line, PAD, y);
-      y += 22;
+      y += 23;
     }
   }
 
-  y = headerH;
-
-  // --- Frames ---
-  for (let i = 0; i < selected.length; i++) {
-    const frame = selected[i];
+  // --- Frames: comic grid, 2 per row; odd last frame = full-width hero panel ---
+  const drawPanel = async (frame: ComicFrame, index: number, x: number, panelY: number, w: number, imgH: number) => {
     const perfColor = PERF_COLORS[frame.performance] || PERF_COLORS.neutral;
-    const imgY = y;
 
     ctx.save();
-    drawRoundedRect(ctx, PAD, imgY, contentW, IMG_H, 10);
+    drawRoundedRect(ctx, x, panelY, w, imgH, 10);
     ctx.clip();
     if (frame.image) {
       try {
         const img = await loadImage(frame.image);
         const iw = img.naturalWidth || 960;
         const ih = img.naturalHeight || 540;
-        const scale = Math.max(contentW / iw, IMG_H / ih);
+        const scale = Math.max(w / iw, imgH / ih);
         const dw = iw * scale;
         const dh = ih * scale;
-        ctx.drawImage(img, PAD + (contentW - dw) / 2, imgY + (IMG_H - dh) / 2, dw, dh);
+        ctx.drawImage(img, x + (w - dw) / 2, panelY + (imgH - dh) / 2, dw, dh);
       } catch {
         ctx.fillStyle = '#0f172a';
-        ctx.fillRect(PAD, imgY, contentW, IMG_H);
+        ctx.fillRect(x, panelY, w, imgH);
       }
     } else {
-      const grad = ctx.createLinearGradient(PAD, imgY, PAD + contentW, imgY + IMG_H);
+      const grad = ctx.createLinearGradient(x, panelY, x + w, panelY + imgH);
       grad.addColorStop(0, '#111827');
       grad.addColorStop(1, '#1e293b');
       ctx.fillStyle = grad;
-      ctx.fillRect(PAD, imgY, contentW, IMG_H);
+      ctx.fillRect(x, panelY, w, imgH);
     }
-    // bottom vignette for caption legibility
-    const vg = ctx.createLinearGradient(0, imgY + IMG_H - 90, 0, imgY + IMG_H);
+    // bottom vignette for legibility
+    const vg = ctx.createLinearGradient(0, panelY + imgH - 60, 0, panelY + imgH);
     vg.addColorStop(0, 'rgba(5,7,12,0)');
-    vg.addColorStop(1, 'rgba(5,7,12,0.85)');
+    vg.addColorStop(1, 'rgba(5,7,12,0.75)');
     ctx.fillStyle = vg;
-    ctx.fillRect(PAD, imgY + IMG_H - 90, contentW, 90);
+    ctx.fillRect(x, panelY + imgH - 60, w, 60);
     ctx.restore();
 
     // frame border
     ctx.strokeStyle = 'rgba(255,255,255,0.08)';
     ctx.lineWidth = 1;
-    drawRoundedRect(ctx, PAD, imgY, contentW, IMG_H, 10);
+    drawRoundedRect(ctx, x, panelY, w, imgH, 10);
     ctx.stroke();
 
     // panel number badge
     ctx.fillStyle = perfColor;
     ctx.beginPath();
-    ctx.arc(PAD + 24, imgY + 24, 15, 0, Math.PI * 2);
+    ctx.arc(x + 20, panelY + 20, 13, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#05070c';
-    ctx.font = '700 15px "JetBrains Mono", monospace';
+    ctx.font = '700 13px "JetBrains Mono", monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(String(i + 1), PAD + 24, imgY + 25);
+    ctx.fillText(String(index + 1), x + 20, panelY + 21);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
 
-    // caption band
-    const capY = imgY + IMG_H + 8;
-    ctx.font = '500 15px "JetBrains Mono", monospace';
-    const capLines = wrapText(ctx, frame.caption.trim(), contentW - 16, 2);
+    // caption under the panel
+    const capY = panelY + imgH + 6;
+    ctx.font = '500 13px "JetBrains Mono", monospace';
+    const capLines = wrapText(ctx, frame.caption.trim(), w - 14, 2);
     ctx.fillStyle = 'rgba(226,232,240,0.92)';
-    let cy = capY + 20;
+    let cy = capY + 17;
     for (const line of capLines) {
-      ctx.fillText(line, PAD + 4, cy);
-      cy += 20;
+      ctx.fillText(line, x + 10, cy);
+      cy += 18;
     }
     // perf tick
     ctx.fillStyle = perfColor;
-    ctx.fillRect(PAD, capY + 2, 3, capLines.length * 20);
+    ctx.fillRect(x, capY + 4, 3, Math.max(1, capLines.length) * 18 - 4);
+  };
 
-    y += IMG_H + CAPTION_H + 16;
+  y = headerH;
+  for (let i = 0; i < selected.length; i++) {
+    const isHero = hasHero && i === selected.length - 1;
+    if (isHero) {
+      await drawPanel(selected[i], i, PAD, y, contentW, heroImgH);
+      y += heroImgH + CAPTION_H + GUTTER;
+    } else {
+      const col = i % COLS;
+      const x = PAD + col * (panelW + GUTTER);
+      await drawPanel(selected[i], i, x, y, panelW, panelImgH);
+      if (col === COLS - 1) y += cellH;
+    }
   }
 
   // --- Footer ---
@@ -288,6 +317,14 @@ const renderComic = async (
   ctx.font = '600 12px "JetBrains Mono", monospace';
   ctx.fillText(ui.watermark, W / 2, totalH - 26);
   ctx.textAlign = 'left';
+
+  // blit the finished poster to the visible canvas in one synchronous step
+  target.width = canvas.width;
+  target.height = canvas.height;
+  const out = target.getContext('2d');
+  if (!out) throw new Error('no-2d-context');
+  out.setTransform(1, 0, 0, 1, 0, 0);
+  out.drawImage(canvas, 0, 0);
 };
 
 const RunComic: React.FC<RunComicProps> = ({
@@ -298,6 +335,7 @@ const RunComic: React.FC<RunComicProps> = ({
   tagline,
   stats,
   shareText,
+  dailyLabel,
   language,
   ui,
   onClose
@@ -306,12 +344,17 @@ const RunComic: React.FC<RunComicProps> = ({
   const [status, setStatus] = useState<'rendering' | 'ready' | 'error'>('rendering');
   const [canShare, setCanShare] = useState(false);
   const [copied, setCopied] = useState(false);
+  const comicOpenTrackedRef = useRef(false);
 
   useEffect(() => {
+    if (!comicOpenTrackedRef.current) {
+      comicOpenTrackedRef.current = true;
+      track(COMIC_OPEN);
+    }
     let cancelled = false;
     const canvas = canvasRef.current;
     if (!canvas) return;
-    renderComic(canvas, { frames, title, endingTitle, outcome, tagline, stats, ui })
+    renderComic(canvas, { frames, title, endingTitle, outcome, tagline, stats, dailyLabel, ui })
       .then(() => { if (!cancelled) setStatus('ready'); })
       .catch(() => { if (!cancelled) setStatus('error'); });
     return () => { cancelled = true; };
@@ -336,9 +379,12 @@ const RunComic: React.FC<RunComicProps> = ({
       canvas.toBlob(blob => resolve(blob), 'image/png');
     });
 
-  const fileName = `narrative-flow-${outcome}-${Date.now()}.png`;
+  const dailyFileTag = dailyLabel
+    ? `${dailyLabel.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '')}-`
+    : '';
+  const fileName = `narrative-flow-${dailyFileTag}${outcome}-${Date.now()}.png`;
 
-  const handleDownload = async () => {
+  const downloadComic = async () => {
     const blob = await toBlob();
     if (!blob) return;
     const url = URL.createObjectURL(blob);
@@ -351,7 +397,13 @@ const RunComic: React.FC<RunComicProps> = ({
     URL.revokeObjectURL(url);
   };
 
+  const handleDownload = async () => {
+    track(COMIC_DOWNLOAD);
+    await downloadComic();
+  };
+
   const handleShare = async () => {
+    track(COMIC_SHARE);
     const blob = await toBlob();
     if (!blob) return;
     const file = new File([blob], fileName, { type: 'image/png' });
@@ -359,11 +411,12 @@ const RunComic: React.FC<RunComicProps> = ({
       await navigator.share({ files: [file], title, text: shareText });
     } catch {
       // user cancelled or share failed — fall back to download
-      await handleDownload();
+      await downloadComic();
     }
   };
 
   const handleCopy = async () => {
+    track(COMIC_COPY);
     try {
       const blob = await toBlob();
       if (!blob || !navigator.clipboard || !('write' in navigator.clipboard)) return;
@@ -390,7 +443,7 @@ const RunComic: React.FC<RunComicProps> = ({
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-md max-h-[92vh] flex flex-col bg-slate-900/80 border border-white/10 rounded-2xl shadow-[0_0_60px_rgba(0,0,0,0.6)] overflow-hidden"
+        className="relative w-full max-w-2xl max-h-[92vh] flex flex-col bg-slate-900/80 border border-white/10 rounded-2xl shadow-[0_0_60px_rgba(0,0,0,0.6)] overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex-1 min-h-0 overflow-y-auto p-4">

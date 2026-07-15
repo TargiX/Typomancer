@@ -34,6 +34,10 @@ export interface GenrePack {
   name: Record<Language, string>;
   tagline: Record<Language, string>;
   storyGenre: string;
+  // Prompt-side world bible: allowed vocabulary, forbidden vocabulary, and what
+  // BREACH/SIGNAL drills look like INSIDE this world. Injected into every text
+  // generation call so continuations can't drift back into cyberpunk.
+  worldRules: string;
   heroName: string;
   heroBrief: Record<Language, string>;
   characterPrompt: string;
@@ -104,6 +108,7 @@ export const GENRE_PACKS: Record<StoryGenreId, GenrePack> = {
     name: { en: 'Cyberpunk Espionage', ru: 'Киберпанк-шпионаж' },
     tagline: { en: 'Neon cities, stolen ledgers, corporate hunters.', ru: 'Неоновые города, украденные реестры, корпоративные охотники.' },
     storyGenre: 'cyberpunk espionage typing thriller',
+    worldRules: 'World: neon megacity, corporate towers, netrunners, drones, implants, black-market data. BREACH drills = terminal commands and hex codes (technical English). SIGNAL drills = node routes, frequencies, trace readouts.',
     heroName: 'Agent Nox',
     heroBrief: { en: 'hacker-agent stealing proof from a megacorp', ru: 'хакер-агент, крадущий улики у мегакорпорации' },
     characterPrompt: 'cyberpunk field agent/hacker with chrome cybernetics and a torn graphite coat',
@@ -204,6 +209,7 @@ export const GENRE_PACKS: Record<StoryGenreId, GenrePack> = {
     name: { en: 'Space Horror', ru: 'Космический хоррор' },
     tagline: { en: 'Dead stations, wrong signals, something listening in the vents.', ru: 'Мертвые станции, ложные сигналы, что-то слушает в вентиляции.' },
     storyGenre: 'sci-fi space horror typing survival thriller',
+    worldRules: 'World: a derelict deep-space station — failing life support, flickering corridors, something alive in the vents. Tech is heavy retro-industrial ship hardware. FORBIDDEN vocabulary: city streets, cars, corporate hacker slang, magic. BREACH drills = airlock/reactor override sequences (e.g. "AIRLOCK-7 OVERRIDE // VENT-CYCLE-3"). SIGNAL drills = distress frequencies, oxygen readouts, deck coordinates.',
     heroName: 'Drifter Kael',
     heroBrief: { en: 'lone salvage runner escaping a haunted orbital relay', ru: 'одинокий спасатель, бегущий с проклятого орбитального ретранслятора' },
     characterPrompt: 'worn EVA suit, frost on visor, emergency lamp, haunted orbital survivor',
@@ -304,6 +310,7 @@ export const GENRE_PACKS: Record<StoryGenreId, GenrePack> = {
     name: { en: 'Noir Detective', ru: 'Нуар-детектив' },
     tagline: { en: 'Rain, cigarettes, ledgers that ruin mayors.', ru: 'Дождь, сигареты, реестры, которые рушат мэров.' },
     storyGenre: 'noir detective typing thriller',
+    worldRules: 'World: a rain-soaked 1950s city — detectives, informants, jazz clubs, revolvers, corrupt officials, case files. STRICTLY period technology: rotary phones, telegrams, typewriters, tape recorders. FORBIDDEN vocabulary: mainframe, server, drone, neon, cyber, hack/hacking, laser, AI, hex codes, anything digital. BREACH drills = case codes, safe combinations, license plates (e.g. "CASE 47-B // SAFE 12-31-8"). SIGNAL drills = police radio codes, phone numbers, street addresses, train times.',
     heroName: 'Detective Vale',
     heroBrief: { en: 'cynical private eye chasing a city ledger that buys judges', ru: 'циничный частный детектив, идущий за городским реестром, покупающим судей' },
     characterPrompt: 'noir detective in a soaked trench coat, cigarette glow, rain-slick alley lighting',
@@ -404,6 +411,7 @@ export const GENRE_PACKS: Record<StoryGenreId, GenrePack> = {
     name: { en: 'Dark Fairy Tale', ru: 'Тёмная сказка' },
     tagline: { en: 'Cursed woods, borrowed names, truths that bite back.', ru: 'Проклятый лес, одолженные имена, правда, которая кусается.' },
     storyGenre: 'dark fairy tale typing fable',
+    worldRules: 'World: a cursed forest and crooked villages — witches, bargains, talking beasts, borrowed names, old magic. Pre-industrial only: candles, ink, iron keys, bells. FORBIDDEN vocabulary: any modern or sci-fi technology, guns, computers, neon. BREACH drills = incantations, rune words, oath phrases (e.g. "SPEAK THRICE // MARROW-MARROW-MARROW"). SIGNAL drills = bell tolls, moon phases, counting rhymes (e.g. "third bell // ninth stone // one candle").',
     heroName: 'Mara the Ink-Walker',
     heroBrief: { en: 'cursed wanderer stealing names from a living storybook forest', ru: 'проклятый странник, крадущий имена из живого сказочного леса' },
     characterPrompt: 'dark fable heroine with ink-stained hands, lantern moss, thorn crown, storybook forest mood',
