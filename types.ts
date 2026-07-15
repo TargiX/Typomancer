@@ -171,4 +171,5 @@ export interface UserProfile {
   credits: number;
   upgrades: UserUpgrades;
   language?: Language;
+  strictCase?: boolean;
 }

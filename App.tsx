@@ -3,7 +3,9 @@ import { GameState, StorySegment, GameStats, StoryLogItem, UserProfile, Perk, Ga
 import { generateStoryStart, generateCharacterProfile, generateLevelSummary, generateNextLevelStart } from './services/geminiService';
 import { GENRE_ORDER, getGenrePack } from './services/genreConfig';
 import { getGenreSkin, PerkGroupId, UpgradeId } from './services/genreSkin';
+import { DAILY_MAX_ATTEMPTS, DailyBrief, getDailyBrief, getDailyState, recordDailyAttempt } from './services/dailyMode';
 import { audioEngine } from './services/audioEngine';
+import { DAILY_ATTEMPT, RUN_END, RUN_START, WORLD_SELECTED, track } from './services/analytics';
 import TypingEngine from './components/TypingEngine';
 import RunComic from './components/RunComic';
 
@@ -14,7 +16,7 @@ const TRANSLATIONS = {
         subtitle: "Consequence-Driven RPG Typer",
         score: "SCORE",
         wallet: "WALLET",
-        audio_active: "♫ AUDIO ACTIVE",
+        audio_active: "AUDIO ACTIVE",
         audio_muted: "AUDIO MUTED",
         empty_log: "Mission log is empty.\nAwaiting system initialization...",
         speed: "SPEED",
@@ -23,8 +25,16 @@ const TRANSLATIONS = {
         intro_desc: "Type to move, decide to bend the city, survive to publish the proof.",
         mistakes_warn: "Every typo changes heat, trust, evidence, and the ending.",
         init_link: "[1] INITIALIZE LINK",
+        daily_sector: "DAILY SECTOR",
+        daily_left: "LEFT",
+        daily_best: "BEST",
+        daily_tomorrow: "BACK TOMORROW",
+        daily_severed: "SEVERED",
         black_market: "[2] THE BLACK MARKET",
         powered_by: "Works with Gemini, but has a full local campaign fallback",
+        perfectionist: "PERFECTIONIST · +30% XP",
+        perfectionist_desc: "Case-sensitive typing. Typos are never forgiven.",
+        accuracy_hook: "Most typing games shrug off mistakes. Here every typo bends your story — the ultimate accuracy trainer.",
         market_title: "THE BLACK MARKET",
         market_subtitle: "Permanent hardware upgrades for future runs",
         avail_credits: "Available Credits",
@@ -50,7 +60,7 @@ const TRANSLATIONS = {
         connection_severed: "Your link was severed before the Ledger went live.",
         reached: "Reached",
         main_menu: "[SPACE] MAIN MENU",
-        legendary_drop: "⚠ LEGENDARY DROP DETECTED",
+        legendary_drop: "LEGENDARY DROP DETECTED",
         level: "Level",
         wpm: "WPM",
         operation_dossier: "OPERATION DOSSIER",
@@ -85,7 +95,7 @@ const TRANSLATIONS = {
         subtitle: "RPG-тайпер с последствиями",
         score: "СЧЕТ",
         wallet: "КОШЕЛЕК",
-        audio_active: "♫ ЗВУК ВКЛ",
+        audio_active: "ЗВУК ВКЛ",
         audio_muted: "ЗВУК ВЫКЛ",
         empty_log: "Журнал миссии пуст.\nОжидание инициализации системы...",
         speed: "СКОРОСТЬ",
@@ -94,8 +104,16 @@ const TRANSLATIONS = {
         intro_desc: "Печатай, чтобы двигаться; выбирай, чтобы менять город; выживи, чтобы опубликовать улики.",
         mistakes_warn: "Каждая опечатка меняет угрозу, доверие, улики и финал.",
         init_link: "[1] ИНИЦИАЛИЗАЦИЯ",
+        daily_sector: "ДНЕВНОЙ СЕКТОР",
+        daily_left: "ОСТАЛОСЬ",
+        daily_best: "ЛУЧШИЙ",
+        daily_tomorrow: "ЗАВТРА НОВЫЙ СЕКТОР",
+        daily_severed: "ОБРЫВ",
         black_market: "[2] ЧЕРНЫЙ РЫНОК",
         powered_by: "Работает с Gemini, но имеет полноценную локальную кампанию",
+        perfectionist: "ПЕРФЕКЦИОНИСТ · +30% XP",
+        perfectionist_desc: "Регистр важен. Опечатки не прощаются.",
+        accuracy_hook: "Другие тайпинг-игры прощают ошибки. Здесь каждая опечатка гнёт твою историю — предельный тренажёр точности.",
         market_title: "ЧЕРНЫЙ РЫНОК",
         market_subtitle: "Постоянные апгрейды оборудования для будущих забегов",
         avail_credits: "Доступные Кредиты",
@@ -121,7 +139,7 @@ const TRANSLATIONS = {
         connection_severed: "Связь оборвалась до публикации Реестра.",
         reached: "Достигнут",
         main_menu: "[SPACE] ГЛАВНОЕ МЕНЮ",
-        legendary_drop: "⚠ ОБНАРУЖЕН ЛЕГЕНДАРНЫЙ МОДУЛЬ",
+        legendary_drop: "ОБНАРУЖЕН ЛЕГЕНДАРНЫЙ МОДУЛЬ",
         level: "Уровень",
         wpm: "СЛ/М",
         operation_dossier: "ДОСЬЕ ОПЕРАЦИИ",
@@ -268,8 +286,12 @@ const DEFAULT_PROFILE: UserProfile = {
         focusLens: 0,
         patternScanner: 0
     },
-    language: 'en'
+    language: 'en',
+    strictCase: false
 };
+
+// Perfectionist (strict-case) mode grants +30% XP as the "ultimate accuracy" reward.
+const STRICT_CASE_XP_MULTIPLIER = 1.3;
 
 const META_UPGRADES: Record<UpgradeId, { baseCost: number; effectPerLevel: number; maxLevel: number }> = {
     synapticWeave: { baseCost: 100, effectPerLevel: 2, maxLevel: 10 },
@@ -372,7 +394,119 @@ const SystemBeacon: React.FC<{ label: string }> = ({ label }) => {
     );
 };
 
+const stripKeyHint = (label: string): string => label.replace(/^\[[^\]]+\]\s*/, '');
+const stripLeadingGlyph = (label: string): string => label.replace(/^[^\p{L}\p{N}]+/u, '');
+
+const PerkTypeIcon: React.FC<{ type: Perk['type'] }> = ({ type }) => {
+    const iconClass = 'h-5 w-5';
+
+    if (type === 'defense') {
+        return (
+            <svg className={iconClass} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 3 20 6v5c0 5.2-3.4 8.5-8 10-4.6-1.5-8-4.8-8-10V6l8-3Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                <path d="m9 12 2 2 4-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+        );
+    }
+
+    if (type === 'stealth') {
+        return (
+            <svg className={iconClass} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M3 3 21 21M10.6 10.7a2 2 0 0 0 2.7 2.7M9.9 4.2A10.7 10.7 0 0 1 12 4c5.2 0 8.5 4.5 9.5 6.2a3.5 3.5 0 0 1 0 3.6 14.4 14.4 0 0 1-2.2 2.8M6.2 6.2a14.4 14.4 0 0 0-3.7 4 3.5 3.5 0 0 0 0 3.6C3.5 15.5 6.8 20 12 20c1 0 1.9-.2 2.7-.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+        );
+    }
+
+    if (type === 'utility') {
+        return (
+            <svg className={iconClass} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect x="5" y="7" width="14" height="10" rx="1" stroke="currentColor" strokeWidth="2" />
+                <path d="M9 3v4m6-4v4M9 17v4m6-4v4M2 10h3m-3 4h3m14-4h3m-3 4h3m-8-4-3 4h4l-3 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+        );
+    }
+
+    return (
+        <svg className={iconClass} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+    );
+};
+
+const GenreIcon: React.FC<{ genre: StoryGenreId; className?: string }> = ({ genre, className = 'h-5 w-5' }) => {
+    if (genre === 'space_horror') {
+        return (
+            <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M5 16.5a9 9 0 0 1 14 0M8 13a5 5 0 0 1 8 0M11 9.5a1.5 1.5 0 1 1 2 0M4 20h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+        );
+    }
+
+    if (genre === 'noir') {
+        return (
+            <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="10.5" cy="10.5" r="5.5" stroke="currentColor" strokeWidth="2" />
+                <path d="m15 15 5 5M8.5 8.5h4M10.5 6.5v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+        );
+    }
+
+    if (genre === 'dark_fable') {
+        return (
+            <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M5 5.5A3.5 3.5 0 0 1 8.5 2H12v17H8.5A3.5 3.5 0 0 0 5 22V5.5ZM19 5.5A3.5 3.5 0 0 0 15.5 2H12v17h3.5A3.5 3.5 0 0 1 19 22V5.5Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                <path d="M8 6h1m6 0h1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+        );
+    }
+
+    return (
+        <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+    );
+};
+
+interface EmblemTileProps {
+    src: string;
+    fallback?: React.ReactNode;
+    size: number;
+    className?: string;
+    style?: React.CSSProperties;
+}
+
+const EmblemTile: React.FC<EmblemTileProps> = ({ src, fallback, size, className = '', style }) => {
+    const [imageFailed, setImageFailed] = useState(false);
+
+    useEffect(() => {
+        setImageFailed(false);
+    }, [src]);
+
+    if (imageFailed && fallback == null) return null;
+
+    return (
+        <span
+            className={`screens-icon-tile screens-emblem-tile ${imageFailed ? 'screens-emblem-failed' : ''} ${className}`}
+            style={{ width: size, height: size, ...style }}
+            aria-hidden="true"
+        >
+            {imageFailed ? (
+                <span className="screens-emblem-fallback">{fallback}</span>
+            ) : (
+                <img
+                    src={src}
+                    alt=""
+                    loading="lazy"
+                    className="screens-emblem-image"
+                    onError={() => setImageFailed(true)}
+                />
+            )}
+        </span>
+    );
+};
+
 const App: React.FC = () => {
+  const [dailyBrief, setDailyBrief] = useState(() => getDailyBrief());
   const [gameState, setGameState] = useState<GameState>(GameState.MENU);
   const [storyLog, setStoryLog] = useState<StoryLogItem[]>([]);
   const [initialSegment, setInitialSegment] = useState<StorySegment | null>(null);
@@ -398,11 +532,25 @@ const App: React.FC = () => {
   const [comicFrames, setComicFrames] = useState<ComicFrame[]>([]);
   const [showComic, setShowComic] = useState(false);
   const [selectedGenre, setSelectedGenre] = useState<StoryGenreId>('cyberpunk');
+  const [dailyState, setDailyState] = useState(() => getDailyState(dailyBrief.dailyId));
+  const [isDailyRun, setIsDailyRun] = useState(false);
+  const [currentDailyId, setCurrentDailyId] = useState<string | null>(null);
+  const [currentDailyDateLabel, setCurrentDailyDateLabel] = useState<string | null>(null);
   const runGenreRef = useRef<StoryGenreId>('cyberpunk');
+  const isDailyRunRef = useRef(false);
+  const currentDailyIdRef = useRef<string | null>(null);
+  const activeDailyBriefRef = useRef<DailyBrief>(dailyBrief);
+  const dailyAttemptRecordedRef = useRef(false);
+  const runStartTrackedRef = useRef(false);
+  const runEndTrackedRef = useRef(false);
+  const totalScoreRef = useRef(0);
 
   const logEndRef = useRef<HTMLDivElement>(null);
 
   const genrePack = getGenrePack(selectedGenre);
+  const dailyGenrePack = getGenrePack(dailyBrief.genre);
+  const dailyAttemptsLeft = Math.max(0, DAILY_MAX_ATTEMPTS - dailyState.attemptsUsed);
+  const dailyAttemptsExhausted = dailyAttemptsLeft === 0;
   /** Operator deck chrome — always cyberpunk, Animus-style. */
   const hubSkin = getGenreSkin('cyberpunk');
   /** World behind the glass — endings/sim readout only. */
@@ -458,8 +606,48 @@ const App: React.FC = () => {
   }, [userProfile, language, selectedGenre]);
 
   useEffect(() => {
+    const refreshDailyBrief = () => {
+      const nextBrief = getDailyBrief();
+      if (nextBrief.dailyId === dailyBrief.dailyId) return;
+      setDailyBrief(nextBrief);
+      setDailyState(getDailyState(nextBrief.dailyId));
+    };
+    const nextMidnight = new Date();
+    nextMidnight.setHours(24, 0, 0, 100);
+    const midnightTimer = window.setTimeout(refreshDailyBrief, nextMidnight.getTime() - Date.now());
+    window.addEventListener('focus', refreshDailyBrief);
+    return () => {
+      window.clearTimeout(midnightTimer);
+      window.removeEventListener('focus', refreshDailyBrief);
+    };
+  }, [dailyBrief.dailyId]);
+
+  useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [storyLog]);
+
+  useEffect(() => {
+    if (!isDailyRun || !currentDailyId || dailyAttemptRecordedRef.current) return;
+
+    let finalScore: number | null = null;
+    let endingTitle: string | null = null;
+    if (gameState === GameState.VICTORY && victoryReport) {
+      finalScore = totalScore;
+      endingTitle = victoryReport.endingTitle || genrePack.ui.victoryTitle[language];
+    } else if (gameState === GameState.GAME_OVER && finalStats) {
+      finalScore = Math.max(totalScore, finalStats.score || 0);
+      endingTitle = TRANSLATIONS[language].daily_severed;
+    }
+
+    if (finalScore === null || endingTitle === null) return;
+    dailyAttemptRecordedRef.current = true;
+    const recorded = recordDailyAttempt(currentDailyId, finalScore, endingTitle);
+    track(DAILY_ATTEMPT, {
+      attemptsUsed: recorded.attemptsUsed,
+      bestScore: recorded.bestScore
+    });
+    if (currentDailyId === dailyBrief.dailyId) setDailyState(recorded);
+  }, [currentDailyId, dailyBrief.dailyId, finalStats, gameState, genrePack, isDailyRun, language, totalScore, victoryReport]);
 
   useEffect(() => {
       let mods = { ...DEFAULT_MODIFIERS };
@@ -499,6 +687,7 @@ const App: React.FC = () => {
         } else if (gameState === GameState.MENU) {
             if (e.key === '1' || e.key === 'Enter') initializeSession();
             if (e.key === '2') setGameState(GameState.BLACK_MARKET);
+            if (e.key === '3' && !dailyAttemptsExhausted) initializeDailySession();
         } else if (gameState === GameState.GAME_OVER || gameState === GameState.VICTORY) {
             if (e.key === 'Enter' || e.key === ' ') setGameState(GameState.MENU);
         } else if (gameState === GameState.BLACK_MARKET) {
@@ -514,7 +703,7 @@ const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [gameState, offeredPerks, userProfile]);
+  }, [dailyAttemptsExhausted, gameState, offeredPerks, userProfile]);
 
   const handleToggleMusic = () => {
       const active = audioEngine.toggle();
@@ -523,6 +712,10 @@ const App: React.FC = () => {
 
   const handleToggleLanguage = () => {
       setLanguage(prev => prev === 'en' ? 'ru' : 'en');
+  };
+
+  const handleToggleStrictCase = () => {
+      setUserProfile(prev => ({ ...prev, strictCase: !prev.strictCase }));
   };
 
   const generatePerkObject = (def: typeof PERK_DEFINITIONS[number], tierIndex: number, _genreOverride?: StoryGenreId): Perk => {
@@ -605,9 +798,10 @@ const App: React.FC = () => {
       return options.sort(() => 0.5 - Math.random());
   };
 
-  const initializeSession = () => {
+  const prepareSession = () => {
       setStoryLog([]);
       setTotalScore(0);
+      totalScoreRef.current = 0;
       setFinalStats(null);
       setVictoryReport(null);
       setComicFrames([]);
@@ -623,11 +817,44 @@ const App: React.FC = () => {
           .slice(0, 3)
           .map(d => generatePerkObject(d, 0));
       setOfferedPerks(starters);
+      dailyAttemptRecordedRef.current = false;
+      runStartTrackedRef.current = false;
+      runEndTrackedRef.current = false;
+  };
+
+  const initializeSession = () => {
+      prepareSession();
+      setIsDailyRun(false);
+      isDailyRunRef.current = false;
+      setCurrentDailyId(null);
+      currentDailyIdRef.current = null;
+      setCurrentDailyDateLabel(null);
       setGameState(GameState.GENRE_SELECTION);
       if (!musicActive) handleToggleMusic();
   };
 
+  const initializeDailySession = () => {
+      const brief = getDailyBrief();
+      const latestState = getDailyState(brief.dailyId);
+      setDailyBrief(brief);
+      setDailyState(latestState);
+      if (latestState.attemptsUsed >= DAILY_MAX_ATTEMPTS) return;
+
+      prepareSession();
+      activeDailyBriefRef.current = brief;
+      setIsDailyRun(true);
+      isDailyRunRef.current = true;
+      setCurrentDailyId(brief.dailyId);
+      currentDailyIdRef.current = brief.dailyId;
+      setCurrentDailyDateLabel(brief.dateLabel);
+      setSelectedGenre(brief.genre);
+      runGenreRef.current = brief.genre;
+      setGameState(GameState.STARTER_PERK_SELECTION);
+      if (!musicActive) handleToggleMusic();
+  };
+
   const handleGenreSelect = (genre: StoryGenreId) => {
+      track(WORLD_SELECTED, { genre });
       setSelectedGenre(genre);
       runGenreRef.current = genre;
       setGameState(GameState.STARTER_PERK_SELECTION);
@@ -640,13 +867,29 @@ const App: React.FC = () => {
 
   const beginStoryGeneration = async (genre: StoryGenreId = runGenreRef.current) => {
     setGameState(GameState.LOADING);
+    const activeBrief = activeDailyBriefRef.current;
+    const startRequest = isDailyRunRef.current && currentDailyIdRef.current === activeBrief.dailyId
+      ? Promise.resolve<StorySegment>({
+          text: activeBrief.opening[language],
+          mood: StoryMood.TENSE,
+          type: SegmentType.NARRATIVE
+        })
+      : generateStoryStart(language, genre);
     const [start, charProfile] = await Promise.all([
-        generateStoryStart(language, genre),
+        startRequest,
         generateCharacterProfile(language, genre)
     ]);
     setInitialSegment(start);
     setCharacterDesc(charProfile);
     setGameState(GameState.PLAYING);
+    if (!runStartTrackedRef.current) {
+      runStartTrackedRef.current = true;
+      track(RUN_START, {
+        genre,
+        daily: isDailyRunRef.current,
+        language
+      });
+    }
   };
 
   const getEndingTitle = (report: LevelReport): string => {
@@ -668,7 +911,8 @@ const App: React.FC = () => {
       const avgWpm = allRounds.length > 0 ? allRounds.reduce((sum, r) => sum + r.wpm, 0) / allRounds.length : finalRoundStats.wpm;
       const totalMistakes = allRounds.reduce((sum, r) => sum + r.mistakes, 0); 
       const levelScore = allRounds.reduce((sum, r) => sum + r.score, 0);
-      const xp = Math.floor(levelScore * (1 + (finalRoundStats.level * 0.1)));
+      const strictBonus = userProfile.strictCase ? STRICT_CASE_XP_MULTIPLIER : 1;
+      const xp = Math.floor(levelScore * (1 + (finalRoundStats.level * 0.1)) * strictBonus);
       setLevelXpGained(xp);
       const creditsEarned = finalRoundStats.credits || 0;
       const mission = finalMission || finalRoundStats.mission || campaignState;
@@ -699,7 +943,21 @@ const App: React.FC = () => {
       const isFinal = finalRoundStats.level >= CAMPAIGN_FINAL_LEVEL;
       setLastLevelReport(report);
       if (isFinal) {
-          setVictoryReport({ ...report, endingTitle: getEndingTitle(report) });
+          const endingTitle = getEndingTitle(report);
+          setVictoryReport({ ...report, endingTitle });
+          if (!runEndTrackedRef.current) {
+              runEndTrackedRef.current = true;
+              track(RUN_END, {
+                  outcome: 'victory',
+                  score: totalScoreRef.current,
+                  level: finalRoundStats.level,
+                  evidence: mission.evidence,
+                  heat: mission.heat,
+                  ending: endingTitle,
+                  daily: isDailyRunRef.current,
+                  genre: runGenreRef.current
+              });
+          }
           setGameState(GameState.VICTORY);
       } else {
           setGameState(GameState.LEVEL_COMPLETE);
@@ -746,7 +1004,8 @@ const App: React.FC = () => {
   };
 
   const handleGameOver = (stats: GameStats) => {
-    const finalScore = totalScore;
+    const finalScore = totalScoreRef.current;
+    const mission = stats.mission || campaignState;
     const bonusXp = Math.floor(finalScore * (1 + (stats.level * 0.1))); 
     setFinalStats({ ...stats, score: finalScore });
     if (stats.mission) setCampaignState(stats.mission);
@@ -755,6 +1014,19 @@ const App: React.FC = () => {
         totalXp: prev.totalXp + bonusXp,
         credits: Math.floor((prev.credits || 0) + (stats.credits || 0))
     }));
+    if (!runEndTrackedRef.current) {
+        runEndTrackedRef.current = true;
+        track(RUN_END, {
+            outcome: 'defeat',
+            score: finalScore,
+            level: stats.level,
+            evidence: mission.evidence,
+            heat: mission.heat,
+            ending: isDailyRunRef.current ? TRANSLATIONS[language].daily_severed : TRANSLATIONS[language].critical_failure,
+            daily: isDailyRunRef.current,
+            genre: runGenreRef.current
+        });
+    }
     setGameState(GameState.GAME_OVER);
   };
 
@@ -773,7 +1045,8 @@ const App: React.FC = () => {
   };
 
   const addToLog = (text: string, performance: 'good' | 'average' | 'bad' | 'neutral', score: number, wpm: number, mistakes: number, meta?: string, type?: SegmentType) => {
-    setTotalScore(prev => prev + score);
+    totalScoreRef.current += score;
+    setTotalScore(totalScoreRef.current);
     setStoryLog(prev => [...prev, { text, performance, score, wpm, meta, type }]);
     if (performance !== 'neutral') {
         setLevelBuffer(prev => [...prev, { wpm, mistakes, score }]); 
@@ -788,15 +1061,21 @@ const App: React.FC = () => {
     const isVictory = gameState === GameState.VICTORY;
     const mission = (isVictory ? victoryReport?.mission : finalStats?.mission) || campaignState;
     const campaignTitle = genrePack.ui.mainTitle[language];
+    const defeatScore = Math.max(totalScore, finalStats?.score || 0);
+    const buildDailyShareText = (ending: string, score: number): string => language === 'ru'
+      ? `Дневной сектор ${currentDailyDateLabel} — ${ending}, счёт ${score}. Напечатай свою судьбу:`
+      : `Daily Sector ${currentDailyDateLabel} — ${ending}, score ${score}. Type your own fate:`;
     if (isVictory && victoryReport) {
       const ending = victoryReport.endingTitle || genrePack.ui.victoryTitle[language];
       return {
         outcome: 'victory' as const,
         endingTitle: ending,
         tagline: victoryReport.narrativeSummary,
-        shareText: language === 'ru'
-          ? `Мой забег в Narrative Flow (${genrePack.name.ru}): «${ending}» — ${campaignTitle}`
-          : `My Narrative Flow run (${genrePack.name.en}): “${ending}” — ${campaignTitle}`,
+        shareText: isDailyRun && currentDailyDateLabel
+          ? buildDailyShareText(ending, totalScore)
+          : language === 'ru'
+            ? `Мой забег в Narrative Flow (${genrePack.name.ru}): «${ending}» — ${campaignTitle}`
+            : `My Narrative Flow run (${genrePack.name.en}): “${ending}” — ${campaignTitle}`,
         stats: [
           { label: UI.wpm, value: String(Math.round(victoryReport.avgWpm)) },
           { label: UI.evidence, value: String(mission.evidence) },
@@ -805,18 +1084,21 @@ const App: React.FC = () => {
         ]
       };
     }
+    const defeatEnding = isDailyRun ? UI.daily_severed : UI.critical_failure;
     return {
       outcome: 'defeat' as const,
-      endingTitle: UI.critical_failure,
+      endingTitle: defeatEnding,
       tagline: genrePack.ui.connectionSevered[language],
-      shareText: language === 'ru'
-        ? `Мой забег в Narrative Flow (${genrePack.name.ru}) оборвался на уровне ${finalStats?.level || 1}.`
-        : `My Narrative Flow run (${genrePack.name.en}) was severed on level ${finalStats?.level || 1}.`,
+      shareText: isDailyRun && currentDailyDateLabel
+        ? buildDailyShareText(defeatEnding, defeatScore)
+        : language === 'ru'
+          ? `Мой забег в Narrative Flow (${genrePack.name.ru}) оборвался на уровне ${finalStats?.level || 1}.`
+          : `My Narrative Flow run (${genrePack.name.en}) was severed on level ${finalStats?.level || 1}.`,
       stats: [
         { label: UI.level, value: String(finalStats?.level || 1) },
         { label: UI.evidence, value: String(mission.evidence) },
         { label: UI.heat, value: `${Math.round(mission.heat)}%` },
-        { label: UI.score, value: String(finalStats?.score || 0) }
+        { label: UI.score, value: String(defeatScore) }
       ]
     };
   };
@@ -837,65 +1119,54 @@ const App: React.FC = () => {
   const renderPerkCard = (perk: Perk, index: number, isStarter: boolean) => {
       const isLegendary = perk.rarity === 'legendary';
       const isRare = perk.rarity === 'rare';
-      let borderClass = 'border-slate-700';
-      let bgClass = 'bg-slate-800';
-      let textClass = 'text-slate-400';
-      let glowClass = '';
-      let titleColor = 'text-white';
-      let rarityColor = 'text-slate-500 border-slate-600';
-
-      if (isLegendary) {
-          borderClass = 'border-yellow-500';
-          bgClass = 'bg-yellow-900/20';
-          textClass = 'text-yellow-100';
-          glowClass = 'shadow-[0_0_30px_rgba(234,179,8,0.2)] hover:shadow-[0_0_40px_rgba(234,179,8,0.4)]';
-          titleColor = 'text-yellow-400';
-          rarityColor = 'text-yellow-400 border-yellow-500 bg-yellow-900/50';
-      } else if (isRare) {
-          borderClass = 'border-purple-500';
-          bgClass = 'bg-purple-900/20';
-          textClass = 'text-purple-100';
-          glowClass = 'shadow-[0_0_20px_rgba(168,85,247,0.2)] hover:shadow-[0_0_30px_rgba(168,85,247,0.4)]';
-          titleColor = 'text-purple-400';
-          rarityColor = 'text-purple-400 border-purple-500 bg-purple-900/50';
-      } else {
-           glowClass = 'hover:border-cyan-400 hover:bg-slate-800/90 hover:shadow-[0_0_20px_rgba(34,211,238,0.2)]';
-      }
+      const rarityClass = isLegendary
+          ? 'screens-perk-legendary border-amber-400/60 shadow-[0_0_28px_rgba(251,191,36,0.12)] hover:shadow-[0_0_36px_rgba(251,191,36,0.2)]'
+          : isRare
+              ? 'border-violet-400/60 shadow-[0_0_24px_rgba(167,139,250,0.12)] hover:shadow-[0_0_32px_rgba(167,139,250,0.2)]'
+              : 'border-white/10 hover:border-emerald-400/35 hover:shadow-[0_0_24px_rgba(52,211,153,0.1)]';
+      const rarityColor = isLegendary ? 'text-amber-300' : isRare ? 'text-violet-300' : 'text-slate-300';
 
       return (
         <button
             key={perk.id}
             onClick={() => isStarter ? handleStarterPerkSelect(perk) : handleSelectPerk(perk)}
-            className={`group relative ${bgClass} border ${borderClass} p-6 rounded-lg ${glowClass} transition-all text-left flex flex-col h-full`}
+            className={`screens-cut-card screens-perk-card group relative overflow-hidden border bg-[#0b101a] ${rarityClass} transition-all duration-300 text-left h-full focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-400/70`}
         >
-            <div className="absolute top-2 left-2 text-slate-500 font-mono text-xs opacity-50 group-hover:opacity-100">[{index + 1}]</div>
-            <div className="flex justify-between items-start mb-2 mt-4">
-                 <div className={`text-[10px] uppercase border px-2 py-0.5 rounded font-bold tracking-wider ${rarityColor}`}>
-                    {perk.rarity}
-                 </div>
-                 <div className="flex gap-1">
-                     <div className={`w-1.5 h-1.5 rounded-full ${perk.tier >= 1 ? (isLegendary ? 'bg-yellow-500' : isRare ? 'bg-purple-500' : 'bg-cyan-500') : 'bg-slate-700'}`}></div>
-                     <div className={`w-1.5 h-1.5 rounded-full ${perk.tier >= 2 ? (isLegendary ? 'bg-yellow-500' : isRare ? 'bg-purple-500' : 'bg-cyan-500') : 'bg-slate-700'}`}></div>
-                     <div className={`w-1.5 h-1.5 rounded-full ${perk.tier >= 3 ? (isLegendary ? 'bg-yellow-500' : isRare ? 'bg-purple-500' : 'bg-cyan-500') : 'bg-slate-700'}`}></div>
-                 </div>
+            <div className="screens-card-art-frame screens-card-banner screens-perk-card-banner">
+                <EmblemTile
+                    src={`/assets/perks/${perk.groupId}.png`}
+                    size={60}
+                    fallback={<PerkTypeIcon type={perk.type} />}
+                    className={`screens-card-art border bg-black/20 ${
+                    perk.type === 'defense' ? 'border-sky-400/25 text-sky-300' :
+                    perk.type === 'stealth' ? 'border-violet-400/25 text-violet-300' :
+                    perk.type === 'utility' ? 'border-emerald-400/25 text-emerald-300' :
+                    'border-rose-400/25 text-rose-300'
+                    }`}
+                    style={{ width: '100%', height: '100%' }}
+                />
             </div>
-            <div className="mb-4">
-                <div className={`w-10 h-10 rounded-md flex items-center justify-center text-lg mb-2 ${
-                    perk.type === 'defense' ? 'bg-blue-500/20 text-blue-400' :
-                    perk.type === 'stealth' ? 'bg-purple-500/20 text-purple-400' :
-                    perk.type === 'utility' ? 'bg-yellow-500/20 text-yellow-400' :
-                    'bg-red-500/20 text-red-400'
-                }`}>
-                    {perk.type === 'defense' ? '🛡️' : perk.type === 'stealth' ? '👻' : perk.type === 'utility' ? '🔋' : '⚡'}
+            <div className="screens-perk-meta flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                    <span className="keycap opacity-70 group-hover:opacity-100">{index + 1}</span>
+                    <span className={`truncate text-[9px] font-bold uppercase tracking-[0.2em] ${rarityColor}`}>{perk.rarity}</span>
                 </div>
-                <h4 className={`text-xl font-bold ${titleColor} transition-colors`}>{perk.name}</h4>
+                 <div className="flex gap-1" aria-label={`${UI.level} ${perk.tier}`}>
+                     {Array.from({ length: perk.maxTier }, (_, tierIndex) => (
+                         <span
+                             key={tierIndex}
+                             className={`h-1.5 w-3 border ${tierIndex < perk.tier ? (isLegendary ? 'border-amber-300 bg-amber-300' : isRare ? 'border-violet-300 bg-violet-300' : 'border-emerald-300 bg-emerald-300') : 'border-white/10 bg-white/[0.03]'}`}
+                         />
+                     ))}
+                 </div>
             </div>
-            <p className={`text-sm ${textClass} leading-relaxed flex-1`}>
+            <h4 className="screens-perk-title font-display text-lg font-bold leading-tight text-white transition-colors">{perk.name}</h4>
+            <p className="screens-perk-description text-sm text-slate-400 leading-relaxed">
                 {perk.description}
             </p>
             {isLegendary && (
-                <div className="mt-4 text-xs text-yellow-500 font-bold uppercase tracking-widest animate-pulse">
-                    {UI.legendary_drop}
+                <div className="screens-perk-legend text-[9px] text-amber-300 font-bold uppercase tracking-[0.2em]">
+                    {stripLeadingGlyph(UI.legendary_drop)}
                 </div>
             )}
         </button>
@@ -909,31 +1180,50 @@ const App: React.FC = () => {
             key={genreId}
             type="button"
             onClick={() => handleGenreSelect(genreId)}
-            className="group relative p-5 rounded-lg border bg-slate-800/80 text-left flex flex-col h-full transition-all hover:bg-slate-800 focus-visible:outline-none"
+            className="screens-cut-card screens-world-card group relative min-h-[286px] overflow-hidden border bg-[#0b101a] text-left h-full transition-all focus-visible:outline-none"
             style={{
                 borderColor: `${pack.accent}55`,
-                boxShadow: `inset 0 0 0 1px ${pack.accent}14`
+                boxShadow: `inset 0 1px 0 rgba(255,255,255,0.04), 0 0 24px ${pack.accent}0c`
             }}
         >
-            <div className="absolute top-2 left-2 text-slate-500 font-mono text-xs opacity-50 group-hover:opacity-100">[{index + 1}]</div>
-            <div className="flex items-start gap-3 mt-4 mb-3">
-                <span className="text-2xl leading-none" aria-hidden>{pack.chip}</span>
-                <div>
-                    <h4 className="text-lg font-bold text-white">{pack.name[language]}</h4>
-                    <p className="text-[11px] mt-1 font-mono uppercase tracking-wider" style={{ color: pack.accent }}>{pack.ui.mainTitle[language]}</p>
+            <div className="screens-card-art-frame screens-card-banner screens-world-card-banner">
+                <EmblemTile
+                    src={`/assets/worlds/${genreId}.png`}
+                    size={68}
+                    fallback={<GenreIcon genre={genreId} className="h-7 w-7" />}
+                    className="screens-card-art border bg-black/20"
+                    style={{ width: '100%', height: '100%', borderColor: `${pack.accent}44`, color: pack.accent }}
+                />
+            </div>
+            <div className="screens-world-heading flex min-w-0 items-start gap-3">
+                <span className="keycap shrink-0 opacity-70 group-hover:opacity-100">{index + 1}</span>
+                <div className="min-w-0">
+                    <h4 className="font-display text-lg font-bold" style={{ color: pack.accent }}>{pack.name[language]}</h4>
+                    <p className="text-[9px] mt-1 uppercase tracking-[0.18em] text-slate-500">{pack.ui.mainTitle[language]}</p>
                 </div>
             </div>
-            <p className="text-sm text-slate-400 leading-relaxed flex-1">{pack.tagline[language]}</p>
-            <p className="mt-4 text-[11px] text-slate-500 border-t border-slate-700/80 pt-3">{pack.ui.campaignGoal[language]}</p>
+            <p className="screens-world-description text-sm text-slate-400 leading-relaxed">{pack.tagline[language]}</p>
+            <p className="screens-world-goal text-[11px] text-slate-500 border-t border-white/[0.06] pt-3">{pack.ui.campaignGoal[language]}</p>
         </button>
       );
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200 flex flex-col md:flex-row font-mono overflow-hidden">
+    <div className="screens-app-shell min-h-screen bg-[#070a11] text-slate-200 flex flex-col md:flex-row font-mono overflow-hidden">
+      <div className="screens-living-backdrop" aria-hidden="true">
+        <span className="screens-ambient-blob screens-ambient-blob-emerald" />
+        <span className="screens-ambient-blob screens-ambient-blob-indigo" />
+        <span className="screens-vignette" />
+      </div>
+      <div className="screens-deck-frame" aria-hidden="true">
+        <span className="screens-deck-corner screens-deck-corner-tl" />
+        <span className="screens-deck-corner screens-deck-corner-tr" />
+        <span className="screens-deck-corner screens-deck-corner-bl" />
+        <span className="screens-deck-corner screens-deck-corner-br" />
+      </div>
       
       {/* Sidebar — operator console */}
-      <aside className="relative w-full md:w-1/3 lg:w-1/4 flex flex-col h-[30vh] md:h-screen bg-gradient-to-b from-[#0b101a] to-[#070a11] border-r border-white/[0.06]">
+      <aside className="relative z-10 w-full md:w-1/3 lg:w-1/4 flex flex-col h-[30vh] md:h-screen bg-gradient-to-b from-[#0b101a] to-[#070a11] border-r border-white/[0.06]">
         <div className="tex-grid absolute inset-0 opacity-40 pointer-events-none"></div>
         <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent pointer-events-none"></div>
 
@@ -960,7 +1250,7 @@ const App: React.FC = () => {
               style={{ borderColor: `${genrePack.accent}66`, color: genrePack.accent, background: `${genrePack.accent}14` }}
               title={language === 'ru' ? 'Активная симуляция за стеклом пульта' : 'Active simulation behind the operator glass'}
             >
-              <span aria-hidden>{genrePack.chip}</span>
+              <GenreIcon genre={selectedGenre} className="h-3.5 w-3.5" />
               <span>{UI.sim_badge}</span>
               <span className="opacity-70">//</span>
               <span>{genrePack.name[language]}</span>
@@ -1070,7 +1360,7 @@ const App: React.FC = () => {
             onClick={handleToggleMusic}
             className={`flex-1 h-8 text-[10px] font-bold uppercase tracking-[0.16em] rounded-lg border transition-all flex items-center justify-center gap-2 ${musicActive ? 'border-emerald-400/40 text-emerald-300 bg-emerald-400/10' : 'border-white/10 text-slate-500 bg-white/[0.02] hover:text-slate-300'}`}
           >
-            <span>{musicActive ? UI.audio_active : UI.audio_muted}</span>
+            <span>{musicActive ? stripLeadingGlyph(UI.audio_active) : UI.audio_muted}</span>
             {musicActive && (
               <div className="flex items-end gap-0.5 h-3">
                 <div className="w-0.5 bg-emerald-400 animate-[pulse_0.4s_infinite]"></div>
@@ -1088,7 +1378,7 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      <div className="w-full md:w-2/3 lg:w-3/4 flex flex-col relative md:h-screen overflow-hidden">
+      <div className="relative z-10 w-full md:w-2/3 lg:w-3/4 flex flex-col md:h-screen overflow-hidden">
         <div className="absolute inset-0 opacity-5 pointer-events-none"
              style={{ backgroundImage: 'linear-gradient(#334155 1px, transparent 1px), linear-gradient(90deg, #334155 1px, transparent 1px)', backgroundSize: '40px 40px' }}>
         </div>
@@ -1111,36 +1401,89 @@ const App: React.FC = () => {
                     <div className="flex flex-col gap-3.5">
                         <button
                             onClick={initializeSession}
-                            className="btn-cyber btn-cyber-primary px-8 py-4 font-display font-bold tracking-[0.06em] text-[#04120b]"
+                            className="btn-cyber btn-cyber-primary px-8 py-4 font-display font-bold tracking-[0.06em] text-[#04120b] flex items-center justify-center gap-3"
                         >
-                            {UI.init_link}
+                            <span className="keycap">1</span>
+                            <span>{stripKeyHint(UI.init_link)}</span>
+                        </button>
+                        <button
+                            onClick={initializeDailySession}
+                            disabled={dailyAttemptsExhausted}
+                            className="screens-daily-button btn-cyber btn-cyber-ghost group px-8 py-3.5 font-display font-bold text-emerald-200 hover:text-white transition-colors flex items-center justify-center gap-3"
+                        >
+                            <span className="keycap">3</span>
+                            <EmblemTile
+                                src={`/assets/worlds/${dailyBrief.genre}.png`}
+                                size={28}
+                                className="border bg-black/20"
+                                style={{ borderColor: `${dailyGenrePack.accent}44` }}
+                            />
+                            <span className="flex min-w-0 flex-col items-start text-left">
+                                <span className="tracking-[0.06em]">{UI.daily_sector}</span>
+                                {dailyAttemptsExhausted ? (
+                                    <>
+                                        <span className="mt-1 max-w-full truncate font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-300/75 tabular-nums">
+                                            {UI.daily_best}: {dailyState.bestScore} · {dailyState.bestEnding || UI.daily_severed}
+                                        </span>
+                                        <span className="mt-0.5 font-mono text-[8px] font-bold uppercase tracking-[0.16em] text-slate-500">
+                                            {UI.daily_tomorrow}
+                                        </span>
+                                    </>
+                                ) : (
+                                    <span className="mt-1 max-w-full truncate font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-300/75 tabular-nums">
+                                        {dailyGenrePack.name[language]} · {dailyAttemptsLeft}/{DAILY_MAX_ATTEMPTS} {UI.daily_left}
+                                    </span>
+                                )}
+                            </span>
                         </button>
                         <button
                             onClick={() => setGameState(GameState.BLACK_MARKET)}
-                            className="btn-cyber btn-cyber-ghost px-8 py-3.5 font-display font-bold tracking-[0.06em] text-emerald-200 hover:text-white transition-colors"
+                            className="btn-cyber btn-cyber-ghost px-8 py-3.5 font-display font-bold tracking-[0.06em] text-emerald-200 hover:text-white transition-colors flex items-center justify-center gap-3"
                         >
-                            {UI.black_market}
+                            <span className="keycap">2</span>
+                            <span>{stripKeyHint(UI.black_market)}</span>
                         </button>
                     </div>
-                    <div className="text-[11px] text-slate-600 pt-6">
+
+                    <button
+                        type="button"
+                        onClick={handleToggleStrictCase}
+                        aria-pressed={!!userProfile.strictCase}
+                        className="mx-auto flex items-center gap-3 rounded-lg border bg-white/[0.02] px-4 py-2 transition-colors"
+                        style={{ borderColor: userProfile.strictCase ? 'rgba(251,191,36,0.4)' : 'rgba(255,255,255,0.1)' }}
+                    >
+                        <span className={`relative h-4 w-7 rounded-full transition-colors ${userProfile.strictCase ? 'bg-amber-400/80' : 'bg-white/15'}`}>
+                            <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all duration-200 ${userProfile.strictCase ? 'left-3.5' : 'left-0.5'}`}></span>
+                        </span>
+                        <span className="text-left">
+                            <span className={`block text-[11px] font-bold uppercase tracking-[0.16em] ${userProfile.strictCase ? 'text-amber-300' : 'text-slate-400'}`}>{UI.perfectionist}</span>
+                            <span className="block text-[9px] text-slate-500 tracking-wide">{UI.perfectionist_desc}</span>
+                        </span>
+                    </button>
+
+                    <p className="text-[11px] leading-relaxed text-slate-500 max-w-sm mx-auto">
+                        <span className="text-emerald-400/80">◆</span> {UI.accuracy_hook}
+                    </p>
+
+                    <div className="text-[11px] text-slate-600 pt-2">
                         {UI.powered_by}
                     </div>
                 </div>
             )}
 
             {gameState === GameState.BLACK_MARKET && (
-                <div className="w-full max-w-5xl h-[80vh] bg-slate-950 border border-purple-500/30 rounded-xl flex flex-col overflow-hidden animate-fade-in-up shadow-[0_0_50px_rgba(88,28,135,0.2)]">
-                    <div className="p-6 border-b border-purple-900/50 bg-slate-900/50 flex justify-between items-center">
+                <div className="screens-cut-panel w-full max-w-5xl h-[80vh] bg-[#0b101a]/95 border border-white/[0.07] flex flex-col overflow-hidden animate-fade-in-up shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_80px_rgba(0,0,0,0.4)] backdrop-blur-xl">
+                    <div className="p-6 border-b border-white/[0.06] bg-white/[0.015] flex justify-between items-end gap-6">
                         <div>
-                            <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-fuchsia-400">{UI.market_title}</h2>
-                            <p className="text-purple-300/60 text-sm">{UI.market_subtitle}</p>
+                            <h2 className="font-display text-3xl font-bold text-white tracking-tight">{UI.market_title}</h2>
+                            <p className="text-slate-500 text-sm mt-1">{UI.market_subtitle}</p>
                         </div>
                         <div className="text-right">
-                            <div className="text-xs text-slate-500 uppercase">{UI.avail_credits}</div>
-                            <div className="text-2xl font-bold text-yellow-400">{Math.floor(userProfile.credits)} {UI.currency_suffix}</div>
+                            <div className="text-[9px] text-slate-500 uppercase tracking-[0.2em]">{UI.avail_credits}</div>
+                            <div className="font-display text-4xl font-bold text-white tabular-nums leading-none mt-1">{Math.floor(userProfile.credits)} <span className="text-sm text-emerald-400">{UI.currency_suffix}</span></div>
                         </div>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                         {(Object.entries(META_UPGRADES) as [UpgradeId, typeof META_UPGRADES.synapticWeave][]).map(([key, def], idx) => {
                             const currentLvl = userProfile.upgrades[key];
                             const nextCost = Math.floor(def.baseCost * (1 + (currentLvl * 0.5)));
@@ -1148,84 +1491,98 @@ const App: React.FC = () => {
                             const canAfford = userProfile.credits >= nextCost;
                             const copy = hubSkin.upgrades[key];
                             return (
-                                <div key={key} className="bg-slate-900/50 border border-slate-800 p-6 rounded-lg relative overflow-hidden group hover:border-purple-500/50 transition-colors">
-                                    <div className="absolute top-2 right-2 text-[10px] text-slate-600 font-mono">[{idx + 1}]</div>
-                                    <div className="flex justify-between items-start mb-4">
-                                        <h3 className="text-xl font-bold text-slate-200">{copy.name[language]}</h3>
-                                        <div className="text-xs font-mono bg-slate-800 px-2 py-1 rounded text-purple-400 border border-purple-500/30">
-                                            Lvl {currentLvl}/{def.maxLevel}
+                                <div key={key} className="screens-cut-card screens-upgrade-card bg-[#0b101a] border border-white/[0.07] relative overflow-hidden group hover:border-emerald-400/25 transition-colors min-h-[210px]">
+                                    <div className="screens-card-art-frame screens-upgrade-art-rail">
+                                        <EmblemTile
+                                            src={`/assets/upgrades/${key}.png`}
+                                            size={56}
+                                            className="screens-card-art border-0 bg-black/20"
+                                            style={{ width: '100%', height: '100%' }}
+                                        />
+                                    </div>
+                                    <span className="keycap absolute top-3 right-3 opacity-60 group-hover:opacity-100">{idx + 1}</span>
+                                    <div className="screens-upgrade-content">
+                                        <div className="screens-upgrade-heading mb-3 pr-9">
+                                            <h3 className="min-w-0 font-display text-lg font-bold text-slate-100 leading-tight">{copy.name[language]}</h3>
+                                            <div className="flex shrink-0 gap-1 pt-1" aria-label={`${UI.level} ${currentLvl}/${def.maxLevel}`}>
+                                                {Array.from({ length: 10 }, (_, levelIndex) => (
+                                                    <span key={levelIndex} className={`h-2 w-2 border ${levelIndex < Math.round((currentLvl / def.maxLevel) * 10) ? 'border-emerald-300 bg-emerald-300 shadow-[0_0_5px_rgba(52,211,153,0.35)]' : 'border-white/10 bg-white/[0.025]'}`} />
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <p className="text-slate-400 text-sm mb-5 flex-1">{copy.desc[language]}</p>
+                                        <div className="screens-upgrade-footer flex flex-col items-start gap-3 mt-auto">
+                                            <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">
+                                                {UI.effect}: <span className="text-emerald-400">{describeUpgradeEffect(key, currentLvl)}</span>
+                                            </div>
+                                            {isMaxed ? (
+                                                <button disabled className="btn-cyber btn-cyber-ghost self-end px-4 py-2 text-[10px] font-bold tracking-[0.14em] text-slate-600 cursor-not-allowed opacity-50">
+                                                    {UI.maxed_out}
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={() => handleBuyUpgrade(key)}
+                                                    disabled={!canAfford}
+                                                    className={`btn-cyber btn-cyber-ghost self-end px-4 py-2 text-[10px] font-bold tracking-[0.12em] flex items-center gap-2 transition-all ${canAfford ? 'text-emerald-200 hover:text-white hover:shadow-[0_0_22px_rgba(52,211,153,0.12)]' : 'text-slate-600 cursor-not-allowed opacity-45'}`}
+                                                >
+                                                    <span>{UI.install}</span>
+                                                    <span className={canAfford ? 'text-emerald-400 tabular-nums' : 'tabular-nums'}>{nextCost} {UI.currency_suffix}</span>
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
-                                    <p className="text-slate-400 text-sm mb-6 h-10">{copy.desc[language]}</p>
-                                    <div className="flex items-center justify-between mt-auto">
-                                        <div className="text-xs text-slate-500">
-                                            {UI.effect}: <span className="text-emerald-400">{describeUpgradeEffect(key, currentLvl)}</span>
-                                        </div>
-                                        {isMaxed ? (
-                                            <button disabled className="px-4 py-2 bg-slate-800 text-slate-500 font-bold rounded cursor-not-allowed border border-slate-700">
-                                                {UI.maxed_out}
-                                            </button>
-                                        ) : (
-                                            <button 
-                                                onClick={() => handleBuyUpgrade(key)}
-                                                disabled={!canAfford}
-                                                className={`px-4 py-2 font-bold rounded flex items-center gap-2 transition-all ${canAfford ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-[0_0_15px_rgba(147,51,234,0.4)]' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}
-                                            >
-                                                <span>{UI.install}</span>
-                                                <span className={canAfford ? 'text-yellow-300' : ''}>{nextCost} {UI.currency_suffix}</span>
-                                            </button>
-                                        )}
-                                    </div>
-                                    <div className="absolute bottom-0 left-0 h-1 bg-purple-500/20 w-full">
-                                        <div className="h-full bg-purple-500 transition-all duration-500" style={{ width: `${(currentLvl / def.maxLevel) * 100}%` }}></div>
+                                    <div className="absolute bottom-0 left-0 h-px bg-emerald-500/10 w-full">
+                                        <div className="h-full bg-emerald-400 transition-all duration-500 shadow-[0_0_7px_rgba(52,211,153,0.55)]" style={{ width: `${(currentLvl / def.maxLevel) * 100}%` }}></div>
                                     </div>
                                 </div>
                             );
                         })}
                     </div>
-                    <div className="p-4 border-t border-slate-800 bg-slate-900/80 flex flex-col items-center gap-2">
+                    <div className="p-4 border-t border-white/[0.06] bg-black/10 flex flex-col items-center gap-3">
                         <p className="text-[11px] text-slate-600 text-center max-w-xl">{UI.genre_persists_note}</p>
                         <button 
                             onClick={() => setGameState(GameState.MENU)}
-                            className="px-6 py-2 text-slate-400 hover:text-white transition-colors uppercase tracking-widest text-sm font-bold"
+                            className="btn-cyber btn-cyber-ghost px-6 py-2 text-slate-400 hover:text-white transition-colors uppercase tracking-[0.16em] text-[10px] font-bold flex items-center gap-2"
                         >
-                            {UI.return_menu}
+                            <span className="keycap">ESC</span>
+                            <span>{stripKeyHint(UI.return_menu)}</span>
                         </button>
                     </div>
                 </div>
             )}
 
             {gameState === GameState.GENRE_SELECTION && (
-                <div className="w-full max-w-4xl bg-slate-900/95 border border-fuchsia-500/25 rounded-xl p-8 backdrop-blur-xl shadow-2xl animate-fade-in-up">
-                    <div className="border-b border-slate-700 pb-4 mb-6 text-center">
-                        <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">{UI.genre_title}</h2>
+                <div className="screens-cut-panel w-full max-w-4xl max-h-[calc(100vh-3rem)] bg-[#0b101a]/95 border border-white/[0.07] p-8 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_80px_rgba(0,0,0,0.4)] animate-fade-in-up flex flex-col overflow-hidden">
+                    <div className="shrink-0 border-b border-white/[0.06] pb-5 mb-6 text-center">
+                        <h2 className="font-display text-3xl font-bold text-white mb-2 tracking-tight">{UI.genre_title}</h2>
                         <p className="text-slate-400 text-sm">{UI.genre_subtitle}</p>
-                        <p className="text-slate-600 text-xs mt-2">{UI.genre_persists_note}</p>
+                        <p className="text-slate-600 text-[10px] uppercase tracking-[0.14em] mt-3">{UI.genre_persists_note}</p>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="min-h-0 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-4 pr-1">
                         {GENRE_ORDER.map((genreId, index) => renderGenreCard(genreId, index))}
                     </div>
                     <button
                         type="button"
                         onClick={() => setGameState(GameState.MENU)}
-                        className="mt-6 w-full py-2 text-slate-500 hover:text-white transition-colors uppercase tracking-widest text-xs font-bold"
+                        className="btn-cyber btn-cyber-ghost mt-6 shrink-0 w-full py-2.5 text-slate-500 hover:text-white transition-colors uppercase tracking-[0.16em] text-[10px] font-bold flex items-center justify-center gap-2"
                     >
-                        {UI.genre_back}
+                        <span className="keycap">ESC</span>
+                        <span>{stripKeyHint(UI.genre_back)}</span>
                     </button>
                 </div>
             )}
 
             {gameState === GameState.STARTER_PERK_SELECTION && (
-                 <div className="w-full max-w-4xl bg-slate-900/95 border border-cyan-500/30 rounded-xl p-8 backdrop-blur-xl shadow-2xl animate-fade-in-up">
-                    <div className="border-b border-slate-700 pb-4 mb-6 text-center">
-                        <div className="inline-flex items-center gap-2 px-3 py-1 mb-3 rounded-full border text-[10px] font-bold tracking-widest uppercase"
+                 <div className="screens-cut-panel w-full max-w-4xl max-h-[calc(100vh-3rem)] overflow-y-auto bg-[#0b101a]/95 border border-white/[0.07] p-8 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_80px_rgba(0,0,0,0.4)] animate-fade-in-up">
+                    <div className="border-b border-white/[0.06] pb-5 mb-6 text-center">
+                        <div className="inline-flex items-center gap-2 px-3 py-1 mb-3 border text-[9px] font-bold tracking-[0.2em] uppercase screens-cut-chip"
                              style={{ borderColor: `${genrePack.accent}66`, color: genrePack.accent, background: `${genrePack.accent}14` }}>
-                            <span>{genrePack.chip}</span>
+                            <GenreIcon genre={selectedGenre} className="h-3.5 w-3.5" />
                             <span>{UI.sim_badge}</span>
                             <span className="opacity-70">//</span>
                             <span>{genrePack.name[language]}</span>
                         </div>
-                        <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">{UI.loadout_title}</h2>
+                        <h2 className="font-display text-3xl font-bold text-white mb-2 tracking-tight">{UI.loadout_title}</h2>
                         <p className="text-slate-400 text-sm">{UI.loadout_subtitle}</p>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1235,49 +1592,46 @@ const App: React.FC = () => {
             )}
 
             {gameState === GameState.LEVEL_COMPLETE && lastLevelReport && (
-                <div className="w-full max-w-3xl bg-slate-900/95 border border-cyan-500/30 rounded-xl p-8 backdrop-blur-xl shadow-2xl animate-fade-in-up">
-                    <div className="border-b border-slate-700 pb-4 mb-6">
+                <div className="screens-cut-panel w-full max-w-4xl max-h-[calc(100vh-3rem)] overflow-y-auto bg-[#0b101a]/95 border border-white/[0.07] p-8 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_80px_rgba(0,0,0,0.4)] animate-fade-in-up">
+                    <div className="border-b border-white/[0.06] pb-5 mb-6">
                         <div className="flex justify-between items-start mb-2">
-                            <h2 className="text-3xl font-bold text-white">{UI.seq_complete}</h2>
+                            <h2 className="font-display text-3xl font-bold text-white">{UI.seq_complete}</h2>
                             <div className="text-right">
-                                <span className="text-xs text-slate-500 uppercase block">{UI.xp_gained}</span>
-                                <span className="text-xl font-bold text-purple-400">+{levelXpGained} XP</span>
+                                <span className="text-[9px] text-slate-500 uppercase tracking-[0.2em] block">{UI.xp_gained}</span>
+                                <span className="font-display text-2xl font-bold text-emerald-300 tabular-nums">+{levelXpGained} XP</span>
                             </div>
                         </div>
-                        <p className="text-cyan-400 text-lg font-mono italic">
+                        <p className="text-slate-300 text-base leading-relaxed italic">
                             "{lastLevelReport.narrativeSummary}"
                         </p>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
-                        <div className="bg-slate-800 p-4 rounded text-center">
-                            <div className="text-xs text-slate-500 uppercase">{UI.avg_speed}</div>
-                            <div className="text-2xl font-bold text-white">{Math.round(lastLevelReport.avgWpm)} <span className="text-xs text-slate-500">{UI.wpm}</span></div>
+                    <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-8">
+                        <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]">
+                            <div className="font-display text-3xl font-bold text-white tabular-nums leading-none">{Math.round(lastLevelReport.avgWpm)}</div>
+                            <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.avg_speed} · {UI.wpm}</div>
                         </div>
-                        <div className="bg-slate-800 p-4 rounded text-center">
-                             <div className="text-xs text-slate-500 uppercase">{UI.credits}</div>
-                             <div className="text-2xl font-bold text-yellow-400">+{lastLevelReport.creditsEarned}</div>
+                        <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]">
+                             <div className="font-display text-3xl font-bold text-white tabular-nums leading-none">+{lastLevelReport.creditsEarned}</div>
+                             <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.credits}</div>
                         </div>
-                        <div className="bg-slate-800 p-4 rounded text-center">
-                             <div className="text-xs text-slate-500 uppercase">{UI.heat}</div>
-                             <div className="text-2xl font-bold text-red-300">{Math.floor(lastLevelReport.traceLevel)}%</div>
+                        <div className="screens-stat-tile p-4 text-center border border-amber-400/15 bg-amber-400/[0.025]">
+                             <div className="font-display text-3xl font-bold text-amber-300 tabular-nums leading-none">{Math.floor(lastLevelReport.traceLevel)}%</div>
+                             <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.heat}</div>
                         </div>
-                        <div className="bg-slate-800 p-4 rounded text-center">
-                             <div className="text-xs text-slate-500 uppercase">{UI.health}</div>
-                             <div className="text-2xl font-bold text-emerald-400">{lastLevelReport.finalHealth}</div>
+                        <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]">
+                             <div className="font-display text-3xl font-bold text-white tabular-nums leading-none">{lastLevelReport.finalHealth}</div>
+                             <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.health}</div>
                         </div>
-                        <div className="bg-slate-800 p-4 rounded text-center">
-                             <div className="text-xs text-slate-500 uppercase">{UI.evidence}</div>
-                             <div className="text-2xl font-bold text-emerald-300">{lastLevelReport.mission?.evidence ?? campaignState.evidence}</div>
+                        <div className="screens-stat-tile p-4 text-center border border-emerald-400/15 bg-emerald-400/[0.025]">
+                             <div className="font-display text-3xl font-bold text-emerald-300 tabular-nums leading-none">{lastLevelReport.mission?.evidence ?? campaignState.evidence}</div>
+                             <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.evidence}</div>
                         </div>
-                        <div className="bg-slate-800 p-4 rounded text-center">
-                             <div className="text-xs text-slate-500 uppercase">{UI.trust}</div>
-                             <div className="text-2xl font-bold text-cyan-300">{lastLevelReport.mission?.trust ?? campaignState.trust}</div>
+                        <div className="screens-stat-tile p-4 text-center border border-sky-400/15 bg-sky-400/[0.025]">
+                             <div className="font-display text-3xl font-bold text-sky-300 tabular-nums leading-none">{lastLevelReport.mission?.trust ?? campaignState.trust}</div>
+                             <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.trust}</div>
                         </div>
                     </div>
-                    <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                        <span className="w-2 h-8 bg-purple-500 rounded-sm"></span>
-                        {UI.select_upgrade}
-                    </h3>
+                    <h3 className="font-display text-lg font-bold text-white mb-4 tracking-[0.04em]">{UI.select_upgrade}</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {offeredPerks.map((perk, index) => renderPerkCard(perk, index, false))}
                     </div>
@@ -1312,27 +1666,28 @@ const App: React.FC = () => {
                     onMissionUpdate={setCampaignState}
                     onCaptureFrame={captureComicFrame}
                     genre={selectedGenre}
+                    strictCase={!!userProfile.strictCase}
                 />
             )}
 
             {gameState === GameState.VICTORY && victoryReport && (
-                <div className="w-full max-w-3xl bg-slate-900/90 p-10 rounded-2xl border border-emerald-500/40 backdrop-blur-xl shadow-[0_0_60px_rgba(16,185,129,0.18)] animate-fade-in-up">
-                    <div className="text-center border-b border-slate-700 pb-6 mb-6">
-                        <div className="inline-block px-3 py-1 bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 rounded-full text-xs tracking-widest mb-4">
+                <div className="screens-cut-panel w-full max-w-3xl bg-[#0b101a]/95 p-10 border border-emerald-400/35 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_60px_rgba(16,185,129,0.12)] animate-fade-in-up">
+                    <div className="text-center border-b border-white/[0.07] pb-6 mb-6">
+                        <div className="screens-cut-chip inline-block px-3 py-1 bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 text-[9px] uppercase tracking-[0.2em] mb-4">
                             {genrePack.ui.victoryTitle[language]}
                         </div>
-                        <h2 className="text-4xl font-bold text-white mb-3">{victoryReport.endingTitle}</h2>
+                        <h2 className="font-display text-4xl font-bold text-white mb-3 tracking-tight">{victoryReport.endingTitle}</h2>
                         <p className="text-slate-300 text-lg italic">"{victoryReport.narrativeSummary}"</p>
                         <p className="text-slate-500 text-sm mt-3">{UI.victory_subtitle}</p>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                        <div className="bg-slate-800/70 p-4 rounded text-center border border-slate-700"><div className="text-xs text-slate-500 uppercase">{UI.evidence}</div><div className="text-2xl font-bold text-emerald-300">{victoryReport.mission?.evidence ?? campaignState.evidence}</div></div>
-                        <div className="bg-slate-800/70 p-4 rounded text-center border border-slate-700"><div className="text-xs text-slate-500 uppercase">{UI.heat}</div><div className="text-2xl font-bold text-red-300">{victoryReport.mission?.heat ?? campaignState.heat}%</div></div>
-                        <div className="bg-slate-800/70 p-4 rounded text-center border border-slate-700"><div className="text-xs text-slate-500 uppercase">{UI.trust}</div><div className="text-2xl font-bold text-cyan-300">{victoryReport.mission?.trust ?? campaignState.trust}</div></div>
-                        <div className="bg-slate-800/70 p-4 rounded text-center border border-slate-700"><div className="text-xs text-slate-500 uppercase">{UI.route}</div><div className="text-xl font-bold text-white uppercase">{victoryReport.route}</div></div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6">
+                        <div className="screens-stat-tile p-4 text-center border border-emerald-400/15 bg-emerald-400/[0.025]"><div className="font-display text-3xl font-bold text-emerald-300 tabular-nums leading-none">{victoryReport.mission?.evidence ?? campaignState.evidence}</div><div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.evidence}</div></div>
+                        <div className="screens-stat-tile p-4 text-center border border-amber-400/15 bg-amber-400/[0.025]"><div className="font-display text-3xl font-bold text-amber-300 tabular-nums leading-none">{victoryReport.mission?.heat ?? campaignState.heat}%</div><div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.heat}</div></div>
+                        <div className="screens-stat-tile p-4 text-center border border-sky-400/15 bg-sky-400/[0.025]"><div className="font-display text-3xl font-bold text-sky-300 tabular-nums leading-none">{victoryReport.mission?.trust ?? campaignState.trust}</div><div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.trust}</div></div>
+                        <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]"><div className="font-display text-xl font-bold text-white uppercase leading-tight">{victoryReport.route}</div><div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.route}</div></div>
                     </div>
-                    <div className="bg-slate-950/60 border border-slate-800 rounded-lg p-4 mb-6">
-                        <div className="text-xs text-slate-500 uppercase mb-2">{UI.operation_dossier}</div>
+                    <div className="screens-cut-card bg-black/20 border border-white/[0.07] p-4 mb-6">
+                        <div className="text-[9px] text-slate-500 uppercase tracking-[0.2em] mb-3">{UI.operation_dossier}</div>
                         <div className="space-y-1 text-sm text-slate-400">
                             {(victoryReport.mission?.consequenceLog || campaignState.consequenceLog).slice(0, 4).map((line, index) => (
                                 <div key={index} className="border-l border-emerald-500/30 pl-3">{line}</div>
@@ -1350,34 +1705,35 @@ const App: React.FC = () => {
                         )}
                         <button
                             onClick={() => setGameState(GameState.MENU)}
-                            className="btn-cyber btn-cyber-primary flex-1 py-3.5 font-display font-bold tracking-[0.06em] text-[#04120b]"
+                            className="btn-cyber btn-cyber-primary flex-1 py-3.5 font-display font-bold tracking-[0.06em] text-[#04120b] flex items-center justify-center gap-3"
                         >
-                            {UI.new_run}
+                            <span className="keycap">SPACE</span>
+                            <span>{stripKeyHint(UI.new_run)}</span>
                         </button>
                     </div>
                 </div>
             )}
 
             {gameState === GameState.GAME_OVER && (
-                <div className="text-center space-y-6 bg-slate-900/80 p-10 rounded-2xl border border-red-900/50 backdrop-blur-xl max-w-lg w-full shadow-2xl animate-fade-in-up">
-                    <h2 className="text-5xl font-bold text-red-500 tracking-tighter">{UI.critical_failure}</h2>
+                <div className="screens-cut-panel text-center space-y-6 bg-[#0b101a]/95 p-10 border border-rose-500/40 backdrop-blur-xl max-w-lg w-full shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_60px_rgba(244,63,94,0.12)] animate-fade-in-up">
+                    <h2 className="font-display text-5xl font-bold text-rose-500 tracking-tight">{UI.critical_failure}</h2>
                     <p className="text-slate-300">{genrePack.ui.connectionSevered[language]}</p>
-                    <div className="grid grid-cols-2 gap-4 py-4">
-                        <div className="bg-slate-800/50 p-4 rounded border border-slate-700">
-                            <div className="text-xs text-slate-500 uppercase">{UI.reached}</div>
-                            <div className="text-xl font-bold text-white">{UI.level} {finalStats?.level || 1}</div>
+                    <div className="grid grid-cols-2 gap-2 py-4">
+                        <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]">
+                            <div className="font-display text-3xl font-bold text-white tabular-nums leading-none">{finalStats?.level || 1}</div>
+                            <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.reached} · {UI.level}</div>
                         </div>
-                        <div className="bg-slate-800/50 p-4 rounded border border-slate-700">
-                            <div className="text-xs text-slate-500 uppercase">{UI.score}</div>
-                            <div className="text-2xl font-bold text-emerald-400">{finalStats?.score || 0}</div>
+                        <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]">
+                            <div className="font-display text-3xl font-bold text-white tabular-nums leading-none">{finalStats?.score || 0}</div>
+                            <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.score}</div>
                         </div>
-                        <div className="bg-slate-800/50 p-4 rounded border border-slate-700">
-                            <div className="text-xs text-slate-500 uppercase">{UI.evidence}</div>
-                            <div className="text-2xl font-bold text-emerald-300">{finalStats?.mission?.evidence ?? campaignState.evidence}</div>
+                        <div className="screens-stat-tile p-4 text-center border border-emerald-400/15 bg-emerald-400/[0.025]">
+                            <div className="font-display text-3xl font-bold text-emerald-300 tabular-nums leading-none">{finalStats?.mission?.evidence ?? campaignState.evidence}</div>
+                            <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.evidence}</div>
                         </div>
-                        <div className="bg-slate-800/50 p-4 rounded border border-slate-700">
-                            <div className="text-xs text-slate-500 uppercase">{UI.heat}</div>
-                            <div className="text-2xl font-bold text-red-300">{finalStats?.mission?.heat ?? campaignState.heat}%</div>
+                        <div className="screens-stat-tile p-4 text-center border border-amber-400/15 bg-amber-400/[0.025]">
+                            <div className="font-display text-3xl font-bold text-amber-300 tabular-nums leading-none">{finalStats?.mission?.heat ?? campaignState.heat}%</div>
+                            <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.heat}</div>
                         </div>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-3">
@@ -1391,9 +1747,10 @@ const App: React.FC = () => {
                         )}
                         <button
                             onClick={() => setGameState(GameState.MENU)}
-                            className="btn-cyber btn-cyber-danger flex-1 py-3.5 font-display font-bold tracking-[0.06em] text-rose-200 hover:text-white transition-colors"
+                            className="btn-cyber btn-cyber-danger flex-1 py-3.5 font-display font-bold tracking-[0.06em] text-rose-200 hover:text-white transition-colors flex items-center justify-center gap-3"
                         >
-                            {UI.main_menu}
+                            <span className="keycap">SPACE</span>
+                            <span>{stripKeyHint(UI.main_menu)}</span>
                         </button>
                     </div>
                 </div>
@@ -1412,6 +1769,7 @@ const App: React.FC = () => {
             tagline={data.tagline}
             stats={data.stats}
             shareText={data.shareText}
+            dailyLabel={isDailyRun && currentDailyDateLabel ? `${UI.daily_sector} · ${currentDailyDateLabel}` : undefined}
             language={language}
             ui={{
               building: UI.comic_building,

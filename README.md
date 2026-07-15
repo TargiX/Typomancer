@@ -1,4 +1,6 @@
-# Narrative Flow — Operation Black Ledger
+# Typomancer — Operation Black Ledger
+
+[Play Typomancer](https://typomancer.xyz) · [Source](https://github.com/TargiX/Typomancer)
 
 A consequence-driven RPG typing game. You play as Agent Nox, a field hacker trying to steal and publish the Black Ledger before a megacorp severs the link.
 
