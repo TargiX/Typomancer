@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { StorySegment, BranchingStory, GameStats, StoryMood, GameModifiers, SegmentType, DecisionPoint, Language, MissionState, DecisionImpact, ComicFrame, StoryGenreId } from '../types';
 import { generateNextSegments, generateSceneImage, generateStrategicDecision } from '../services/geminiService';
 import { audioEngine } from '../services/audioEngine';
-import { DECISION_MADE, SEGMENT_COMPLETE, track } from '../services/analytics';
 
 const CRACK_PATHS = [
     "M 10,10 L 30,30 L 25,45", 
@@ -665,14 +664,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       spawnDelta(UI.trust, trustDelta, '#38bdf8');
       if (corruptionDelta) spawnDelta(UI.corruption, corruptionDelta, '#a78bfa');
 
-      track(SEGMENT_COMPLETE, {
-          performance,
-          wpm,
-          round,
-          level: currentLevel,
-          type: segment.type
-      });
-
       return { meta, evidenceDelta, heatDelta, traceDelta };
   };
 
@@ -749,7 +740,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const handleDecisionSelect = (index: number) => {
       if (!nextDecision) return;
       const choice = nextDecision.options[index];
-      track(DECISION_MADE, { choice: choice.id || choice.type });
       const meta = applyDecisionImpact(choice.impact, choice.text, choice.id || choice.type);
       addToLog(`[DECISION] ${nextDecision.introText}`, 'neutral', 0, 0, 0, choice.preview || meta);
       addToLog(`> ${choice.text}`, 'neutral', 0, 0, 0, meta, choice.outcome.type);

@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ComicFrame, Language } from '../types';
-import { COMIC_COPY, COMIC_DOWNLOAD, COMIC_OPEN, COMIC_SHARE, track } from '../services/analytics';
 
 interface StatChip {
   label: string;
@@ -344,13 +343,8 @@ const RunComic: React.FC<RunComicProps> = ({
   const [status, setStatus] = useState<'rendering' | 'ready' | 'error'>('rendering');
   const [canShare, setCanShare] = useState(false);
   const [copied, setCopied] = useState(false);
-  const comicOpenTrackedRef = useRef(false);
 
   useEffect(() => {
-    if (!comicOpenTrackedRef.current) {
-      comicOpenTrackedRef.current = true;
-      track(COMIC_OPEN);
-    }
     let cancelled = false;
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -398,12 +392,10 @@ const RunComic: React.FC<RunComicProps> = ({
   };
 
   const handleDownload = async () => {
-    track(COMIC_DOWNLOAD);
     await downloadComic();
   };
 
   const handleShare = async () => {
-    track(COMIC_SHARE);
     const blob = await toBlob();
     if (!blob) return;
     const file = new File([blob], fileName, { type: 'image/png' });
@@ -416,7 +408,6 @@ const RunComic: React.FC<RunComicProps> = ({
   };
 
   const handleCopy = async () => {
-    track(COMIC_COPY);
     try {
       const blob = await toBlob();
       if (!blob || !navigator.clipboard || !('write' in navigator.clipboard)) return;

@@ -5,7 +5,6 @@ import { GENRE_ORDER, getGenrePack } from './services/genreConfig';
 import { getGenreSkin, PerkGroupId, UpgradeId } from './services/genreSkin';
 import { DAILY_MAX_ATTEMPTS, DailyBrief, getDailyBrief, getDailyState, recordDailyAttempt } from './services/dailyMode';
 import { audioEngine } from './services/audioEngine';
-import { DAILY_ATTEMPT, RUN_END, RUN_START, WORLD_SELECTED, track } from './services/analytics';
 import TypingEngine from './components/TypingEngine';
 import RunComic from './components/RunComic';
 
@@ -541,8 +540,6 @@ const App: React.FC = () => {
   const currentDailyIdRef = useRef<string | null>(null);
   const activeDailyBriefRef = useRef<DailyBrief>(dailyBrief);
   const dailyAttemptRecordedRef = useRef(false);
-  const runStartTrackedRef = useRef(false);
-  const runEndTrackedRef = useRef(false);
   const totalScoreRef = useRef(0);
 
   const logEndRef = useRef<HTMLDivElement>(null);
@@ -642,10 +639,6 @@ const App: React.FC = () => {
     if (finalScore === null || endingTitle === null) return;
     dailyAttemptRecordedRef.current = true;
     const recorded = recordDailyAttempt(currentDailyId, finalScore, endingTitle);
-    track(DAILY_ATTEMPT, {
-      attemptsUsed: recorded.attemptsUsed,
-      bestScore: recorded.bestScore
-    });
     if (currentDailyId === dailyBrief.dailyId) setDailyState(recorded);
   }, [currentDailyId, dailyBrief.dailyId, finalStats, gameState, genrePack, isDailyRun, language, totalScore, victoryReport]);
 
@@ -818,8 +811,6 @@ const App: React.FC = () => {
           .map(d => generatePerkObject(d, 0));
       setOfferedPerks(starters);
       dailyAttemptRecordedRef.current = false;
-      runStartTrackedRef.current = false;
-      runEndTrackedRef.current = false;
   };
 
   const initializeSession = () => {
@@ -854,7 +845,6 @@ const App: React.FC = () => {
   };
 
   const handleGenreSelect = (genre: StoryGenreId) => {
-      track(WORLD_SELECTED, { genre });
       setSelectedGenre(genre);
       runGenreRef.current = genre;
       setGameState(GameState.STARTER_PERK_SELECTION);
@@ -882,14 +872,6 @@ const App: React.FC = () => {
     setInitialSegment(start);
     setCharacterDesc(charProfile);
     setGameState(GameState.PLAYING);
-    if (!runStartTrackedRef.current) {
-      runStartTrackedRef.current = true;
-      track(RUN_START, {
-        genre,
-        daily: isDailyRunRef.current,
-        language
-      });
-    }
   };
 
   const getEndingTitle = (report: LevelReport): string => {
@@ -945,19 +927,6 @@ const App: React.FC = () => {
       if (isFinal) {
           const endingTitle = getEndingTitle(report);
           setVictoryReport({ ...report, endingTitle });
-          if (!runEndTrackedRef.current) {
-              runEndTrackedRef.current = true;
-              track(RUN_END, {
-                  outcome: 'victory',
-                  score: totalScoreRef.current,
-                  level: finalRoundStats.level,
-                  evidence: mission.evidence,
-                  heat: mission.heat,
-                  ending: endingTitle,
-                  daily: isDailyRunRef.current,
-                  genre: runGenreRef.current
-              });
-          }
           setGameState(GameState.VICTORY);
       } else {
           setGameState(GameState.LEVEL_COMPLETE);
@@ -1014,19 +983,6 @@ const App: React.FC = () => {
         totalXp: prev.totalXp + bonusXp,
         credits: Math.floor((prev.credits || 0) + (stats.credits || 0))
     }));
-    if (!runEndTrackedRef.current) {
-        runEndTrackedRef.current = true;
-        track(RUN_END, {
-            outcome: 'defeat',
-            score: finalScore,
-            level: stats.level,
-            evidence: mission.evidence,
-            heat: mission.heat,
-            ending: isDailyRunRef.current ? TRANSLATIONS[language].daily_severed : TRANSLATIONS[language].critical_failure,
-            daily: isDailyRunRef.current,
-            genre: runGenreRef.current
-        });
-    }
     setGameState(GameState.GAME_OVER);
   };
 
