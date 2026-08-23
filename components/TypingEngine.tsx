@@ -11,6 +11,8 @@ import {
   getTypingAccuracy,
   isLowHealth
 } from '../services/gameRules';
+import { captureProductEvent, getDeviceClass } from '../services/productAnalytics';
+import type { TypingObservation } from '../services/typingTraining';
 
 const CRACK_PATHS = [
     "M 10,10 L 30,30 L 25,45", 
@@ -72,6 +74,7 @@ interface TypingEngineProps {
   onCaptureFrame?: (frame: ComicFrame) => void;
   genre: StoryGenreId;
   strictCase?: boolean;
+  onTypingObservation?: (observation: TypingObservation) => void;
 }
 
 const TYPE_CUE_MS = 1500;
@@ -138,7 +141,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     onMissionUpdate,
     onCaptureFrame,
     genre,
-    strictCase = false
+    strictCase = false,
+    onTypingObservation
 }) => {
   const [history, setHistory] = useState<StorySegment[]>([]);
   const [activeSegment, setActiveSegment] = useState<StorySegment>(initialSegment);
@@ -200,6 +204,21 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     }
   });
   const skipTypeCueRef = useRef(false);
+  const trackedReadySkillsRef = useRef<Set<string>>(new Set());
+  const lastKeystrokeAtRef = useRef<number | null>(null);
+
+  useEffect(() => {
+      lastKeystrokeAtRef.current = null;
+  }, [activeSegment]);
+
+  const captureSkillEvent = (event: 'typomancer_skill_became_ready' | 'typomancer_skill_used', skill: string) => {
+      captureProductEvent(event, {
+          language,
+          device_class: getDeviceClass(typeof window !== 'undefined' ? window.innerWidth : 1280),
+          skill,
+          level: currentLevel
+      });
+  };
 
   // Operator deck chrome — always cyberpunk (Animus frame). Genre only changes the story feed.
   const T = {
@@ -422,6 +441,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   ]);
 
   const activateOverclock = () => {
+      if (isOverclockActive || overclockCharge < modifiers.maxOverclock) return;
+      captureSkillEvent('typomancer_skill_used', 'focus');
       setIsOverclockActive(true);
       setOverclockCharge(0);
       if (overclockTimerRef.current) clearTimeout(overclockTimerRef.current);
@@ -439,6 +460,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const useFirewall = () => {
       const cost = FIREWALL_COST();
       if (isOverclockActive || isDecisionActive || overclockCharge < cost) return;
+      captureSkillEvent('typomancer_skill_used', 'firewall');
       setOverclockCharge(c => Math.max(0, c - cost));
       firewallGraceRef.current += 3;
       setFirewallGrace(firewallGraceRef.current);
@@ -449,10 +471,21 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const usePurgeTrace = () => {
       const cost = PURGE_COST();
       if (isOverclockActive || isDecisionActive || overclockCharge < cost) return;
+      captureSkillEvent('typomancer_skill_used', 'purge');
       setOverclockCharge(c => Math.max(0, c - cost));
       setTracePercent(p => clamp(p - 25));
       inputRef.current?.focus();
   };
+
+  useEffect(() => {
+      const readySkills = getReadyActiveSkills(overclockCharge, modifiers.maxOverclock, isOverclockActive);
+      for (const skill of readySkills) {
+          const key = `${currentLevel}:${skill}`;
+          if (trackedReadySkillsRef.current.has(key)) continue;
+          trackedReadySkillsRef.current.add(key);
+          captureSkillEvent('typomancer_skill_became_ready', skill);
+      }
+  }, [currentLevel, isOverclockActive, modifiers.maxOverclock, overclockCharge]);
 
   useLayoutEffect(() => {
     if (activeRef.current) {
@@ -759,6 +792,14 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     if (charIndex >= 0 && val.length > inputValue.length) {
        const expectedChar = activeSegment.text[charIndex];
        const typedChar = val[charIndex];
+       const keyTime = Date.now();
+       onTypingObservation?.({
+         expected: expectedChar,
+         previousExpected: charIndex > 0 ? activeSegment.text[charIndex - 1] : undefined,
+         correct: charsMatch(typedChar, expectedChar, strictCase),
+         latencyMs: lastKeystrokeAtRef.current === null ? 0 : keyTime - lastKeystrokeAtRef.current
+       });
+       lastKeystrokeAtRef.current = keyTime;
 
        if (!charsMatch(typedChar, expectedChar, strictCase)) {
          // Firewall shield charges soak mistakes first (persist across segments).

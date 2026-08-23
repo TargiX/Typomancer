@@ -2,10 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { Language } from '../types';
 import { createCalibrationResult, type CalibrationResult } from '../services/playerProgress';
+import type { TypingObservation } from '../services/typingTraining';
 
 interface CalibrationPanelProps {
   language: Language;
-  onComplete: (result: CalibrationResult) => void;
+  mode?: 'calibration' | 'drill';
+  drillPrompt?: string;
+  onComplete: (result: CalibrationResult, observations: TypingObservation[]) => void;
   onSkip: () => void;
 }
 
@@ -23,7 +26,12 @@ const COPY = {
     speed: 'LIVE WPM',
     accuracy: 'ACCURACY',
     skip: 'SKIP · USE BALANCED',
-    note: 'This stays on this device. Recalibrate any time from Operator Record.'
+    note: 'This stays on this device. Recalibrate any time from Operator Record.',
+    drillEyebrow: 'TARGETED DRILL',
+    drillTitle: 'Train weak patterns',
+    drillDescription: 'This transmission repeats the keys and pairs that cost you the most control.',
+    cancel: 'CANCEL DRILL',
+    drillNote: 'Only per-key timing and mistakes stay locally. The words you type are never stored.'
   },
   ru: {
     eyebrow: 'КЛАВИАТУРНАЯ СИГНАТУРА',
@@ -33,7 +41,12 @@ const COPY = {
     speed: 'ТЕКУЩАЯ СКОРОСТЬ',
     accuracy: 'ТОЧНОСТЬ',
     skip: 'ПРОПУСТИТЬ · СРЕДНИЙ РЕЖИМ',
-    note: 'Данные остаются на этом устройстве. Повторить настройку можно в Досье оператора.'
+    note: 'Данные остаются на этом устройстве. Повторить настройку можно в Досье оператора.',
+    drillEyebrow: 'ТОЧЕЧНАЯ ТРЕНИРОВКА',
+    drillTitle: 'Отработай слабые сочетания',
+    drillDescription: 'Эта передача повторяет клавиши и пары, на которых ты чаще теряешь контроль.',
+    cancel: 'ОТМЕНИТЬ ТРЕНИРОВКУ',
+    drillNote: 'Локально остаются только время клавиш и ошибки. Набранные слова не сохраняются.'
   }
 };
 
@@ -45,13 +58,15 @@ const normalizeChar = (character: string): string => {
   return character.toLowerCase();
 };
 
-const CalibrationPanel: React.FC<CalibrationPanelProps> = ({ language, onComplete, onSkip }) => {
-  const prompt = PROMPTS[language];
+const CalibrationPanel: React.FC<CalibrationPanelProps> = ({ language, mode = 'calibration', drillPrompt, onComplete, onSkip }) => {
+  const prompt = mode === 'drill' && drillPrompt ? drillPrompt : PROMPTS[language];
   const ui = COPY[language];
   const [value, setValue] = useState('');
   const [mistakes, setMistakes] = useState(0);
   const [now, setNow] = useState(Date.now());
   const startedAtRef = useRef<number | null>(null);
+  const lastKeystrokeAtRef = useRef<number | null>(null);
+  const observationsRef = useRef<TypingObservation[]>([]);
   const completedRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -80,11 +95,20 @@ const CalibrationPanel: React.FC<CalibrationPanelProps> = ({ language, onComplet
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const next = event.target.value.slice(0, prompt.length);
-    if (startedAtRef.current === null && next.length > 0) startedAtRef.current = Date.now();
+    const keyTime = Date.now();
+    if (startedAtRef.current === null && next.length > 0) startedAtRef.current = keyTime;
     if (next.length > value.length) {
       let newMistakes = 0;
       for (let index = value.length; index < next.length; index += 1) {
-        if (normalizeChar(next[index]) !== normalizeChar(prompt[index])) newMistakes += 1;
+        const correct = normalizeChar(next[index]) === normalizeChar(prompt[index]);
+        if (!correct) newMistakes += 1;
+        observationsRef.current.push({
+          expected: prompt[index],
+          previousExpected: index > 0 ? prompt[index - 1] : undefined,
+          correct,
+          latencyMs: lastKeystrokeAtRef.current === null ? 0 : keyTime - lastKeystrokeAtRef.current
+        });
+        lastKeystrokeAtRef.current = keyTime;
       }
       if (newMistakes > 0) setMistakes((current) => current + newMistakes);
     }
@@ -101,7 +125,7 @@ const CalibrationPanel: React.FC<CalibrationPanelProps> = ({ language, onComplet
             .filter((index) => normalizeChar(next[index]) !== normalizeChar(prompt[index])).length
         : 0)) / prompt.length) * 100));
       const finalWpm = Math.round(((prompt.length / 5) / (elapsed / 60_000)));
-      onComplete(createCalibrationResult(finalWpm, finalAccuracy, elapsed));
+      onComplete(createCalibrationResult(finalWpm, finalAccuracy, elapsed), observationsRef.current);
     }
   };
 
@@ -109,9 +133,9 @@ const CalibrationPanel: React.FC<CalibrationPanelProps> = ({ language, onComplet
     <section className="calibration-panel screens-cut-panel" aria-labelledby="calibration-title" onClick={() => inputRef.current?.focus()}>
       <div className="calibration-scanline" aria-hidden="true" />
       <header className="calibration-header">
-        <span>{ui.eyebrow}</span>
-        <h2 id="calibration-title">{ui.title}</h2>
-        <p>{ui.description}</p>
+        <span>{mode === 'drill' ? ui.drillEyebrow : ui.eyebrow}</span>
+        <h2 id="calibration-title">{mode === 'drill' ? ui.drillTitle : ui.title}</h2>
+        <p>{mode === 'drill' ? ui.drillDescription : ui.description}</p>
       </header>
 
       <div className="calibration-readout" aria-live="polite">
@@ -141,13 +165,13 @@ const CalibrationPanel: React.FC<CalibrationPanelProps> = ({ language, onComplet
         autoCorrect="off"
         autoCapitalize="off"
         spellCheck={false}
-        aria-label={ui.description}
+        aria-label={mode === 'drill' ? ui.drillDescription : ui.description}
       />
 
       <footer className="calibration-footer">
-        <p>{ui.note}</p>
+        <p>{mode === 'drill' ? ui.drillNote : ui.note}</p>
         <button type="button" onClick={(event) => { event.stopPropagation(); onSkip(); }} className="btn-cyber btn-cyber-ghost">
-          {ui.skip}
+          {mode === 'drill' ? ui.cancel : ui.skip}
         </button>
       </footer>
     </section>

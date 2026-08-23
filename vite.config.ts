@@ -44,12 +44,15 @@ export default defineConfig(({ mode }) => ({
   envDir: projectDir,
   plugins: [react(), localGeminiApi(mode)],
   server: {
-    host: '0.0.0.0',
-    port: 8080,
+    host: process.env.HOST || '127.0.0.1',
+    port: Number(process.env.PORT) || 8080,
+    strictPort: true,
+    allowedHosts: ['.localhost'],
   },
   preview: {
-    host: '0.0.0.0',
-    port: 8080,
-    allowedHosts: true,
+    host: process.env.HOST || '127.0.0.1',
+    port: Number(process.env.PORT) || 8080,
+    strictPort: true,
+    allowedHosts: ['.localhost'],
   },
 }));

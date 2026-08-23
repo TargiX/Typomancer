@@ -4,7 +4,7 @@ import { generateStoryStart, generateCharacterProfile, generateLevelSummary, gen
 import { GENRE_ORDER, getGenrePack } from './services/genreConfig';
 import { getGenreSkin, PerkGroupId, UpgradeId } from './services/genreSkin';
 import { DAILY_MAX_ATTEMPTS, DailyBrief, getDailyBrief, getDailyState, recordDailyAttempt } from './services/dailyMode';
-import { CAMPAIGN_SECTORS, getStealthLevel, getTypingFocus, summarizeSector } from './services/gameRules';
+import { CAMPAIGN_SECTORS, getStealthLevel, getTypingAccuracy, getTypingFocus, summarizeSector } from './services/gameRules';
 import { RunCheckpoint, clearRunCheckpoint, loadRunCheckpoint, saveRunCheckpoint } from './services/runCheckpoint';
 import {
   createBalancedCalibration,
@@ -21,6 +21,22 @@ import TypingEngine from './components/TypingEngine';
 import RunComic from './components/RunComic';
 import CalibrationPanel from './components/CalibrationPanel';
 import OperatorRecord from './components/OperatorRecord';
+import {
+  captureProductEvent,
+  getAccuracyBucket,
+  getDeviceClass,
+  getDurationBucket,
+  getMetricBucket
+} from './services/productAnalytics';
+import {
+  buildTargetedDrill,
+  getWeakPatterns,
+  loadTypingTraining,
+  recordTypingSession,
+  saveTypingTraining,
+  type TypingObservation
+} from './services/typingTraining';
+import { buildChallengeUrl, parseChallenge } from './services/challenge';
 
 // --- TRANSLATIONS ---
 const TRANSLATIONS = {
@@ -46,9 +62,16 @@ const TRANSLATIONS = {
         daily_best: "BEST",
         daily_tomorrow: "BACK TOMORROW",
         daily_severed: "SEVERED",
+        challenge_title: "INCOMING PLAYER CHALLENGE",
+        challenge_target: "TARGET SCORE",
+        challenge_accept: "ACCEPT SAME DAILY SECTOR",
+        challenge_expired: "This challenge belongs to an older Daily Sector. Today’s sector is ready instead.",
+        challenge_share: "CHALLENGE A FRIEND",
+        challenge_copied: "CHALLENGE LINK COPIED",
         black_market: "[2] THE BLACK MARKET",
         operator_record: "[4] OPERATOR RECORD",
         powered_by: "Works with Gemini, but has a full local campaign fallback",
+        privacy_note: "Anonymous play metrics only. Typed text never leaves this device for analytics.",
         perfectionist: "PERFECTIONIST · +30% XP",
         perfectionist_desc: "Case-sensitive typing. Typos are never forgiven.",
         accuracy_hook: "Most typing games shrug off mistakes. Here every typo bends your story — the ultimate accuracy trainer.",
@@ -142,9 +165,16 @@ const TRANSLATIONS = {
         daily_best: "ЛУЧШИЙ",
         daily_tomorrow: "ЗАВТРА НОВЫЙ СЕКТОР",
         daily_severed: "ОБРЫВ",
+        challenge_title: "ВХОДЯЩИЙ ВЫЗОВ ИГРОКА",
+        challenge_target: "ЦЕЛЕВОЙ СЧЁТ",
+        challenge_accept: "ПРИНЯТЬ ТОТ ЖЕ ДНЕВНОЙ СЕКТОР",
+        challenge_expired: "Этот вызов был для прошлого Дневного сектора. Сегодняшний уже готов.",
+        challenge_share: "БРОСИТЬ ВЫЗОВ ДРУГУ",
+        challenge_copied: "ССЫЛКА НА ВЫЗОВ СКОПИРОВАНА",
         black_market: "[2] ЧЕРНЫЙ РЫНОК",
         operator_record: "[4] ДОСЬЕ ОПЕРАТОРА",
         powered_by: "Работает с Gemini, но имеет полноценную локальную кампанию",
+        privacy_note: "Только анонимные метрики игры. Набранный текст не уходит с устройства в аналитику.",
         perfectionist: "ПЕРФЕКЦИОНИСТ · +30% XP",
         perfectionist_desc: "Регистр важен. Опечатки не прощаются.",
         accuracy_hook: "Другие тайпинг-игры прощают ошибки. Здесь каждая опечатка гнёт твою историю — предельный тренажёр точности.",
@@ -589,6 +619,9 @@ const App: React.FC = () => {
   const [currentDailyDateLabel, setCurrentDailyDateLabel] = useState<string | null>(null);
   const [runCheckpoint, setRunCheckpoint] = useState<RunCheckpoint | null>(() => loadRunCheckpoint());
   const [playerProgress, setPlayerProgressState] = useState(() => loadPlayerProgress());
+  const [typingTraining, setTypingTraining] = useState(() => loadTypingTraining());
+  const [incomingChallenge] = useState(() => parseChallenge(typeof location !== 'undefined' ? location.search : ''));
+  const [challengeShareStatus, setChallengeShareStatus] = useState(false);
   const runGenreRef = useRef<StoryGenreId>('cyberpunk');
   const isDailyRunRef = useRef(false);
   const currentDailyIdRef = useRef<string | null>(null);
@@ -597,8 +630,13 @@ const App: React.FC = () => {
   const runRecordedRef = useRef(false);
   const runStartedAtRef = useRef(Date.now());
   const calibrationNextRef = useRef<'campaign' | 'daily' | 'record'>('campaign');
+  const calibrationModeRef = useRef<'calibration' | 'drill'>('calibration');
+  const runTrainingObservationsRef = useRef<TypingObservation[]>([]);
   const totalScoreRef = useRef(0);
   const deathSequenceTimerRef = useRef<number | null>(null);
+  const landingTrackedRef = useRef(false);
+  const firstSegmentTrackedRef = useRef(false);
+  const challengeTrackedRef = useRef(false);
 
   const logEndRef = useRef<HTMLDivElement>(null);
 
@@ -606,6 +644,7 @@ const App: React.FC = () => {
   const dailyGenrePack = getGenrePack(dailyBrief.genre);
   const dailyAttemptsLeft = Math.max(0, DAILY_MAX_ATTEMPTS - dailyState.attemptsUsed);
   const dailyAttemptsExhausted = dailyAttemptsLeft === 0;
+  const isCurrentChallenge = incomingChallenge?.dailyId === dailyBrief.dailyId;
   /** Operator deck chrome — always cyberpunk, Animus-style. */
   const hubSkin = getGenreSkin('cyberpunk');
   /** World behind the glass — endings/sim readout only. */
@@ -653,6 +692,27 @@ const App: React.FC = () => {
     () => getAdaptiveDifficulty(playerProgress.calibration),
     [playerProgress.calibration]
   );
+
+  const getAnalyticsContext = () => ({
+    language,
+    device_class: getDeviceClass(typeof window !== 'undefined' ? window.innerWidth : 1280)
+  });
+
+  useEffect(() => {
+    if (landingTrackedRef.current) return;
+    landingTrackedRef.current = true;
+    captureProductEvent('typomancer_landing_viewed', getAnalyticsContext());
+  }, []);
+
+  useEffect(() => {
+    if (!incomingChallenge || challengeTrackedRef.current) return;
+    challengeTrackedRef.current = true;
+    captureProductEvent('typomancer_challenge_opened', {
+      ...getAnalyticsContext(),
+      daily_id_present: true,
+      target_score_bucket: getMetricBucket(incomingChallenge.targetScore, 500, 10_000)
+    });
+  }, [incomingChallenge]);
 
   useEffect(() => {
     try {
@@ -778,6 +838,8 @@ const App: React.FC = () => {
     if (!stats) return;
     runRecordedRef.current = true;
     const endedAt = new Date();
+    const runNumber = playerProgress.runs.length + 1;
+    const durationSeconds = Math.max(1, Math.round((endedAt.getTime() - runStartedAtRef.current) / 1000));
     const focus = getTypingFocus({
       avgWpm: stats.wpm,
       accuracy: stats.accuracy,
@@ -800,10 +862,41 @@ const App: React.FC = () => {
       consistency: stats.consistency,
       mistakes: stats.mistakes,
       characters: stats.characters,
-      durationSeconds: Math.max(1, Math.round((endedAt.getTime() - runStartedAtRef.current) / 1000)),
+      durationSeconds,
       focus
     })));
-  }, [finalStats, gameState, storyLog, totalScore, victoryReport]);
+    setTypingTraining((current) => saveTypingTraining(recordTypingSession(
+      current,
+      runTrainingObservationsRef.current,
+      {
+        kind: 'run',
+        wpm: stats.wpm,
+        accuracy: stats.accuracy,
+        completedAt: endedAt.toISOString()
+      }
+    )));
+    runTrainingObservationsRef.current = [];
+    const eventContext = getAnalyticsContext();
+    captureProductEvent('typomancer_run_completed', {
+      ...eventContext,
+      daily: isDailyRunRef.current,
+      genre: runGenreRef.current,
+      level: stats.level,
+      outcome: stats.outcome,
+      wpm_bucket: getMetricBucket(stats.wpm),
+      accuracy_bucket: getAccuracyBucket(stats.accuracy),
+      consistency_bucket: getMetricBucket(stats.consistency),
+      duration_bucket: getDurationBucket(durationSeconds),
+      run_number: runNumber
+    });
+    captureProductEvent('typomancer_debrief_viewed', {
+      ...eventContext,
+      daily: isDailyRunRef.current,
+      outcome: stats.outcome,
+      focus,
+      run_number: runNumber
+    });
+  }, [finalStats, gameState, playerProgress.runs.length, storyLog, totalScore, victoryReport]);
 
   useEffect(() => {
       let mods = { ...DEFAULT_MODIFIERS };
@@ -998,9 +1091,12 @@ const App: React.FC = () => {
           .map(d => generatePerkObject(d, 0));
       setOfferedPerks(starters);
       dailyAttemptRecordedRef.current = false;
+      firstSegmentTrackedRef.current = false;
+      runTrainingObservationsRef.current = [];
   };
 
   const initializeSession = () => {
+      calibrationModeRef.current = 'calibration';
       clearRunCheckpoint();
       setRunCheckpoint(null);
       prepareSession();
@@ -1011,6 +1107,10 @@ const App: React.FC = () => {
       setCurrentDailyDateLabel(null);
       if (!playerProgress.calibration) {
           calibrationNextRef.current = 'campaign';
+          captureProductEvent('typomancer_calibration_started', {
+              ...getAnalyticsContext(),
+              recalibration: false
+          });
           setGameState(GameState.CALIBRATION);
       } else {
           setGameState(GameState.GENRE_SELECTION);
@@ -1032,6 +1132,7 @@ const App: React.FC = () => {
       setStoryLog([]);
       runRecordedRef.current = false;
       runStartedAtRef.current = Date.now();
+      runTrainingObservationsRef.current = [];
       setFinalStats(null);
       setVictoryReport(null);
       setComicFrames([]);
@@ -1053,6 +1154,15 @@ const App: React.FC = () => {
       setCurrentDailyDateLabel(null);
       setGameState(GameState.LOADING);
       if (!musicActive) handleToggleMusic();
+      captureProductEvent('typomancer_run_started', {
+          ...getAnalyticsContext(),
+          daily: false,
+          genre: checkpoint.genre,
+          preset: adaptiveDifficulty.preset,
+          run_number: playerProgress.runs.length + 1,
+          returning_player: playerProgress.runs.length > 0,
+          resumed: true
+      });
 
       try {
           const nextStart = await generateNextLevelStart(
@@ -1072,6 +1182,7 @@ const App: React.FC = () => {
   };
 
   const initializeDailySession = () => {
+      calibrationModeRef.current = 'calibration';
       const brief = getDailyBrief();
       const latestState = getDailyState(brief.dailyId);
       setDailyBrief(brief);
@@ -1089,6 +1200,10 @@ const App: React.FC = () => {
       runGenreRef.current = brief.genre;
       if (!playerProgress.calibration) {
           calibrationNextRef.current = 'daily';
+          captureProductEvent('typomancer_calibration_started', {
+              ...getAnalyticsContext(),
+              recalibration: false
+          });
           setGameState(GameState.CALIBRATION);
       } else {
           setGameState(GameState.STARTER_PERK_SELECTION);
@@ -1096,18 +1211,94 @@ const App: React.FC = () => {
       if (!musicActive) handleToggleMusic();
   };
 
-  const finishCalibration = (result: CalibrationResult) => {
+  const finishCalibration = (result: CalibrationResult, observations: TypingObservation[] = [], skipped = false) => {
+      const mode = calibrationModeRef.current;
+      setTypingTraining((current) => saveTypingTraining(recordTypingSession(
+          current,
+          observations,
+          skipped ? undefined : {
+              kind: mode === 'drill' ? 'drill' : 'calibration',
+              wpm: result.wpm,
+              accuracy: result.accuracy,
+              completedAt: result.completedAt
+          }
+      )));
+      if (mode === 'drill') {
+          captureProductEvent('typomancer_drill_completed', {
+              ...getAnalyticsContext(),
+              wpm_bucket: getMetricBucket(result.wpm),
+              accuracy_bucket: getAccuracyBucket(result.accuracy),
+              samples_bucket: getMetricBucket(observations.length, 25, 500)
+          });
+          calibrationModeRef.current = 'calibration';
+          setGameState(GameState.OPERATOR_RECORD);
+          return;
+      }
       setPlayerProgressState((current) => savePlayerProgress(setCalibration(current, result)));
+      captureProductEvent('typomancer_calibration_completed', {
+          ...getAnalyticsContext(),
+          recalibration: calibrationNextRef.current === 'record',
+          skipped,
+          wpm_bucket: getMetricBucket(result.wpm),
+          accuracy_bucket: getAccuracyBucket(result.accuracy),
+          preset: result.preset
+      });
       if (calibrationNextRef.current === 'daily') setGameState(GameState.STARTER_PERK_SELECTION);
       else if (calibrationNextRef.current === 'record') setGameState(GameState.OPERATOR_RECORD);
       else setGameState(GameState.GENRE_SELECTION);
   };
 
-  const skipCalibration = () => finishCalibration(createBalancedCalibration());
+  const skipCalibration = () => {
+      if (calibrationModeRef.current === 'drill') {
+          calibrationModeRef.current = 'calibration';
+          setGameState(GameState.OPERATOR_RECORD);
+          return;
+      }
+      finishCalibration(createBalancedCalibration(), [], true);
+  };
 
   const recalibrate = () => {
+      calibrationModeRef.current = 'calibration';
       calibrationNextRef.current = 'record';
+      captureProductEvent('typomancer_calibration_started', {
+          ...getAnalyticsContext(),
+          recalibration: true
+      });
       setGameState(GameState.CALIBRATION);
+  };
+
+  const startTargetedDrill = () => {
+      calibrationModeRef.current = 'drill';
+      calibrationNextRef.current = 'record';
+      captureProductEvent('typomancer_drill_started', {
+          ...getAnalyticsContext(),
+          samples_bucket: getMetricBucket(typingTraining.samples, 100, 2000),
+          weak_pattern_count: getWeakPatterns(typingTraining, 5).length
+      });
+      setGameState(GameState.CALIBRATION);
+  };
+
+  const shareDailyChallenge = async (outcome: 'victory' | 'defeat', score: number) => {
+      if (!isDailyRunRef.current || !currentDailyIdRef.current || typeof location === 'undefined') return;
+      const url = buildChallengeUrl(location.origin + location.pathname, currentDailyIdRef.current, score);
+      if (!url) return;
+      const text = language === 'ru'
+          ? `Я набрал ${score} в Дневном секторе Typomancer. Сможешь побить мой результат?`
+          : `I scored ${score} in Typomancer's Daily Sector. Can you beat it?`;
+      try {
+          if (navigator.share) await navigator.share({ title: 'Typomancer Challenge', text, url });
+          else await navigator.clipboard.writeText(`${text} ${url}`);
+          setChallengeShareStatus(true);
+          window.setTimeout(() => setChallengeShareStatus(false), 2400);
+          captureProductEvent('typomancer_challenge_shared', {
+              ...getAnalyticsContext(),
+              daily: true,
+              outcome,
+              target_score_bucket: getMetricBucket(score, 500, 10_000)
+          });
+      } catch {
+          // Closing the native share sheet is not an error state for the game.
+      }
   };
 
   const handleGenreSelect = (genre: StoryGenreId) => {
@@ -1123,6 +1314,14 @@ const App: React.FC = () => {
 
   const beginStoryGeneration = async (genre: StoryGenreId = runGenreRef.current) => {
     setGameState(GameState.LOADING);
+    captureProductEvent('typomancer_run_started', {
+      ...getAnalyticsContext(),
+      daily: isDailyRunRef.current,
+      genre,
+      preset: adaptiveDifficulty.preset,
+      run_number: playerProgress.runs.length + 1,
+      returning_player: playerProgress.runs.length > 0
+    });
     const activeBrief = activeDailyBriefRef.current;
     const startRequest = isDailyRunRef.current && currentDailyIdRef.current === activeBrief.dailyId
       ? Promise.resolve<StorySegment>({
@@ -1348,6 +1547,17 @@ const App: React.FC = () => {
     setTotalScore(totalScoreRef.current);
     setStoryLog(prev => [...prev, { text, performance, score, wpm, mistakes, characters: performance === 'neutral' ? 0 : text.length, meta, type }]);
     if (performance !== 'neutral') {
+      if (!firstSegmentTrackedRef.current) {
+        firstSegmentTrackedRef.current = true;
+        captureProductEvent('typomancer_first_segment_completed', {
+          ...getAnalyticsContext(),
+          daily: isDailyRunRef.current,
+          genre: runGenreRef.current,
+          level: currentLevel,
+          wpm_bucket: getMetricBucket(wpm),
+          accuracy_bucket: getAccuracyBucket(getTypingAccuracy(mistakes, text.length))
+        });
+      }
         setLevelBuffer(prev => [...prev, { wpm, mistakes, score, characters: text.length }]);
     }
   };
@@ -1718,6 +1928,17 @@ const App: React.FC = () => {
                         </div>
                     </div>
                     <div className="flex flex-col gap-3.5">
+                        {incomingChallenge && (
+                            <div className={`screens-cut-card border p-4 text-left ${isCurrentChallenge ? 'border-amber-400/35 bg-amber-400/[0.06]' : 'border-white/10 bg-white/[0.02]'}`}>
+                                <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-amber-300">{UI.challenge_title}</div>
+                                {isCurrentChallenge ? (
+                                    <div className="mt-2 flex items-center justify-between gap-4">
+                                        <div><span className="text-[10px] text-slate-500">{UI.challenge_target}</span><strong className="block text-2xl text-white tabular-nums">{incomingChallenge.targetScore}</strong></div>
+                                        <button type="button" onClick={initializeDailySession} disabled={dailyAttemptsExhausted} className="btn-cyber btn-cyber-primary px-4 py-2.5 text-[10px] font-bold text-[#04120b]">{UI.challenge_accept}</button>
+                                    </div>
+                                ) : <p className="mt-2 text-xs leading-relaxed text-slate-400">{UI.challenge_expired}</p>}
+                            </div>
+                        )}
                         {runCheckpoint && (
                             <button
                                 onClick={resumeSession}
@@ -1804,19 +2025,30 @@ const App: React.FC = () => {
                     <div className="text-[11px] text-slate-600 pt-2">
                         {UI.powered_by}
                     </div>
+                    <div className="text-[9px] leading-relaxed text-slate-700">
+                        {UI.privacy_note}
+                    </div>
                 </div>
             )}
 
             {gameState === GameState.CALIBRATION && (
-                <CalibrationPanel language={language} onComplete={finishCalibration} onSkip={skipCalibration} />
+                <CalibrationPanel
+                    language={language}
+                    mode={calibrationModeRef.current}
+                    drillPrompt={buildTargetedDrill(language, typingTraining)}
+                    onComplete={finishCalibration}
+                    onSkip={skipCalibration}
+                />
             )}
 
             {gameState === GameState.OPERATOR_RECORD && (
                 <OperatorRecord
                     language={language}
                     progress={playerProgress}
+                    training={typingTraining}
                     onClose={() => setGameState(GameState.MENU)}
                     onRecalibrate={recalibrate}
+                    onStartDrill={startTargetedDrill}
                 />
             )}
 
@@ -2037,6 +2269,7 @@ const App: React.FC = () => {
                     onCaptureFrame={captureComicFrame}
                     genre={selectedGenre}
                     strictCase={!!userProfile.strictCase}
+                    onTypingObservation={(observation) => runTrainingObservationsRef.current.push(observation)}
                 />
             )}
 
@@ -2065,6 +2298,14 @@ const App: React.FC = () => {
                         </div>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-3">
+                        {isDailyRun && currentDailyId && (
+                            <button
+                                onClick={() => shareDailyChallenge('victory', totalScore)}
+                                className="btn-cyber btn-cyber-ghost flex-1 py-3.5 font-display font-bold tracking-[0.06em] text-amber-200 hover:text-white transition-colors"
+                            >
+                                {challengeShareStatus ? UI.challenge_copied : UI.challenge_share}
+                            </button>
+                        )}
                         {comicFrames.length > 0 && (
                             <button
                                 onClick={() => setShowComic(true)}
@@ -2125,6 +2366,14 @@ const App: React.FC = () => {
                         <span>{UI.heat}: <b className="text-amber-300">{finalStats?.mission?.heat ?? campaignState.heat}%</b></span>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-3">
+                        {isDailyRun && currentDailyId && (
+                            <button
+                                onClick={() => shareDailyChallenge('defeat', Math.max(totalScore, finalStats?.score || 0))}
+                                className="btn-cyber btn-cyber-ghost flex-1 py-3.5 font-display font-bold tracking-[0.06em] text-amber-200 hover:text-white transition-colors"
+                            >
+                                {challengeShareStatus ? UI.challenge_copied : UI.challenge_share}
+                            </button>
+                        )}
                         {comicFrames.length > 0 && (
                             <button
                                 onClick={() => setShowComic(true)}
