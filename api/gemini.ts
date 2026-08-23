@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { GEMINI_IMAGE_SIZE, isAllowedRequestSourceHeaders } from '../services/geminiPolicy.js';
 
 const API_KEY = process.env.GEMINI_API_KEY || process.env.API_KEY || '';
 const TEXT_MODEL = 'gemini-flash-lite-latest';
@@ -9,12 +10,6 @@ const LEGACY_IMAGE_MODEL = 'gemini-2.5-flash-image';
 const textModels = new Set([TEXT_MODEL, LEGACY_TEXT_MODEL]);
 const imageModels = new Set([IMAGE_MODEL, FULL_IMAGE_MODEL, LEGACY_IMAGE_MODEL]);
 const allowedModels = new Set([...textModels, ...imageModels]);
-const allowedRequestHosts = new Set([
-  'narrative-flow-upgraded.vercel.app',
-  'localhost',
-  '127.0.0.1'
-]);
-
 const MINUTE_WINDOW_MS = 60 * 1000;
 const DAY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MAX_REQUESTS_PER_MINUTE = 30;
@@ -51,13 +46,10 @@ const isAllowedRequestSource = (req: any): boolean => {
 
   if (sourceHeaders.length === 0) return process.env.NODE_ENV !== 'production';
 
-  return sourceHeaders.every((value) => {
-    try {
-      return allowedRequestHosts.has(new URL(value).hostname.toLowerCase());
-    } catch {
-      return false;
-    }
-  });
+  return isAllowedRequestSourceHeaders(
+    getHeader(req, 'origin'),
+    getHeader(req, 'referer')
+  );
 };
 
 const getClientIp = (req: any): string => {
@@ -206,7 +198,7 @@ export default async function handler(req: any, res: any) {
         response_format: {
           type: 'image',
           aspect_ratio: '16:9',
-          image_size: '512'
+          image_size: GEMINI_IMAGE_SIZE
         },
         response_modalities: ['image']
       } as any);
