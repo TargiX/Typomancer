@@ -569,6 +569,68 @@
   color: #64748b;
 }
 
+.operator-record-training {
+  margin-top: 14px;
+  border: 1px solid rgba(167, 139, 250, 0.18);
+  padding: 14px 16px;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.055), rgba(56, 189, 248, 0.025));
+}
+
+.operator-record-training-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 18px;
+  margin-top: 12px;
+}
+
+.operator-record-training-grid > div > small {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: #a78bfa;
+}
+
+.operator-record-training-grid p {
+  font-size: 0.64rem;
+  line-height: 1.45;
+  color: #64748b;
+}
+
+.operator-record-training-grid p strong { color: #e0e7ff; }
+
+.operator-record-patterns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.operator-record-patterns > b {
+  border: 1px solid rgba(167, 139, 250, 0.2);
+  padding: 5px 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  color: #ddd6fe;
+  background: rgba(124, 58, 237, 0.08);
+}
+
+.operator-record-patterns > b small {
+  margin-left: 3px;
+  font-size: 0.46rem;
+  color: #fb7185;
+}
+
+.operator-record-training-grid > button {
+  padding: 10px 13px;
+  font-size: 0.55rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  white-space: nowrap;
+  color: #04120b;
+}
+
 .operator-record-log {
   margin-top: 18px;
 }
@@ -1177,6 +1239,11 @@
 
   .operator-record-stats > div:last-child {
     grid-column: 1 / -1;
+  }
+
+  .operator-record-training-grid {
+    grid-template-columns: 1fr;
+    align-items: stretch;
   }
 
   .operator-record-run {

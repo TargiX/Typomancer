@@ -2,12 +2,15 @@ import React, { useMemo } from 'react';
 
 import type { Language, StoryGenreId } from '../types';
 import { getAdaptiveDifficulty, summarizeProgress, type PlayerProgress, type RunRecord } from '../services/playerProgress';
+import { getBenchmarkDelta, getWeakPatterns, type TypingTrainingProfile } from '../services/typingTraining';
 
 interface OperatorRecordProps {
   language: Language;
   progress: PlayerProgress;
+  training: TypingTrainingProfile;
   onClose: () => void;
   onRecalibrate: () => void;
+  onStartDrill: () => void;
 }
 
 const COPY = {
@@ -42,7 +45,14 @@ const COPY = {
     close: 'BACK TO DECK',
     up: 'UP',
     down: 'DOWN',
-    steady: 'STEADY'
+    steady: 'STEADY',
+    training: 'TRAINING CORE',
+    weakPatterns: 'WEAK PATTERNS',
+    noPatterns: 'Complete a calibration or operation to map your weak keys.',
+    samples: 'KEYSTROKES MAPPED',
+    startDrill: 'START TARGETED DRILL',
+    baseline: 'SINCE BASELINE',
+    needBaseline: 'Run two focused drills to reveal measurable improvement.'
   },
   ru: {
     eyebrow: 'ЛОКАЛЬНЫЙ ЧЁРНЫЙ ЯЩИК',
@@ -75,7 +85,14 @@ const COPY = {
     close: 'ВЕРНУТЬСЯ К ПУЛЬТУ',
     up: 'РОСТ',
     down: 'СПАД',
-    steady: 'РОВНО'
+    steady: 'РОВНО',
+    training: 'ТРЕНИРОВОЧНОЕ ЯДРО',
+    weakPatterns: 'СЛАБЫЕ СОЧЕТАНИЯ',
+    noPatterns: 'Пройди калибровку или операцию, чтобы найти слабые клавиши.',
+    samples: 'НАЖАТИЙ ИЗУЧЕНО',
+    startDrill: 'НАЧАТЬ ТОЧЕЧНУЮ ТРЕНИРОВКУ',
+    baseline: 'ОТ БАЗОВОГО УРОВНЯ',
+    needBaseline: 'Пройди две точечные тренировки, чтобы увидеть измеримый прогресс.'
   }
 };
 
@@ -99,12 +116,15 @@ const buildSignalPoints = (runs: RunRecord[]): string => {
   }).join(' ');
 };
 
-const OperatorRecord: React.FC<OperatorRecordProps> = ({ language, progress, onClose, onRecalibrate }) => {
+const OperatorRecord: React.FC<OperatorRecordProps> = ({ language, progress, training, onClose, onRecalibrate, onStartDrill }) => {
   const ui = COPY[language];
   const summary = summarizeProgress(progress);
   const difficulty = getAdaptiveDifficulty(progress.calibration);
   const points = useMemo(() => buildSignalPoints(summary.recentRuns), [summary.recentRuns]);
   const trendLabel = summary.wpmDelta > 0.5 ? ui.up : summary.wpmDelta < -0.5 ? ui.down : ui.steady;
+  const weakPatterns = getWeakPatterns(training, 5);
+  const benchmarkDelta = getBenchmarkDelta(training);
+  const displayPattern = (token: string) => token === ' ' ? (language === 'ru' ? 'ПРОБЕЛ' : 'SPACE') : token;
 
   return (
     <section className="operator-record screens-cut-panel" aria-labelledby="operator-record-title">
@@ -154,6 +174,32 @@ const OperatorRecord: React.FC<OperatorRecordProps> = ({ language, progress, onC
         <span>{ui.target}</span>
         <p>{summary.latestFocus ? ui.targets[summary.latestFocus] : ui.noRuns}</p>
         <small>{summary.hasRunToday ? ui.todayDone : ui.todayOpen}</small>
+      </div>
+
+      <div className="operator-record-training">
+        <div className="operator-record-section-label">
+          <span>{ui.training}</span>
+          <b>{training.samples} {ui.samples}</b>
+        </div>
+        <div className="operator-record-training-grid">
+          <div>
+            <small>{ui.weakPatterns}</small>
+            {weakPatterns.length > 0 ? (
+              <div className="operator-record-patterns">
+                {weakPatterns.map((pattern) => (
+                  <b key={pattern.token}>{displayPattern(pattern.token)} <small>{Math.round((pattern.errors / pattern.attempts) * 100)}%</small></b>
+                ))}
+              </div>
+            ) : <p>{ui.noPatterns}</p>}
+          </div>
+          <div>
+            <small>{ui.baseline}</small>
+            {benchmarkDelta ? (
+              <p><strong>{benchmarkDelta.wpm >= 0 ? '+' : ''}{benchmarkDelta.wpm} WPM</strong> · {benchmarkDelta.accuracy >= 0 ? '+' : ''}{Math.round(benchmarkDelta.accuracy)}% · {benchmarkDelta.sessions}</p>
+            ) : <p>{ui.needBaseline}</p>}
+          </div>
+          <button type="button" onClick={onStartDrill} className="btn-cyber btn-cyber-primary">{ui.startDrill}</button>
+        </div>
       </div>
 
       {summary.recentRuns.length > 0 && (

@@ -1,17 +1,19 @@
 import {
   StoryMood,
+  SegmentType
+} from "../types.ts";
+import type {
   BranchingStory,
   StorySegment,
   LevelReport,
-  SegmentType,
   DecisionPoint,
   Language,
   MissionState,
   TypingSkill,
   StoryGenreId
-} from "../types";
-import { getGenrePack, type LocalBranchTemplate } from "./genreConfig";
-import { SECTOR_ROUNDS } from "./gameRules";
+} from "../types.ts";
+import { getGenrePack, type LocalBranchTemplate } from "./genreConfig.ts";
+import { SECTOR_ROUNDS } from "./gameRules.ts";
 
 type Schema = Record<string, unknown>;
 
@@ -224,6 +226,21 @@ const getLocalDecision = (genre: StoryGenreId, language: Language, level: number
     ]
   };
 };
+
+export const getDeterministicStoryBranch = (
+  genre: StoryGenreId,
+  level: number,
+  round: number,
+  language: Language,
+  mission?: MissionState
+): BranchingStory => getLocalBranch(genre, level, round, language, mission);
+
+export const getDeterministicStrategicDecision = (
+  genre: StoryGenreId,
+  language: Language,
+  level: number,
+  mission?: MissionState
+): DecisionPoint => getLocalDecision(genre, language, level, mission);
 
 const localSummary = (genre: StoryGenreId, level: number, stats: LevelReport, language: Language): string => {
   const pack = getGenrePack(genre);
