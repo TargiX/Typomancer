@@ -93,6 +93,8 @@ export interface StoryLogItem {
   performance: 'good' | 'average' | 'bad' | 'neutral';
   score: number;
   wpm: number;
+  mistakes?: number;
+  characters?: number;
   type?: SegmentType;
   meta?: string;
 }
@@ -114,6 +116,9 @@ export interface GameStats {
   credits: number;
   mistakes?: number;
   characters?: number;
+  consistency?: number;
+  bestWpm?: number;
+  segments?: number;
   mission?: MissionState;
 }
 

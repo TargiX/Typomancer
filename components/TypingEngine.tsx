@@ -802,14 +802,17 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const triggerGameOver = (finalHealth: number) => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (overclockTimerRef.current) clearTimeout(overclockTimerRef.current);
+    const { totalErrors } = getErrorReport();
     onGameOver({
         wpm: Math.round((totalWPM + currentWPM) / Math.max(1, round)),
-        accuracy: 0,
+        accuracy: inputValue.length > 0 ? Math.max(0, 100 - ((totalErrors / inputValue.length) * 100)) : 100,
         health: finalHealth,
         level: currentLevel,
         round,
         score: 0,
         credits: Math.floor(credits),
+        mistakes: totalErrors,
+        characters: inputValue.length,
         mission: missionRef.current
     });
   };
