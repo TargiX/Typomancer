@@ -1509,6 +1509,81 @@ const App: React.FC = () => {
       }
   };
 
+  const handleBankExit = () => {
+      if (!lastLevelReport || runRecordedRef.current) {
+          setGameState(GameState.MENU);
+          return;
+      }
+
+      runRecordedRef.current = true;
+      const endedAt = new Date();
+      const durationSeconds = Math.max(1, Math.round((endedAt.getTime() - runStartedAtRef.current) / 1000));
+      const wpm = Math.round(lastLevelReport.avgWpm);
+      const accuracy = lastLevelReport.accuracy ?? 100;
+      const consistency = lastLevelReport.consistency ?? 100;
+      const mistakes = lastLevelReport.totalMistakes;
+      const characters = levelBuffer.reduce((sum, metric) => sum + metric.characters, 0);
+      const score = levelBuffer.reduce((sum, metric) => sum + metric.score, 0);
+      const bestWpm = levelBuffer.reduce((best, metric) => Math.max(best, metric.wpm), wpm);
+      const focus = getTypingFocus({
+          avgWpm: wpm,
+          accuracy,
+          consistency,
+          totalMistakes: mistakes,
+          score
+      });
+      const runNumber = playerProgress.runs.length + 1;
+
+      setPlayerProgressState((current) => savePlayerProgress(recordRun(current, {
+          id: `${endedAt.toISOString()}-${Math.random().toString(36).slice(2, 8)}`,
+          endedAt: endedAt.toISOString(),
+          dateKey: getLocalDateKey(endedAt),
+          outcome: 'banked',
+          daily: false,
+          genre: runGenreRef.current,
+          level: lastLevelReport.level,
+          score,
+          wpm,
+          bestWpm,
+          accuracy,
+          consistency,
+          mistakes,
+          characters,
+          durationSeconds,
+          focus
+      })));
+
+      const completedObservations = snapshotTypingObservations(runTrainingObservationsRef.current);
+      runTrainingObservationsRef.current = [];
+      setTypingTraining((current) => saveTypingTraining(recordTypingSession(
+          current,
+          completedObservations,
+          { kind: 'run', wpm, accuracy, completedAt: endedAt.toISOString() }
+      )));
+
+      const eventContext = getAnalyticsContext();
+      captureProductEvent('typomancer_run_completed', {
+          ...eventContext,
+          daily: false,
+          genre: runGenreRef.current,
+          level: lastLevelReport.level,
+          outcome: 'banked',
+          wpm_bucket: getMetricBucket(wpm),
+          accuracy_bucket: getAccuracyBucket(accuracy),
+          consistency_bucket: getMetricBucket(consistency),
+          duration_bucket: getDurationBucket(durationSeconds),
+          run_number: runNumber
+      });
+      captureProductEvent('typomancer_debrief_viewed', {
+          ...eventContext,
+          daily: false,
+          outcome: 'banked',
+          focus,
+          run_number: runNumber
+      });
+      setGameState(GameState.MENU);
+  };
+
   const handleGameOver = (stats: GameStats) => {
     const finalScore = totalScoreRef.current;
     const mission = stats.mission || campaignState;
@@ -2258,7 +2333,7 @@ const App: React.FC = () => {
                         </div>
                         <button
                             type="button"
-                            onClick={() => setGameState(GameState.MENU)}
+                            onClick={handleBankExit}
                             disabled={!isSectorSummaryReady}
                             className="btn-cyber btn-cyber-ghost px-5 py-2.5 text-[10px] font-bold tracking-[0.12em] text-slate-300 hover:text-white disabled:cursor-wait disabled:opacity-45"
                         >

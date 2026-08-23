@@ -28,6 +28,7 @@ const COPY = {
     recent: 'RECENT OPERATIONS',
     victory: 'PUBLISHED',
     defeat: 'SEVERED',
+    banked: 'BANKED',
     daily: 'DAILY',
     level: 'LVL',
     target: 'NEXT TRANSMISSION',
@@ -68,6 +69,7 @@ const COPY = {
     recent: 'ПОСЛЕДНИЕ ОПЕРАЦИИ',
     victory: 'ОПУБЛИКОВАНО',
     defeat: 'ОБРЫВ',
+    banked: 'СОХРАНЕНО',
     daily: 'ДНЕВНОЙ',
     level: 'УР',
     target: 'СЛЕДУЮЩАЯ ПЕРЕДАЧА',
@@ -211,7 +213,7 @@ const OperatorRecord: React.FC<OperatorRecordProps> = ({ language, progress, tra
                 <time dateTime={run.endedAt}>{new Intl.DateTimeFormat(language, { month: 'short', day: 'numeric' }).format(new Date(run.endedAt))}</time>
                 <div>
                   <strong>{GENRES[run.genre][language]}</strong>
-                  <span>{run.daily ? `${ui.daily} · ` : ''}{ui.level} {run.level} · {run.outcome === 'victory' ? ui.victory : ui.defeat}</span>
+                  <span>{run.daily ? `${ui.daily} · ` : ''}{ui.level} {run.level} · {run.outcome === 'victory' ? ui.victory : run.outcome === 'banked' ? ui.banked : ui.defeat}</span>
                 </div>
                 <b>{run.wpm} <small>WPM</small></b>
                 <b>{Math.round(run.accuracy)}<small>%</small></b>
