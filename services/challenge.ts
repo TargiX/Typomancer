@@ -3,6 +3,11 @@ export interface TypomancerChallenge {
   targetScore: number;
 }
 
+export interface ChallengeVerdict {
+  outcome: 'beaten' | 'missed' | 'tied';
+  delta: number;
+}
+
 const DAILY_ID_PATTERN = /^SECTOR-(\d{8})$/;
 
 export const parseChallenge = (search: string): TypomancerChallenge | null => {
@@ -31,4 +36,17 @@ export const buildChallengeUrl = (
   url.searchParams.set('utm_medium', 'share');
   url.searchParams.set('utm_campaign', 'daily-challenge');
   return url.toString();
+};
+
+export const getChallengeVerdict = (
+  challenge: TypomancerChallenge | null,
+  dailyId: string | null,
+  score: number
+): ChallengeVerdict | null => {
+  if (!challenge || !dailyId || challenge.dailyId !== dailyId || !Number.isFinite(score)) return null;
+  const delta = Math.floor(score) - challenge.targetScore;
+  return {
+    outcome: delta > 0 ? 'beaten' : delta < 0 ? 'missed' : 'tied',
+    delta
+  };
 };

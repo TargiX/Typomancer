@@ -1,5 +1,5 @@
-import { GENRE_ORDER } from './genreConfig';
-import type { Language, StoryGenreId } from '../types';
+import { GENRE_ORDER } from './genreConfig.ts';
+import type { Language, StoryGenreId } from '../types.ts';
 
 export const DAILY_MAX_ATTEMPTS = 3;
 
@@ -134,6 +134,15 @@ const hashDate = (value: string): number => {
   }
   return hash >>> 0;
 };
+
+export const pickDailyItems = (dailyId: string, itemIds: string[], count: number): string[] => (
+  [...new Set(itemIds)]
+    .sort()
+    .map((id) => ({ id, rank: hashDate(`${dailyId}:${id}`) }))
+    .sort((a, b) => a.rank - b.rank || a.id.localeCompare(b.id))
+    .slice(0, Math.max(0, count))
+    .map(({ id }) => id)
+);
 
 export const getDailyBrief = (date: Date = new Date()): DailyBrief => {
   const { compact, label } = getDateParts(date);

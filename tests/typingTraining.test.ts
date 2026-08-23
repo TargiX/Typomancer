@@ -7,7 +7,8 @@ import {
   getBenchmarkDelta,
   getWeakPatterns,
   normalizeTypingTraining,
-  recordTypingSession
+  recordTypingSession,
+  snapshotTypingObservations
 } from '../services/typingTraining.ts';
 
 test('training profile aggregates keys and bigrams without storing typed text', () => {
@@ -19,7 +20,7 @@ test('training profile aggregates keys and bigrams without storing typed text', 
 
   assert.equal(profile.samples, 3);
   assert.deepEqual(profile.keys.find((item) => item.token === 'r'), {
-    token: 'r', attempts: 1, errors: 1, totalLatencyMs: 500
+    token: 'r', attempts: 1, errors: 1, totalLatencyMs: 500, timedAttempts: 1
   });
   assert.equal(profile.bigrams.find((item) => item.token === 'tr')?.errors, 1);
   assert.equal(JSON.stringify(profile).includes('typed'), false);
@@ -59,4 +60,32 @@ test('malformed training storage is normalized and bounded', () => {
   assert.equal(normalized.keys[0].token, 'a');
   assert.equal(normalized.keys[0].errors, 2);
   assert.equal(normalized.benchmarks.length, 0);
+});
+
+test('targeted drill guarantees every selected weak symbol and bigram appears repeatedly', () => {
+  const profile = normalizeTypingTraining({
+    samples: 20,
+    keys: [
+      { token: '#', attempts: 5, errors: 5, totalLatencyMs: 2_000 },
+      { token: '7', attempts: 5, errors: 4, totalLatencyMs: 1_800 }
+    ],
+    bigrams: [
+      { token: '42', attempts: 5, errors: 5, totalLatencyMs: 2_100 },
+      { token: '!?', attempts: 5, errors: 4, totalLatencyMs: 1_900 }
+    ]
+  });
+
+  const drill = buildTargetedDrill('en', profile);
+  for (const token of ['#', '7', '42', '!?']) {
+    assert.equal(drill.split(token).length - 1 >= 3, true, `${token} must be deliberately practiced`);
+  }
+});
+
+test('run observation snapshot cannot be emptied or mutated through the live ref array', () => {
+  const live = [{ expected: 'a', correct: true, latencyMs: 120 }];
+  const snapshot = snapshotTypingObservations(live);
+  live[0].expected = 'z';
+  live.length = 0;
+
+  assert.deepEqual(snapshot, [{ expected: 'a', correct: true, latencyMs: 120 }]);
 });

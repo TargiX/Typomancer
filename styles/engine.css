@@ -241,6 +241,21 @@ button.engine-cursor-skill:focus-visible {
 }
 
 @media (max-width: 640px) {
+  .engine-scene-bezel {
+    height: 34%;
+    max-height: 260px;
+  }
+
+  .engine-hud {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .engine-type-scroll {
+    padding: 18px 22px;
+    font-size: 1.05rem;
+  }
+
   .engine-skill-briefing-grid {
     grid-template-columns: 1fr;
   }

@@ -16,6 +16,7 @@ export interface PatternStat {
   attempts: number;
   errors: number;
   totalLatencyMs: number;
+  timedAttempts?: number;
 }
 
 export interface TrainingBenchmark {
@@ -76,7 +77,11 @@ const normalizeStat = (value: unknown, maxTokenLength: number): PatternStat | nu
     token,
     attempts,
     errors: Math.min(attempts, Math.max(0, Math.round(finite(stat.errors)))),
-    totalLatencyMs: Math.max(0, Math.round(finite(stat.totalLatencyMs)))
+    totalLatencyMs: Math.max(0, Math.round(finite(stat.totalLatencyMs))),
+    timedAttempts: Math.min(
+      attempts,
+      Math.max(0, Math.round(finite(stat.timedAttempts, finite(stat.totalLatencyMs) > 0 ? attempts : 0)))
+    )
   };
 };
 
@@ -143,10 +148,15 @@ const mergePatterns = (
   for (const observation of observations) {
     const token = normalizeTrainingToken(getToken(observation));
     if (!token) continue;
-    const stat = merged.get(token) || { token, attempts: 0, errors: 0, totalLatencyMs: 0 };
+    const stat = merged.get(token) || { token, attempts: 0, errors: 0, totalLatencyMs: 0, timedAttempts: 0 };
     stat.attempts += 1;
     if (!observation.correct) stat.errors += 1;
-    stat.totalLatencyMs += Math.max(0, Math.min(3_000, Math.round(finite(observation.latencyMs))));
+    const latencyMs = Math.round(finite(observation.latencyMs));
+    // A long pause belongs to the player deciding/reading, not to the next key.
+    if (latencyMs >= 25 && latencyMs <= 1_200) {
+      stat.totalLatencyMs += latencyMs;
+      stat.timedAttempts = (stat.timedAttempts || 0) + 1;
+    }
     merged.set(token, stat);
   }
   return [...merged.values()]
@@ -173,8 +183,8 @@ export const recordTypingSession = (
 
 const weaknessScore = (stat: PatternStat): number => {
   const errorRate = stat.errors / Math.max(1, stat.attempts);
-  const averageLatency = stat.totalLatencyMs / Math.max(1, stat.attempts);
-  return (errorRate * 0.8) + (Math.min(1, averageLatency / 900) * 0.2);
+  const averageLatency = stat.totalLatencyMs / Math.max(1, stat.timedAttempts || 0);
+  return (errorRate * 0.85) + (Math.min(1, averageLatency / 700) * 0.15);
 };
 
 export const getWeakPatterns = (profile: TypingTrainingProfile, limit = 5): PatternStat[] => {
@@ -196,8 +206,13 @@ export const buildTargetedDrill = (language: Language, profile: TypingTrainingPr
     }))
     .sort((a, b) => b.score - a.score || a.index - b.index);
   const selected = ranked.slice(0, 10).map((item) => item.word);
-  return [...selected, ...selected.slice(0, 4)].join(' ');
+  const focusedTokens = weakTokens.flatMap((token) => [token, token, token]);
+  return [...focusedTokens, ...selected, ...selected.slice(0, 4)].join(' ');
 };
+
+export const snapshotTypingObservations = (observations: TypingObservation[]): TypingObservation[] => (
+  observations.map((observation) => ({ ...observation }))
+);
 
 export const getBenchmarkDelta = (profile: TypingTrainingProfile): { wpm: number; accuracy: number; sessions: number } | null => {
   const benchmarks = normalizeTypingTraining(profile).benchmarks.filter((item) => item.kind !== 'run');

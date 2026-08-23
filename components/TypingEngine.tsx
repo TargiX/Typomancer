@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { StorySegment, BranchingStory, GameStats, StoryMood, GameModifiers, SegmentType, DecisionPoint, Language, MissionState, DecisionImpact, ComicFrame, StoryGenreId } from '../types';
-import { generateNextSegments, generateSceneImage, generateStrategicDecision } from '../services/geminiService';
+import {
+  generateNextSegments,
+  generateSceneImage,
+  generateStrategicDecision,
+  getDeterministicStoryBranch,
+  getDeterministicStrategicDecision
+} from '../services/geminiService';
 import { audioEngine } from '../services/audioEngine';
 import {
   DECISION_ROUND,
@@ -74,6 +80,7 @@ interface TypingEngineProps {
   onCaptureFrame?: (frame: ComicFrame) => void;
   genre: StoryGenreId;
   strictCase?: boolean;
+  deterministicStory?: boolean;
   onTypingObservation?: (observation: TypingObservation) => void;
 }
 
@@ -142,6 +149,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     onCaptureFrame,
     genre,
     strictCase = false,
+    deterministicStory = false,
     onTypingObservation
 }) => {
   const [history, setHistory] = useState<StorySegment[]>([]);
@@ -561,10 +569,14 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       if (round >= SECTOR_ROUNDS) return;
       try {
         if (nextRound === DECISION_ROUND) {
-             const decision = await generateStrategicDecision(context, currentLevel, language, missionRef.current, genre);
+             const decision = deterministicStory
+               ? getDeterministicStrategicDecision(genre, language, currentLevel, missionRef.current)
+               : await generateStrategicDecision(context, currentLevel, language, missionRef.current, genre);
              if (isMounted) setNextDecision(decision);
         } else {
-             const branch = await generateNextSegments(context, nextLevel, nextRound, language, prevLevelSummary, missionRef.current, genre);
+             const branch = deterministicStory
+               ? getDeterministicStoryBranch(genre, nextLevel, nextRound, language, missionRef.current)
+               : await generateNextSegments(context, nextLevel, nextRound, language, prevLevelSummary, missionRef.current, genre);
              if (isMounted) setNextBranch(branch);
         }
       } catch (e) {
@@ -573,11 +585,11 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     };
     bufferNext();
     return () => { isMounted = false; };
-  }, [activeSegment, history, currentLevel, round, prevLevelSummary, language, genre]); 
+  }, [activeSegment, history, currentLevel, round, prevLevelSummary, language, genre, deterministicStory]);
 
   useEffect(() => {
       if (inputValue.length === 0 && !transitionLockRef.current && round <= SECTOR_ROUNDS && !isCriticalHack && !isDecisionActive && !typeCueActive) {
-          if (Math.random() < modifiers.criticalHackChance) {
+          if (!deterministicStory && Math.random() < modifiers.criticalHackChance) {
              performCriticalHack(); 
           }
       }

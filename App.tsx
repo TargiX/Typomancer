@@ -3,7 +3,7 @@ import { GameState, StorySegment, GameStats, StoryLogItem, UserProfile, Perk, Ga
 import { generateStoryStart, generateCharacterProfile, generateLevelSummary, generateNextLevelStart } from './services/geminiService';
 import { GENRE_ORDER, getGenrePack } from './services/genreConfig';
 import { getGenreSkin, PerkGroupId, UpgradeId } from './services/genreSkin';
-import { DAILY_MAX_ATTEMPTS, DailyBrief, getDailyBrief, getDailyState, recordDailyAttempt } from './services/dailyMode';
+import { DAILY_MAX_ATTEMPTS, DailyBrief, getDailyBrief, getDailyState, pickDailyItems, recordDailyAttempt } from './services/dailyMode';
 import { CAMPAIGN_SECTORS, getStealthLevel, getTypingAccuracy, getTypingFocus, summarizeSector } from './services/gameRules';
 import { RunCheckpoint, clearRunCheckpoint, loadRunCheckpoint, saveRunCheckpoint } from './services/runCheckpoint';
 import {
@@ -34,9 +34,10 @@ import {
   loadTypingTraining,
   recordTypingSession,
   saveTypingTraining,
+  snapshotTypingObservations,
   type TypingObservation
 } from './services/typingTraining';
-import { buildChallengeUrl, parseChallenge } from './services/challenge';
+import { buildChallengeUrl, getChallengeVerdict, parseChallenge } from './services/challenge';
 
 // --- TRANSLATIONS ---
 const TRANSLATIONS = {
@@ -68,6 +69,10 @@ const TRANSLATIONS = {
         challenge_expired: "This challenge belongs to an older Daily Sector. Today’s sector is ready instead.",
         challenge_share: "CHALLENGE A FRIEND",
         challenge_copied: "CHALLENGE LINK COPIED",
+        challenge_beaten: "TARGET BEATEN",
+        challenge_missed: "TARGET MISSED",
+        challenge_tied: "TARGET TIED",
+        challenge_you: "YOUR SCORE",
         black_market: "[2] THE BLACK MARKET",
         operator_record: "[4] OPERATOR RECORD",
         powered_by: "Works with Gemini, but has a full local campaign fallback",
@@ -171,6 +176,10 @@ const TRANSLATIONS = {
         challenge_expired: "Этот вызов был для прошлого Дневного сектора. Сегодняшний уже готов.",
         challenge_share: "БРОСИТЬ ВЫЗОВ ДРУГУ",
         challenge_copied: "ССЫЛКА НА ВЫЗОВ СКОПИРОВАНА",
+        challenge_beaten: "ЦЕЛЬ ПОБИТА",
+        challenge_missed: "ЦЕЛЬ НЕ ДОСТИГНУТА",
+        challenge_tied: "РАВНЫЙ СЧЁТ",
+        challenge_you: "ТВОЙ СЧЁТ",
         black_market: "[2] ЧЕРНЫЙ РЫНОК",
         operator_record: "[4] ДОСЬЕ ОПЕРАТОРА",
         powered_by: "Работает с Gemini, но имеет полноценную локальную кампанию",
@@ -645,6 +654,12 @@ const App: React.FC = () => {
   const dailyAttemptsLeft = Math.max(0, DAILY_MAX_ATTEMPTS - dailyState.attemptsUsed);
   const dailyAttemptsExhausted = dailyAttemptsLeft === 0;
   const isCurrentChallenge = incomingChallenge?.dailyId === dailyBrief.dailyId;
+  const completedChallengeScore = gameState === GameState.GAME_OVER
+    ? Math.max(totalScore, finalStats?.score || 0)
+    : totalScore;
+  const challengeVerdict = (gameState === GameState.VICTORY || gameState === GameState.GAME_OVER)
+    ? getChallengeVerdict(incomingChallenge, currentDailyId, completedChallengeScore)
+    : null;
   /** Operator deck chrome — always cyberpunk, Animus-style. */
   const hubSkin = getGenreSkin('cyberpunk');
   /** World behind the glass — endings/sim readout only. */
@@ -688,6 +703,13 @@ const App: React.FC = () => {
     speed: UI.focus_speed,
     mastery: UI.focus_mastery
   }[typingFocus];
+  const challengeVerdictLabel = challengeVerdict
+    ? challengeVerdict.outcome === 'beaten'
+      ? UI.challenge_beaten
+      : challengeVerdict.outcome === 'missed'
+        ? UI.challenge_missed
+        : UI.challenge_tied
+    : '';
   const adaptiveDifficulty = useMemo(
     () => getAdaptiveDifficulty(playerProgress.calibration),
     [playerProgress.calibration]
@@ -865,9 +887,11 @@ const App: React.FC = () => {
       durationSeconds,
       focus
     })));
+    const completedObservations = snapshotTypingObservations(runTrainingObservationsRef.current);
+    runTrainingObservationsRef.current = [];
     setTypingTraining((current) => saveTypingTraining(recordTypingSession(
       current,
-      runTrainingObservationsRef.current,
+      completedObservations,
       {
         kind: 'run',
         wpm: stats.wpm,
@@ -875,7 +899,6 @@ const App: React.FC = () => {
         completedAt: endedAt.toISOString()
       }
     )));
-    runTrainingObservationsRef.current = [];
     const eventContext = getAnalyticsContext();
     captureProductEvent('typomancer_run_completed', {
       ...eventContext,
@@ -1063,7 +1086,7 @@ const App: React.FC = () => {
       return options.sort(() => 0.5 - Math.random());
   };
 
-  const prepareSession = () => {
+  const prepareSession = (dailySeed?: string) => {
       runRecordedRef.current = false;
       runStartedAtRef.current = Date.now();
       setStoryLog([]);
@@ -1085,9 +1108,17 @@ const App: React.FC = () => {
       setLevelBuffer([]);
       setIsSectorSummaryReady(false);
       setCurrentLevel(1);
-      const starters = PERK_DEFINITIONS
-          .sort(() => 0.5 - Math.random())
-          .slice(0, 3)
+      const dailyStarterIds = dailySeed
+          ? pickDailyItems(
+              dailySeed,
+              PERK_DEFINITIONS.filter((definition) => definition.groupId !== 'critical_override').map((definition) => definition.groupId),
+              3
+            )
+          : [];
+      const starterDefinitions = dailySeed
+          ? dailyStarterIds.flatMap((id) => PERK_DEFINITIONS.find((definition) => definition.groupId === id) || [])
+          : [...PERK_DEFINITIONS].sort(() => 0.5 - Math.random()).slice(0, 3);
+      const starters = starterDefinitions
           .map(d => generatePerkObject(d, 0));
       setOfferedPerks(starters);
       dailyAttemptRecordedRef.current = false;
@@ -1189,7 +1220,7 @@ const App: React.FC = () => {
       setDailyState(latestState);
       if (latestState.attemptsUsed >= DAILY_MAX_ATTEMPTS) return;
 
-      prepareSession();
+      prepareSession(brief.dailyId);
       activeDailyBriefRef.current = brief;
       setIsDailyRun(true);
       isDailyRunRef.current = true;
@@ -1752,7 +1783,7 @@ const App: React.FC = () => {
       )}
       
       {/* Sidebar — operator console */}
-      <aside className="relative z-10 w-full md:w-1/3 lg:w-1/4 flex flex-col h-[30vh] md:h-screen bg-gradient-to-b from-[#0b101a] to-[#070a11] border-r border-white/[0.06]">
+      <aside className={`relative z-10 w-full md:w-1/3 lg:w-1/4 flex-col h-[30vh] md:h-screen bg-gradient-to-b from-[#0b101a] to-[#070a11] border-r border-white/[0.06] ${inSimulation ? 'hidden md:flex' : 'flex'}`}>
         <div className="tex-grid absolute inset-0 opacity-40 pointer-events-none"></div>
         <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent pointer-events-none"></div>
 
@@ -1907,12 +1938,12 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      <div className="relative z-10 w-full md:w-2/3 lg:w-3/4 flex flex-col md:h-screen overflow-hidden">
+      <div className={`relative z-10 w-full md:w-2/3 lg:w-3/4 flex flex-col md:h-screen overflow-hidden ${inSimulation ? 'h-[100dvh]' : ''}`}>
         <div className="absolute inset-0 opacity-5 pointer-events-none"
              style={{ backgroundImage: 'linear-gradient(#334155 1px, transparent 1px), linear-gradient(90deg, #334155 1px, transparent 1px)', backgroundSize: '40px 40px' }}>
         </div>
 
-        <div className="flex-1 min-h-0 flex items-center justify-center p-6 relative z-10">
+        <div className="flex-1 min-h-0 flex items-center justify-center p-2 sm:p-6 relative z-10">
             {gameState === GameState.MENU && (
                 <div className="text-center space-y-7 max-w-md animate-fade-in-up">
                     <div className="space-y-5">
@@ -2269,6 +2300,7 @@ const App: React.FC = () => {
                     onCaptureFrame={captureComicFrame}
                     genre={selectedGenre}
                     strictCase={!!userProfile.strictCase}
+                    deterministicStory={isDailyRun}
                     onTypingObservation={(observation) => runTrainingObservationsRef.current.push(observation)}
                 />
             )}
@@ -2297,6 +2329,22 @@ const App: React.FC = () => {
                             ))}
                         </div>
                     </div>
+                    {challengeVerdict && incomingChallenge && (
+                        <div className={`screens-cut-card mb-6 flex items-center justify-between gap-4 border p-4 ${challengeVerdict.outcome === 'beaten' ? 'border-emerald-400/35 bg-emerald-400/[0.06]' : 'border-amber-400/35 bg-amber-400/[0.06]'}`}>
+                            <div>
+                                <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400">{challengeVerdictLabel}</div>
+                                <div className="mt-1 text-xs text-slate-400">
+                                    {challengeVerdict.outcome === 'tied'
+                                        ? (language === 'ru' ? 'Точно в цель — попробуй ещё раз и выйди вперёд.' : 'Exactly on target — run it again to take the lead.')
+                                        : `${Math.abs(challengeVerdict.delta)} ${language === 'ru' ? (challengeVerdict.delta > 0 ? 'очков сверху' : 'очков не хватило') : (challengeVerdict.delta > 0 ? 'points ahead' : 'points short')}`}
+                                </div>
+                            </div>
+                            <div className="flex gap-5 text-right">
+                                <div><span className="block text-[8px] uppercase tracking-[0.16em] text-slate-500">{UI.challenge_target}</span><strong className="text-xl text-white tabular-nums">{incomingChallenge.targetScore}</strong></div>
+                                <div><span className="block text-[8px] uppercase tracking-[0.16em] text-slate-500">{UI.challenge_you}</span><strong className="text-xl text-emerald-300 tabular-nums">{completedChallengeScore}</strong></div>
+                            </div>
+                        </div>
+                    )}
                     <div className="flex flex-col sm:flex-row gap-3">
                         {isDailyRun && currentDailyId && (
                             <button
@@ -2357,6 +2405,23 @@ const App: React.FC = () => {
                         <span>{UI.next_drill}</span>
                         <p>{typingCoachText}</p>
                     </div>
+
+                    {challengeVerdict && incomingChallenge && (
+                        <div className={`screens-cut-card mt-4 flex items-center justify-between gap-4 border p-4 ${challengeVerdict.outcome === 'beaten' ? 'border-emerald-400/35 bg-emerald-400/[0.06]' : 'border-amber-400/35 bg-amber-400/[0.06]'}`}>
+                            <div>
+                                <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-300">{challengeVerdictLabel}</div>
+                                <div className="mt-1 text-xs text-slate-400">
+                                    {challengeVerdict.outcome === 'tied'
+                                        ? (language === 'ru' ? 'Точно в цель — попробуй ещё раз и выйди вперёд.' : 'Exactly on target — run it again to take the lead.')
+                                        : `${Math.abs(challengeVerdict.delta)} ${language === 'ru' ? (challengeVerdict.delta > 0 ? 'очков сверху' : 'очков не хватило') : (challengeVerdict.delta > 0 ? 'points ahead' : 'points short')}`}
+                                </div>
+                            </div>
+                            <div className="flex gap-5 text-right">
+                                <div><span className="block text-[8px] uppercase tracking-[0.16em] text-slate-500">{UI.challenge_target}</span><strong className="text-xl text-white tabular-nums">{incomingChallenge.targetScore}</strong></div>
+                                <div><span className="block text-[8px] uppercase tracking-[0.16em] text-slate-500">{UI.challenge_you}</span><strong className="text-xl text-rose-200 tabular-nums">{completedChallengeScore}</strong></div>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 border-y border-white/[0.06] py-3 text-[10px] uppercase tracking-[0.16em] text-slate-500">
                         <span>{UI.reached}: <b className="text-slate-200">{UI.level} {finalStats?.level || 1}</b></span>

@@ -1,4 +1,5 @@
-import { Language, SegmentType, StoryGenreId, TypingSkill } from '../types';
+import { SegmentType } from '../types.ts';
+import type { Language, StoryGenreId, TypingSkill } from '../types.ts';
 
 export interface LocalBranchTemplate {
   skill: TypingSkill;
