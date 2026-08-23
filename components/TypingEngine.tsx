@@ -798,6 +798,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       inputRef.current?.focus();
     }
     if (val.length > activeSegment.text.length) return;
+    // Typing is the game mechanic: reject paste, drop, autofill, and scripted
+    // multi-character insertion instead of awarding a whole line for one event.
+    if (val.length > inputValue.length + 1) return;
+    if (val.length === inputValue.length + 1 && !val.startsWith(inputValue)) return;
     if (inputValue.length === 0 && val.length > 0) setStartTime(Date.now());
     const charIndex = val.length - 1;
 
@@ -1490,7 +1494,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         </div>
       </div>
 
-      <input ref={inputRef} type="text" value={inputValue} onChange={handleInput} aria-label={language === 'ru' ? 'Поле тренировки печати' : 'Typing practice input'} className="fixed opacity-0 top-0 left-0 w-px h-px overflow-hidden -z-10 pointer-events-none" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} autoFocus disabled={isWaitingForAi || isCriticalHack || isDecisionActive || showSkillBriefing} />
+      <input ref={inputRef} type="text" value={inputValue} onChange={handleInput} onPaste={(event) => event.preventDefault()} onDrop={(event) => event.preventDefault()} aria-label={language === 'ru' ? 'Поле тренировки печати' : 'Typing practice input'} className="fixed opacity-0 top-0 left-0 w-px h-px overflow-hidden -z-10 pointer-events-none" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} autoFocus disabled={isWaitingForAi || isCriticalHack || isDecisionActive || showSkillBriefing} />
     </div>
   );
 };

@@ -656,6 +656,7 @@
 }
 
 .operator-record-run.is-victory { border-left-color: #34d399; }
+.operator-record-run.is-banked { border-left-color: #38bdf8; }
 
 .operator-record-run time,
 .operator-record-run div span {

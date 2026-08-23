@@ -25,7 +25,7 @@ export interface RunRecord {
   id: string;
   endedAt: string;
   dateKey: string;
-  outcome: 'victory' | 'defeat';
+  outcome: 'victory' | 'defeat' | 'banked';
   daily: boolean;
   genre: StoryGenreId;
   level: number;
@@ -146,7 +146,7 @@ const normalizeRun = (value: unknown): RunRecord | null => {
     typeof run.id !== 'string'
     || typeof run.endedAt !== 'string'
     || typeof run.dateKey !== 'string'
-    || (run.outcome !== 'victory' && run.outcome !== 'defeat')
+    || (run.outcome !== 'victory' && run.outcome !== 'defeat' && run.outcome !== 'banked')
     || typeof run.daily !== 'boolean'
     || !isGenre(run.genre)
     || !isFocus(run.focus)
