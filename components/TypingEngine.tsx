@@ -2,6 +2,13 @@ import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { StorySegment, BranchingStory, GameStats, StoryMood, GameModifiers, SegmentType, DecisionPoint, Language, MissionState, DecisionImpact, ComicFrame, StoryGenreId } from '../types';
 import { generateNextSegments, generateSceneImage, generateStrategicDecision } from '../services/geminiService';
 import { audioEngine } from '../services/audioEngine';
+import {
+  DECISION_ROUND,
+  SECTOR_ROUNDS,
+  calculateSegmentCredits,
+  calculateSegmentScore,
+  isLowHealth
+} from '../services/gameRules';
 
 const CRACK_PATHS = [
     "M 10,10 L 30,30 L 25,45", 
@@ -65,7 +72,6 @@ interface TypingEngineProps {
   strictCase?: boolean;
 }
 
-const DECISION_ROUND = 5;
 const TYPE_CUE_MS = 1500;
 
 const clamp = (value: number, min = 0, max = 100) => Math.max(min, Math.min(max, value));
@@ -401,13 +407,14 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     let isMounted = true;
     const fetchImage = async () => {
         setIsImageLoading(true);
-        const base64 = await generateSceneImage(activeSegment.text, characterDescription, genre);
+        const isStoryBeat = round === 1 || round === DECISION_ROUND + 1 || round === SECTOR_ROUNDS;
+        const base64 = await generateSceneImage(activeSegment.text, characterDescription, genre, isStoryBeat);
         if (isMounted && base64) { setCurrentImage(base64); currentImageRef.current = base64; }
         if (isMounted) setIsImageLoading(false);
     };
     fetchImage();
     return () => { isMounted = false; };
-  }, [activeSegment, characterDescription, genre]);
+  }, [activeSegment, characterDescription, genre, round]);
 
   useEffect(() => {
     if (isWaitingForAi || transitionLockRef.current || isDecisionActive || typeCueActive) return;
@@ -451,7 +458,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       const context = [...fullHistory, ...history.map(h => h.text), activeSegment.text];
       let nextRound = round + 1;
       let nextLevel = currentLevel;
-      if (round >= 10) return;
+      if (round >= SECTOR_ROUNDS) return;
       try {
         if (nextRound === DECISION_ROUND) {
              const decision = await generateStrategicDecision(context, currentLevel, language, missionRef.current, genre);
@@ -469,7 +476,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   }, [activeSegment, history, currentLevel, round, prevLevelSummary, language, genre]); 
 
   useEffect(() => {
-      if (inputValue.length === 0 && !transitionLockRef.current && round <= 10 && !isCriticalHack && !isDecisionActive && !typeCueActive) {
+      if (inputValue.length === 0 && !transitionLockRef.current && round <= SECTOR_ROUNDS && !isCriticalHack && !isDecisionActive && !typeCueActive) {
           if (Math.random() < modifiers.criticalHackChance) {
              performCriticalHack(); 
           }
@@ -676,6 +683,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       inputRef.current?.focus();
     }
     if (val.length > activeSegment.text.length) return;
+    if (inputValue.length === 0 && val.length > 0) setStartTime(Date.now());
     const charIndex = val.length - 1;
 
     if (charIndex >= 0 && val.length > inputValue.length) {
@@ -713,9 +721,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
        } else {
            setCombo(c => c + 1);
            setComboPulse(p => p + 1);
-           const baseCredit = isOverclockActive ? 2 : 1;
-           const earned = baseCredit * modifiers.creditMultiplier * comboMultiplier * (activeSegment.type === SegmentType.BREACH ? modifiers.breachRewardMultiplier : 1);
-           setCredits(c => c + earned);
            if (!isOverclockActive) {
                setOverclockCharge(c => Math.min(modifiers.maxOverclock, c + 1));
            } else {
@@ -798,7 +803,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     if (timerRef.current) clearInterval(timerRef.current);
     if (overclockTimerRef.current) clearTimeout(overclockTimerRef.current);
     onGameOver({
-        wpm: Math.round(totalWPM / Math.max(1, (currentLevel - 1) * 10 + round)),
+        wpm: Math.round((totalWPM + currentWPM) / Math.max(1, round)),
         accuracy: 0,
         health: finalHealth,
         level: currentLevel,
@@ -860,10 +865,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
              setTimeout(() => {
                  setIsDecisionActive(true);
              }, 200);
-        } else if (nextBranch || round >= 10) {
+        } else if (nextBranch || round >= SECTOR_ROUNDS) {
             transitionLockRef.current = true;
             setTimeout(() => {
-                if (round >= 10) {
+                if (round >= SECTOR_ROUNDS) {
                     finalizeLevel(nextBranch);
                 } else {
                     advanceStory(nextBranch!);
@@ -879,17 +884,28 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     const durationSec = (Date.now() - startTime) / 1000;
     const wpm = Math.round((activeSegment.text.length / 5) / (durationSec / 60 || 0.01));
     setTotalWPM(prev => prev + wpm);
-    const { totalErrors, forgivenTypos } = getErrorReport();
-    let segmentScore = Math.max(0, 12 - (totalErrors * 2));
-    if (activeSegment.type === SegmentType.BREACH && totalErrors <= 2) segmentScore += Math.round(5 * modifiers.breachRewardMultiplier);
-    if (activeSegment.type === SegmentType.SIGNAL && totalErrors <= 1) segmentScore += 3;
-    if (wpm > 70 && totalErrors <= 1) segmentScore += 4;
-    if (isOverclockActive) segmentScore *= 2;
-    if (forgivenTypos > 0) segmentScore += Math.min(3, forgivenTypos);
+    const { totalErrors } = getErrorReport();
+    const segmentScore = calculateSegmentScore({
+      errors: totalErrors,
+      type: activeSegment.type,
+      wpm,
+      overclock: isOverclockActive,
+      breachMultiplier: modifiers.breachRewardMultiplier
+    });
+    const segmentCredits = calculateSegmentCredits({
+      errors: totalErrors,
+      type: activeSegment.type,
+      overclock: isOverclockActive,
+      breachMultiplier: modifiers.breachRewardMultiplier,
+      creditMultiplier: modifiers.creditMultiplier
+    });
+    setCredits(current => current + segmentCredits);
 
     let healthChange = 0;
     if (totalErrors === 0) healthChange += 1;
-    if (modifiers.healthRegenWpmThreshold > 0 && wpm > modifiers.healthRegenWpmThreshold) healthChange += 2;
+    if (modifiers.healthRegenWpmThreshold > 0 && wpm > modifiers.healthRegenWpmThreshold) {
+      healthChange += modifiers.healthRegenAmount;
+    }
     if (healthChange > 0) setHealth(h => Math.min(modifiers.maxHealth, h + healthChange));
 
     let nextSeg: StorySegment;
@@ -929,7 +945,20 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       let performanceType: 'good' | 'average' | 'bad' = 'average';
       if (totalErrors <= 1) performanceType = 'good';
       else if (totalErrors >= 5) performanceType = 'bad';
-      const score = Math.max(0, 12 - (totalErrors * 2)) + (activeSegment.type === SegmentType.BREACH && totalErrors <= 2 ? 5 : 0);
+      const score = calculateSegmentScore({
+        errors: totalErrors,
+        type: activeSegment.type,
+        wpm,
+        overclock: isOverclockActive,
+        breachMultiplier: modifiers.breachRewardMultiplier
+      });
+      const segmentCredits = calculateSegmentCredits({
+        errors: totalErrors,
+        type: activeSegment.type,
+        overclock: isOverclockActive,
+        breachMultiplier: modifiers.breachRewardMultiplier,
+        creditMultiplier: modifiers.creditMultiplier
+      });
       const outcome = applySegmentOutcome(performanceType, totalErrors, wpm, activeSegment);
       addToLog(activeSegment.text, performanceType, score, wpm, totalErrors, outcome.meta, activeSegment.type);
       onCaptureFrame?.({ image: currentImageRef.current, caption: activeSegment.text, performance: performanceType, level: currentLevel });
@@ -939,8 +968,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
              health,
              level: currentLevel,
              round,
-             score: 0,
-             credits: Math.floor(credits),
+             score,
+             credits: Math.floor(credits + segmentCredits),
+             mistakes: totalErrors,
+             characters: activeSegment.text.length,
              mission: missionRef.current
         };
         onLevelComplete(stats, clamp(tracePercent + outcome.traceDelta), missionRef.current);
@@ -993,7 +1024,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         borderColor = "border-rose-500/80";
     } else if (mistakesInSegment >= 3) {
         borderColor = "border-rose-500/40";
-    } else if (health < 30) {
+    } else if (isLowHealth(health, modifiers.maxHealth)) {
         borderColor = "border-rose-900/70";
     } else {
         if (activeSegment.mood === StoryMood.DARK) borderColor = "border-rose-900/50";
@@ -1021,7 +1052,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     if (isOverclockActive) return "rgba(52,211,153,0.42)";
     if (mistakesInSegment >= 8) return "rgba(244,63,94,0.48)";
     if (mistakesInSegment >= 3) return "rgba(244,63,94,0.28)";
-    if (health < 30) return "rgba(244,63,94,0.22)";
+    if (isLowHealth(health, modifiers.maxHealth)) return "rgba(244,63,94,0.22)";
     if (isWaitingForAi) return "rgba(251,191,36,0.22)";
     if (activeSegment.mood === StoryMood.HOPEFUL) return "rgba(52,211,153,0.22)";
     if (activeSegment.mood === StoryMood.DARK) return "rgba(244,63,94,0.22)";
@@ -1053,7 +1084,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                         <h2 className="font-display text-2xl md:text-3xl font-bold text-white leading-relaxed">"{nextDecision.introText}"</h2>
                    </div>
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                       <div className="engine-decision-card engine-decision-card--aggressive group relative p-6 bg-white/[0.02] border border-rose-500/35 hover:border-rose-400/75 transition-all cursor-pointer" onClick={() => handleDecisionSelect(0)}>
+                       <button type="button" className="engine-decision-card engine-decision-card--aggressive group relative p-6 bg-white/[0.02] border border-rose-500/35 hover:border-rose-400/75 transition-all cursor-pointer text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-400" onClick={() => handleDecisionSelect(0)}>
                            <h3 className="font-display text-xl font-bold text-rose-400 mb-2 group-hover:text-rose-300">{UI.aggressive}</h3>
                            <p className="text-slate-300 text-lg">"{nextDecision.options[0].text}"</p>
                            <div className="mt-4 text-xs text-rose-300/80 font-mono">{nextDecision.options[0].preview || describeImpact(nextDecision.options[0].impact)}</div>
@@ -1061,8 +1092,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                                <span className="keycap text-lg">1</span>
                                <span className="text-[12px] text-slate-300 group-hover:text-white transition-colors">{UI.press_1.replace('[1]', '').trim()}</span>
                            </div>
-                       </div>
-                       <div className="engine-decision-card engine-decision-card--stealth group relative p-6 bg-white/[0.02] border border-emerald-500/35 hover:border-emerald-400/75 transition-all cursor-pointer" onClick={() => handleDecisionSelect(1)}>
+                       </button>
+                       <button type="button" className="engine-decision-card engine-decision-card--stealth group relative p-6 bg-white/[0.02] border border-emerald-500/35 hover:border-emerald-400/75 transition-all cursor-pointer text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-400" onClick={() => handleDecisionSelect(1)}>
                            <h3 className="font-display text-xl font-bold text-emerald-400 mb-2 group-hover:text-emerald-300">{UI.stealth}</h3>
                            <p className="text-slate-300 text-lg">"{nextDecision.options[1].text}"</p>
                            <div className="mt-4 text-xs text-emerald-300/80 font-mono">{nextDecision.options[1].preview || describeImpact(nextDecision.options[1].impact)}</div>
@@ -1070,7 +1101,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                                <span className="keycap text-lg">2</span>
                                <span className="text-[12px] text-slate-300 group-hover:text-white transition-colors">{UI.press_2.replace('[2]', '').trim()}</span>
                            </div>
-                       </div>
+                       </button>
                    </div>
                </div>
            </div>
@@ -1112,7 +1143,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                     </div>
                     <div>
                         <div className="text-[9px] uppercase tracking-[0.22em] text-slate-500">{UI.round}</div>
-                        <div className="font-display mt-1 text-xl font-bold tabular-nums leading-none text-slate-100">{round}<span className="ml-1 text-[10px] font-mono text-slate-600">/10</span></div>
+                        <div className="font-display mt-1 text-xl font-bold tabular-nums leading-none text-slate-100">{round}<span className="ml-1 text-[10px] font-mono text-slate-600">/{SECTOR_ROUNDS}</span></div>
                     </div>
                 </div>
                 <div className="border-l border-white/[0.06] pl-5">
@@ -1344,7 +1375,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           </div>
         );
       })()}
-      <input ref={inputRef} type="text" value={inputValue} onChange={handleInput} className="fixed opacity-0 top-0 left-0 w-px h-px overflow-hidden -z-10 pointer-events-none" autoComplete="off" autoFocus disabled={isWaitingForAi || isCriticalHack || isDecisionActive} />
+      <input ref={inputRef} type="text" value={inputValue} onChange={handleInput} aria-label={language === 'ru' ? 'Поле тренировки печати' : 'Typing practice input'} className="fixed opacity-0 top-0 left-0 w-px h-px overflow-hidden -z-10 pointer-events-none" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} autoFocus disabled={isWaitingForAi || isCriticalHack || isDecisionActive} />
     </div>
   );
 };
