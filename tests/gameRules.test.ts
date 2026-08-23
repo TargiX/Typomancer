@@ -7,6 +7,7 @@ import {
   calculateSegmentCredits,
   calculateSegmentScore,
   getReadyActiveSkills,
+  getTypingAccuracy,
   getTypingFocus,
   getStealthLevel,
   isLowHealth,
@@ -36,6 +37,11 @@ test('typing debrief prioritizes accuracy before speed', () => {
   assert.equal(getTypingFocus({ avgWpm: 72, accuracy: 99, consistency: 70, totalMistakes: 1, score: 80 }), 'consistency');
   assert.equal(getTypingFocus({ avgWpm: 48, accuracy: 99, consistency: 94, totalMistakes: 1, score: 80 }), 'speed');
   assert.equal(getTypingFocus({ avgWpm: 68, accuracy: 99, consistency: 91, totalMistakes: 1, score: 80 }), 'mastery');
+});
+
+test('typing accuracy counts each recorded mistake once', () => {
+  assert.equal(getTypingAccuracy(10, 10), 0);
+  assert.equal(getTypingAccuracy(2, 100), 98);
 });
 
 test('active typing skills surface as their energy thresholds become ready', () => {

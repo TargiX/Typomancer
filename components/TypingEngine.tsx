@@ -8,6 +8,7 @@ import {
   calculateSegmentCredits,
   calculateSegmentScore,
   getReadyActiveSkills,
+  getTypingAccuracy,
   isLowHealth
 } from '../services/gameRules';
 
@@ -677,7 +678,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       return {
           uncorrectedTypos,
           forgivenTypos,
-          totalErrors: mistakesInSegment + uncorrectedTypos
+          // Every non-forgiven typo is already counted when the key is pressed.
+          // Remaining wrong characters describe the current buffer; adding them again
+          // would double-charge both the branch result and the typing debrief.
+          totalErrors: mistakesInSegment
       };
   };
 
@@ -780,7 +784,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
              setHealth(newHealth);
              triggerImpact(newMistakes);
              if (newHealth <= 0 || newMistakes >= 10) {
-                triggerGameOver(newHealth);
+                triggerGameOver(newHealth, newMistakes);
                 return;
              }
          }
@@ -865,20 +869,22 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       }
   };
 
-  const triggerGameOver = (finalHealth: number) => {
+  const triggerGameOver = (finalHealth: number, totalErrorsOverride?: number) => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (overclockTimerRef.current) clearTimeout(overclockTimerRef.current);
-    const { totalErrors } = getErrorReport();
+    const { totalErrors: recordedErrors } = getErrorReport();
+    const totalErrors = totalErrorsOverride ?? recordedErrors;
+    const typedCharacters = inputValue.length + (totalErrorsOverride === undefined ? 0 : 1);
     onGameOver({
         wpm: Math.round((totalWPM + currentWPM) / Math.max(1, round)),
-        accuracy: inputValue.length > 0 ? Math.max(0, 100 - ((totalErrors / inputValue.length) * 100)) : 100,
+        accuracy: getTypingAccuracy(totalErrors, typedCharacters),
         health: finalHealth,
         level: currentLevel,
         round,
         score: 0,
         credits: Math.floor(credits),
         mistakes: totalErrors,
-        characters: inputValue.length,
+        characters: typedCharacters,
         mission: missionRef.current
     });
   };

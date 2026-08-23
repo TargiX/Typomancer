@@ -18,10 +18,8 @@ Goal: feel the Energy-spend loop with zero overload. Instant, one-click skills.
 - **Firewall** (slot 2, ~40% Energy) — shield the next 3 mistakes (charges persist across
   segments, shown as `×N`).
 - **Purge Trace** (slot 3, ~55% Energy) — instantly cut Security Trace by 25%. Panic button.
-- Slot 4 locked (reserved).
-Cost is shown as 1–3 dots under each icon; slot glows when affordable, dims when not.
-Focus keeps its TAB hotkey; the others are click-to-use (letter hotkeys conflict with typing —
-see Phase 3).
+- Ready skills surface beside the typing caret, so the player never has to look away from the line.
+  Focus keeps `TAB`; Firewall uses `↑`; Purge uses `↓`.
 
 ## Phase 2 — more skills + loadout
 - New skills: **Evidence Surge** (next clean segment 2–3x evidence), **Stabilize** (freeze
@@ -38,11 +36,10 @@ see Phase 3).
   Leans directly into the game's hook.
 - **Foresight** — preview the next segment's consequence before typing it.
 - **Time Dilation** — brief slow-mo skill-check (save it for the boss/climax).
-- Hotkeys: assign F1–F4 (non-typing keys) so all skills are keyboardable without clashing with
-  the typing input.
+- Optional remapping for players who prefer function keys or alternative layouts.
 
 ## Notes
 - Energy = `overclockCharge` (0..`maxOverclock`). `Buffer Expansion` (market) raises the cap,
   so it now also = "more skill uses per run" — nice existing synergy.
-- Costs live in `TypingEngine.tsx` (`skillCost`, `FIREWALL_COST`, `PURGE_COST`). Skill data is
-  a small array in the skill-bar render — add a skill by pushing one entry + an `onUse` helper.
+- Costs live in `TypingEngine.tsx` (`skillCost`, `FIREWALL_COST`, `PURGE_COST`). Readiness is
+  shared through `services/gameRules.ts` so the caret UI and keyboard controls stay aligned.

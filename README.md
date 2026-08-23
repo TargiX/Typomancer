@@ -11,6 +11,8 @@ A consequence-driven RPG typing game. You play as Agent Nox, a field hacker tryi
 - **Strategic decisions:** each mid-level decision has visible tradeoffs. Loud routes gain more evidence and credits but raise Heat; stealth routes lower Heat and build Trust.
 - **Focus Mode:** charge it by typing correctly, then press `TAB` to pause trace pressure, soften mistakes, and double typing rewards for a short burst.
 - **Typing variety:** narrative flow, terminal breach commands, signal/number drills, and dialogue/punctuation drills.
+- **Adaptive first run:** a short keystroke calibration tunes trace pressure and mistake grace to the player's pace.
+- **Operator Record:** the last 20 runs, WPM trend, accuracy, streak, and next training target stay locally on the device.
 - **Perk market expanded:** new run perks and permanent hardware upgrades support Focus Mode, evidence gain, breach rewards, and error recovery.
 - **Local campaign fallback:** the game works without a Gemini key. If AI is unavailable, it uses handcrafted cyberpunk branches and procedural SVG scene art.
 
@@ -18,6 +20,8 @@ A consequence-driven RPG typing game. You play as Agent Nox, a field hacker tryi
 
 - `1`, `2`, `3`: choose perks/upgrades/options where shown.
 - `TAB`: activate Focus Mode when the Focus meter is full.
+- `↑` / `↓`: activate Firewall or Purge when they appear beside the typing caret.
+- `4`: open Operator Record from the main menu.
 - `ESC`: return from the Black Market.
 - `SPACE` / `ENTER`: return to the menu after a win/loss.
 
