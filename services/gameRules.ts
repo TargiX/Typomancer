@@ -17,6 +17,9 @@ export interface SectorSummary {
   consistency: number;
 }
 
+export type TypingFocus = 'accuracy' | 'consistency' | 'speed' | 'mastery';
+export type ActiveTypingSkill = 'firewall' | 'purge' | 'focus';
+
 const clamp = (value: number, min = 0, max = 100) => Math.max(min, Math.min(max, value));
 
 export const summarizeSector = (rounds: RoundMetric[]): SectorSummary => {
@@ -38,6 +41,26 @@ export const summarizeSector = (rounds: RoundMetric[]): SectorSummary => {
     accuracy: characters > 0 ? clamp(100 - ((totalMistakes / characters) * 100)) : 100,
     consistency: avgWpm > 0 ? clamp(100 - ((deviation / avgWpm) * 100)) : 100
   };
+};
+
+export const getTypingFocus = ({ avgWpm, accuracy, consistency }: SectorSummary): TypingFocus => {
+  if (accuracy < 96) return 'accuracy';
+  if (consistency < 82) return 'consistency';
+  if (avgWpm < 55) return 'speed';
+  return 'mastery';
+};
+
+export const getReadyActiveSkills = (
+  charge: number,
+  maxCharge: number,
+  focusActive = false
+): ActiveTypingSkill[] => {
+  if (focusActive || maxCharge <= 0) return [];
+  const ready: ActiveTypingSkill[] = [];
+  if (charge >= Math.round(maxCharge * 0.4)) ready.push('firewall');
+  if (charge >= Math.round(maxCharge * 0.55)) ready.push('purge');
+  if (charge >= maxCharge) ready.push('focus');
+  return ready;
 };
 
 type SegmentKind = 'NARRATIVE' | 'BREACH' | 'DIALOG' | 'SIGNAL';

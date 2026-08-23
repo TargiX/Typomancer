@@ -4,7 +4,7 @@ import { generateStoryStart, generateCharacterProfile, generateLevelSummary, gen
 import { GENRE_ORDER, getGenrePack } from './services/genreConfig';
 import { getGenreSkin, PerkGroupId, UpgradeId } from './services/genreSkin';
 import { DAILY_MAX_ATTEMPTS, DailyBrief, getDailyBrief, getDailyState, recordDailyAttempt } from './services/dailyMode';
-import { CAMPAIGN_SECTORS, getStealthLevel, summarizeSector } from './services/gameRules';
+import { CAMPAIGN_SECTORS, getStealthLevel, getTypingFocus, summarizeSector } from './services/gameRules';
 import { RunCheckpoint, clearRunCheckpoint, loadRunCheckpoint, saveRunCheckpoint } from './services/runCheckpoint';
 import { audioEngine } from './services/audioEngine';
 import TypingEngine from './components/TypingEngine';
@@ -62,6 +62,15 @@ const TRANSLATIONS = {
         bank_exit: "SAVE & EXIT",
         accuracy: "Accuracy",
         consistency: "Consistency",
+        mistakes: "Mistakes",
+        characters_typed: "Characters typed",
+        typing_debrief: "Typing debrief",
+        next_drill: "Next run target",
+        signal_lost: "SIGNAL LOST",
+        focus_accuracy: "Slow down slightly and keep accuracy above 96%.",
+        focus_consistency: "Hold one rhythm instead of sprinting between pauses.",
+        focus_speed: "Accuracy is stable. Push your average speed by 5 WPM.",
+        focus_mastery: "Strong control. Keep this accuracy while increasing pressure.",
         generating_sector: "GENERATING NEW SECTOR...",
         generating_scenario: "GENERATING SCENARIO...",
         critical_failure: "CRITICAL FAILURE",
@@ -148,6 +157,15 @@ const TRANSLATIONS = {
         bank_exit: "СОХРАНИТЬ И ВЫЙТИ",
         accuracy: "Точность",
         consistency: "Стабильность",
+        mistakes: "Ошибки",
+        characters_typed: "Напечатано знаков",
+        typing_debrief: "Разбор печати",
+        next_drill: "Цель следующего забега",
+        signal_lost: "СИГНАЛ ПОТЕРЯН",
+        focus_accuracy: "Чуть сбавь темп и удерживай точность выше 96%.",
+        focus_consistency: "Держи один ритм вместо рывков между паузами.",
+        focus_speed: "Точность стабильна. Подними среднюю скорость на 5 СЛ/М.",
+        focus_mastery: "Сильный контроль. Сохрани точность под большим давлением.",
         generating_sector: "ГЕНЕРАЦИЯ НОВОГО СЕКТОРА...",
         generating_scenario: "ГЕНЕРАЦИЯ СЦЕНАРИЯ...",
         critical_failure: "КРИТИЧЕСКИЙ СБОЙ",
@@ -549,6 +567,7 @@ const App: React.FC = () => {
   const [campaignState, setCampaignState] = useState<MissionState>(DEFAULT_MISSION_STATE);
   const [comicFrames, setComicFrames] = useState<ComicFrame[]>([]);
   const [showComic, setShowComic] = useState(false);
+  const [deathSequenceActive, setDeathSequenceActive] = useState(false);
   const [selectedGenre, setSelectedGenre] = useState<StoryGenreId>('cyberpunk');
   const [dailyState, setDailyState] = useState(() => getDailyState(dailyBrief.dailyId));
   const [isDailyRun, setIsDailyRun] = useState(false);
@@ -561,6 +580,7 @@ const App: React.FC = () => {
   const activeDailyBriefRef = useRef<DailyBrief>(dailyBrief);
   const dailyAttemptRecordedRef = useRef(false);
   const totalScoreRef = useRef(0);
+  const deathSequenceTimerRef = useRef<number | null>(null);
 
   const logEndRef = useRef<HTMLDivElement>(null);
 
@@ -597,6 +617,20 @@ const App: React.FC = () => {
       connection_severed: inSimulation ? genrePack.ui.connectionSevered[language] : base.connection_severed
     };
   }, [language, hubSkin, genrePack, inSimulation]);
+
+  const typingFocus = finalStats ? getTypingFocus({
+    avgWpm: finalStats.wpm,
+    accuracy: finalStats.accuracy,
+    consistency: finalStats.consistency ?? 100,
+    totalMistakes: finalStats.mistakes || 0,
+    score: finalStats.score
+  }) : 'accuracy';
+  const typingCoachText = {
+    accuracy: UI.focus_accuracy,
+    consistency: UI.focus_consistency,
+    speed: UI.focus_speed,
+    mastery: UI.focus_mastery
+  }[typingFocus];
 
   useEffect(() => {
     try {
@@ -688,7 +722,14 @@ const App: React.FC = () => {
   }, [activePerks, userProfile.upgrades]);
 
   useEffect(() => {
+    return () => {
+      if (deathSequenceTimerRef.current !== null) window.clearTimeout(deathSequenceTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+        if (deathSequenceActive) return;
         if (gameState === GameState.STARTER_PERK_SELECTION || gameState === GameState.LEVEL_COMPLETE) {
             const index = parseInt(e.key) - 1;
             if (index >= 0 && index < offeredPerks.length) {
@@ -724,7 +765,7 @@ const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [dailyAttemptsExhausted, gameState, isSectorSummaryReady, offeredPerks, runCheckpoint, userProfile]);
+  }, [dailyAttemptsExhausted, deathSequenceActive, gameState, isSectorSummaryReady, offeredPerks, runCheckpoint, userProfile]);
 
   const handleToggleMusic = () => {
       const active = audioEngine.toggle();
@@ -830,6 +871,11 @@ const App: React.FC = () => {
       setVictoryReport(null);
       setComicFrames([]);
       setShowComic(false);
+      setDeathSequenceActive(false);
+      if (deathSequenceTimerRef.current !== null) {
+          window.clearTimeout(deathSequenceTimerRef.current);
+          deathSequenceTimerRef.current = null;
+      }
       setCampaignState(DEFAULT_MISSION_STATE);
       setNarrativeContext("");
       setCharacterDesc("");
@@ -1101,8 +1147,32 @@ const App: React.FC = () => {
   const handleGameOver = (stats: GameStats) => {
     const finalScore = totalScoreRef.current;
     const mission = stats.mission || campaignState;
+    const completedMetrics = storyLog
+      .filter((item) => item.wpm > 0 && (item.characters || 0) > 0)
+      .map((item) => ({
+        wpm: item.wpm,
+        mistakes: item.mistakes || 0,
+        score: item.score,
+        characters: item.characters || item.text.length
+      }));
+    const activeMetric = (stats.characters || 0) > 0
+      ? [{ wpm: stats.wpm, mistakes: stats.mistakes || 0, score: 0, characters: stats.characters || 0 }]
+      : [];
+    const runMetrics = [...completedMetrics, ...activeMetric];
+    const typingSummary = summarizeSector(runMetrics);
+    const bestWpm = runMetrics.reduce((best, metric) => Math.max(best, metric.wpm), 0);
     const bonusXp = Math.floor(finalScore * (1 + (stats.level * 0.1))); 
-    setFinalStats({ ...stats, score: finalScore });
+    setFinalStats({
+        ...stats,
+        score: finalScore,
+        wpm: Math.round(typingSummary.avgWpm),
+        accuracy: typingSummary.accuracy,
+        mistakes: typingSummary.totalMistakes,
+        characters: runMetrics.reduce((sum, metric) => sum + metric.characters, 0),
+        consistency: typingSummary.consistency,
+        bestWpm,
+        segments: runMetrics.length
+    });
     if (stats.mission) setCampaignState(stats.mission);
     setUserProfile(prev => {
         const totalXp = prev.totalXp + bonusXp;
@@ -1115,7 +1185,13 @@ const App: React.FC = () => {
     });
     clearRunCheckpoint();
     setRunCheckpoint(null);
+    setDeathSequenceActive(true);
     setGameState(GameState.GAME_OVER);
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    deathSequenceTimerRef.current = window.setTimeout(() => {
+        setDeathSequenceActive(false);
+        deathSequenceTimerRef.current = null;
+    }, reducedMotion ? 120 : 1150);
   };
 
   const handleBuyUpgrade = (key: keyof UserUpgrades) => {
@@ -1135,7 +1211,7 @@ const App: React.FC = () => {
   const addToLog = (text: string, performance: 'good' | 'average' | 'bad' | 'neutral', score: number, wpm: number, mistakes: number, meta?: string, type?: SegmentType) => {
     totalScoreRef.current += score;
     setTotalScore(totalScoreRef.current);
-    setStoryLog(prev => [...prev, { text, performance, score, wpm, meta, type }]);
+    setStoryLog(prev => [...prev, { text, performance, score, wpm, mistakes, characters: performance === 'neutral' ? 0 : text.length, meta, type }]);
     if (performance !== 'neutral') {
         setLevelBuffer(prev => [...prev, { wpm, mistakes, score, characters: text.length }]);
     }
@@ -1310,6 +1386,25 @@ const App: React.FC = () => {
         <span className="screens-deck-corner screens-deck-corner-bl" />
         <span className="screens-deck-corner screens-deck-corner-br" />
       </div>
+
+      {deathSequenceActive && (
+        <div className="screens-death-sequence" role="alert" aria-live="assertive">
+          <div className="screens-death-flash" aria-hidden="true" />
+          <svg className="screens-death-crack" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M51 48 L44 34 L46 23 L38 7" />
+            <path d="M49 49 L34 44 L24 36 L4 31" />
+            <path d="M49 51 L36 61 L29 75 L14 92" />
+            <path d="M52 49 L66 37 L77 34 L96 18" />
+            <path d="M52 51 L68 57 L77 70 L94 82" />
+            <path d="M50 50 L55 66 L52 81 L58 100" />
+            <path d="M44 34 L34 27 L29 13 M66 37 L68 22 L78 9 M36 61 L20 60 L8 68 M68 57 L84 52 L100 54" />
+          </svg>
+          <div className="screens-death-copy">
+            <span>{UI.signal_lost}</span>
+            <small>ERR // LINK_SEVERED</small>
+          </div>
+        </div>
+      )}
       
       {/* Sidebar — operator console */}
       <aside className="relative z-10 w-full md:w-1/3 lg:w-1/4 flex flex-col h-[30vh] md:h-screen bg-gradient-to-b from-[#0b101a] to-[#070a11] border-r border-white/[0.06]">
@@ -1835,26 +1930,44 @@ const App: React.FC = () => {
             )}
 
             {gameState === GameState.GAME_OVER && (
-                <div className="screens-cut-panel text-center space-y-6 bg-[#0b101a]/95 p-10 border border-rose-500/40 backdrop-blur-xl max-w-lg w-full shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_60px_rgba(244,63,94,0.12)] animate-fade-in-up">
-                    <h2 className="font-display text-5xl font-bold text-rose-500 tracking-tight">{UI.critical_failure}</h2>
-                    <p className="text-slate-300">{genrePack.ui.connectionSevered[language]}</p>
-                    <div className="grid grid-cols-2 gap-2 py-4">
-                        <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]">
-                            <div className="font-display text-3xl font-bold text-white tabular-nums leading-none">{finalStats?.level || 1}</div>
-                            <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.reached} · {UI.level}</div>
+                <div className="screens-cut-panel screens-death-report bg-[#0b101a]/95 p-6 sm:p-8 border border-rose-500/40 backdrop-blur-xl max-w-3xl w-full shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_60px_rgba(244,63,94,0.12)] animate-fade-in-up">
+                    <div className="text-center">
+                        <div className="text-[9px] font-bold uppercase tracking-[0.3em] text-rose-400/70">{UI.typing_debrief}</div>
+                        <h2 className="mt-2 font-display text-4xl sm:text-5xl font-bold text-rose-500 tracking-tight">{UI.critical_failure}</h2>
+                        <p className="mt-3 text-sm text-slate-400">{genrePack.ui.connectionSevered[language]}</p>
+                    </div>
+
+                    <div className="screens-debrief-grid mt-6" aria-label={UI.typing_debrief}>
+                        <div className="screens-debrief-primary">
+                            <strong>{Math.round(finalStats?.wpm || 0)}</strong>
+                            <span>{UI.avg_speed} · {UI.wpm}</span>
+                            <small>{language === 'ru' ? `Пик ${Math.round(finalStats?.bestWpm || 0)} СЛ/М` : `Peak ${Math.round(finalStats?.bestWpm || 0)} WPM`}</small>
                         </div>
-                        <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]">
-                            <div className="font-display text-3xl font-bold text-white tabular-nums leading-none">{finalStats?.score || 0}</div>
-                            <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.score}</div>
+                        <div className="screens-debrief-metric">
+                            <strong>{Math.round(finalStats?.accuracy ?? 100)}%</strong>
+                            <span>{UI.accuracy}</span>
                         </div>
-                        <div className="screens-stat-tile p-4 text-center border border-emerald-400/15 bg-emerald-400/[0.025]">
-                            <div className="font-display text-3xl font-bold text-emerald-300 tabular-nums leading-none">{finalStats?.mission?.evidence ?? campaignState.evidence}</div>
-                            <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.evidence}</div>
+                        <div className="screens-debrief-metric">
+                            <strong>{finalStats?.mistakes || 0}</strong>
+                            <span>{UI.mistakes}</span>
                         </div>
-                        <div className="screens-stat-tile p-4 text-center border border-amber-400/15 bg-amber-400/[0.025]">
-                            <div className="font-display text-3xl font-bold text-amber-300 tabular-nums leading-none">{finalStats?.mission?.heat ?? campaignState.heat}%</div>
-                            <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.heat}</div>
+                        <div className="screens-debrief-metric">
+                            <strong>{(finalStats?.segments || 0) > 1 ? `${Math.round(finalStats?.consistency ?? 100)}%` : '—'}</strong>
+                            <span>{UI.consistency}</span>
                         </div>
+                    </div>
+
+                    <div className="screens-next-drill mt-4">
+                        <span>{UI.next_drill}</span>
+                        <p>{typingCoachText}</p>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 border-y border-white/[0.06] py-3 text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                        <span>{UI.reached}: <b className="text-slate-200">{UI.level} {finalStats?.level || 1}</b></span>
+                        <span>{UI.score}: <b className="text-slate-200">{finalStats?.score || 0}</b></span>
+                        <span>{UI.characters_typed}: <b className="text-slate-200">{finalStats?.characters || 0}</b></span>
+                        <span>{UI.evidence}: <b className="text-emerald-300">{finalStats?.mission?.evidence ?? campaignState.evidence}</b></span>
+                        <span>{UI.heat}: <b className="text-amber-300">{finalStats?.mission?.heat ?? campaignState.heat}%</b></span>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-3">
                         {comicFrames.length > 0 && (
