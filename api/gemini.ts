@@ -1,5 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
+import { checkBotId } from 'botid/server';
 import { GEMINI_IMAGE_SIZE, isAllowedRequestSourceHeaders } from '../services/geminiPolicy.js';
+import { verifyBrowserRequest } from '../services/botProtection.js';
 
 const API_KEY = process.env.GEMINI_API_KEY || process.env.API_KEY || '';
 const TEXT_MODEL = 'gemini-flash-lite-latest';
@@ -168,6 +170,16 @@ export default async function handler(req: any, res: any) {
 
   if (!isAllowedRequestSource(req)) {
     return json(res, 403, { error: 'Forbidden' });
+  }
+
+  const browserVerification = await verifyBrowserRequest(
+    req.headers || {},
+    process.env.VERCEL_ENV,
+    (headers) => checkBotId({ advancedOptions: { headers } } as any)
+  );
+  if ('status' in browserVerification) {
+    if (browserVerification.status === 503) console.error('BotID verification unavailable');
+    return json(res, browserVerification.status, { error: browserVerification.error });
   }
 
   if (isRateLimited(req)) {
