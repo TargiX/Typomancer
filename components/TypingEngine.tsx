@@ -7,6 +7,7 @@ import {
   SECTOR_ROUNDS,
   calculateSegmentCredits,
   calculateSegmentScore,
+  getReadyActiveSkills,
   isLowHealth
 } from '../services/gameRules';
 
@@ -73,6 +74,7 @@ interface TypingEngineProps {
 }
 
 const TYPE_CUE_MS = 1500;
+const SKILL_BRIEFING_STORAGE_KEY = 'narrativeFlowSkillBriefingSeen';
 
 const clamp = (value: number, min = 0, max = 100) => Math.max(min, Math.min(max, value));
 
@@ -189,6 +191,14 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   // mistakes (persists across segments until spent). Purge Trace is instant.
   const firewallGraceRef = useRef(0);
   const [firewallGrace, setFirewallGrace] = useState(0);
+  const [showSkillBriefing, setShowSkillBriefing] = useState(() => {
+    try {
+      return window.localStorage.getItem(SKILL_BRIEFING_STORAGE_KEY) !== '1';
+    } catch {
+      return true;
+    }
+  });
+  const skipTypeCueRef = useRef(false);
 
   // Operator deck chrome — always cyberpunk (Animus frame). Genre only changes the story feed.
   const T = {
@@ -227,6 +237,13 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           skill_focus: "FOCUS — pause trace, soften mistakes, 2x rewards (TAB, full Energy)",
           skill_firewall: "FIREWALL — shield the next 3 mistakes (costs Energy)",
           skill_purge: "PURGE TRACE — instantly cut Security Trace by 25% (costs Energy)",
+          skills_title: "ACTIVE PROTOCOLS",
+          skills_intro: "Clean typing charges Energy. Spend it without leaving the typing line.",
+          skill_focus_short: "Pause trace · soften mistakes · 2x rewards",
+          skill_firewall_short: "Shield the next 3 mistakes",
+          skill_purge_short: "Cut Security Trace by 25%",
+          shield_active: "SHIELD",
+          skill_briefing_start: "GOT IT · START TYPING",
           route_balanced: "BALANCED",
           route_silent: "SILENT",
           route_loud: "LOUD",
@@ -268,6 +285,13 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           skill_focus: "ФОКУС — пауза трассы, мягче ошибки, x2 награды (TAB, вся Energy)",
           skill_firewall: "FIREWALL — щит на следующие 3 ошибки (тратит Energy)",
           skill_purge: "СБРОС ТРАССЫ — мгновенно −25% к трассировке (тратит Energy)",
+          skills_title: "АКТИВНЫЕ ПРОТОКОЛЫ",
+          skills_intro: "Точная печать заряжает Energy. Трать её, не отрывая взгляд от строки.",
+          skill_focus_short: "Пауза трассы · мягче ошибки · x2 награды",
+          skill_firewall_short: "Щит на следующие 3 ошибки",
+          skill_purge_short: "Снизить трассировку на 25%",
+          shield_active: "ЩИТ",
+          skill_briefing_start: "ПОНЯТНО · НАЧАТЬ ПЕЧАТЬ",
           route_balanced: "БАЛАНС",
           route_silent: "ТИХО",
           route_loud: "ГРОМКО",
@@ -277,6 +301,18 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   };
 
   const UI = T[language];
+
+  const dismissSkillBriefing = () => {
+      try {
+          window.localStorage.setItem(SKILL_BRIEFING_STORAGE_KEY, '1');
+      } catch {
+          // Storage can be unavailable in privacy-restricted browser contexts.
+      }
+      skipTypeCueRef.current = true;
+      setShowSkillBriefing(false);
+      setStartTime(Date.now());
+      window.setTimeout(() => inputRef.current?.focus(), 0);
+  };
 
   useEffect(() => {
       const normalized = normalizeMissionState(missionSeed);
@@ -290,6 +326,18 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   }, [missionState, onMissionUpdate]);
 
   useEffect(() => {
+      if (showSkillBriefing) {
+          setTypeCueActive(false);
+          return;
+      }
+      if (skipTypeCueRef.current) {
+          skipTypeCueRef.current = false;
+          typeCueShownRef.current = activeSegment;
+          setTypeCueActive(false);
+          setStartTime(Date.now());
+          inputRef.current?.focus();
+          return;
+      }
       // Show the TYPE cue only once — on the first segment of the level. Repeating
       // it on every segment interrupts the flow and blocks input for 1.5s each round.
       if (typeCueShownRef.current && typeCueShownRef.current !== activeSegment) {
@@ -307,16 +355,33 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           inputRef.current?.focus();
       }, TYPE_CUE_MS);
       return () => window.clearTimeout(cueTimer);
-  }, [activeSegment]);
+  }, [activeSegment, showSkillBriefing]);
 
   useEffect(() => {
     inputRef.current?.focus();
     const handleKeydown = (e: KeyboardEvent) => {
+        if (showSkillBriefing) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                dismissSkillBriefing();
+            }
+            return;
+        }
         if (e.key === 'Tab') {
             e.preventDefault(); 
             if (!isOverclockActive && overclockCharge >= modifiers.maxOverclock) {
                 activateOverclock();
             }
+            return;
+        }
+        if (!isDecisionActive && e.key === 'ArrowUp') {
+            e.preventDefault();
+            useFirewall();
+            return;
+        }
+        if (!isDecisionActive && e.key === 'ArrowDown') {
+            e.preventDefault();
+            usePurgeTrace();
             return;
         }
         if (isDecisionActive && nextDecision) {
@@ -351,7 +416,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     isWaitingForAi,
     isCriticalHack,
     mistakesInSegment,
-    health
+    health,
+    showSkillBriefing
   ]);
 
   const activateOverclock = () => {
@@ -365,7 +431,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
 
   // Active skills share the Energy bar (overclockCharge). Focus costs the full bar;
   // the instant skills cost a fraction, so you choose what to spend Energy on.
-  const skillCost = (fraction: number) => Math.ceil(modifiers.maxOverclock * fraction);
+  const skillCost = (fraction: number) => Math.round(modifiers.maxOverclock * fraction);
   const FIREWALL_COST = () => skillCost(0.4);
   const PURGE_COST = () => skillCost(0.55);
 
@@ -394,14 +460,14 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         textContainerRef.current.scrollTop = textContainerRef.current.scrollHeight;
     }
 
-    const showFocusHint = !isOverclockActive && overclockCharge >= modifiers.maxOverclock;
-    if (showFocusHint && cursorRef.current) {
+    const hasContextualSkill = firewallGrace > 0 || getReadyActiveSkills(overclockCharge, modifiers.maxOverclock, isOverclockActive).length > 0;
+    if (hasContextualSkill && cursorRef.current) {
         const rect = cursorRef.current.getBoundingClientRect();
         setFocusHintPos({ left: rect.left + rect.width / 2, top: rect.top - 6 });
     } else {
         setFocusHintPos(null);
     }
-  }, [inputValue, activeSegment, isWaitingForAi, history, mistakesInSegment, overclockCharge, isOverclockActive, modifiers.maxOverclock]);
+  }, [inputValue, activeSegment, isWaitingForAi, history, mistakesInSegment, overclockCharge, isOverclockActive, modifiers.maxOverclock, firewallGrace]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1109,6 +1175,36 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                </div>
            </div>
       )}
+      {showSkillBriefing && (
+          <div className="engine-skill-briefing absolute inset-0 z-[85] flex items-center justify-center p-5 md:p-8">
+              <div className="engine-skill-briefing-panel w-full max-w-3xl">
+                  <div className="text-center">
+                      <div className="text-[9px] font-bold uppercase tracking-[0.24em] text-cyan-300">{UI.skills_title}</div>
+                      <h2 className="mt-2 font-display text-2xl md:text-3xl font-bold text-white">{UI.skills_intro}</h2>
+                  </div>
+                  <div className="engine-skill-briefing-grid mt-6">
+                      {[
+                        { key: 'TAB', name: 'FOCUS', cost: '100%', effect: UI.skill_focus_short },
+                        { key: '↑', name: 'FIREWALL', cost: '40%', effect: UI.skill_firewall_short },
+                        { key: '↓', name: language === 'ru' ? 'СБРОС' : 'PURGE', cost: '55%', effect: UI.skill_purge_short }
+                      ].map((skill) => (
+                        <div key={skill.name} className="engine-skill-briefing-card">
+                            <div className="flex items-center justify-between gap-3">
+                                <span className="keycap">{skill.key}</span>
+                                <span className="text-[9px] uppercase tracking-[0.18em] text-cyan-300">Energy {skill.cost}</span>
+                            </div>
+                            <strong>{skill.name}</strong>
+                            <p>{skill.effect}</p>
+                        </div>
+                      ))}
+                  </div>
+                  <button type="button" onClick={dismissSkillBriefing} className="engine-skill-briefing-start mt-6">
+                      <span className="keycap">ENTER</span>
+                      <span>{UI.skill_briefing_start}</span>
+                  </button>
+              </div>
+          </div>
+      )}
       <div className="absolute inset-0 pointer-events-none overflow-hidden z-50">
           {debris.map(d => (
               <div key={d.id} className="debris rounded-sm shadow-sm" style={{ left: `${d.left}%`, top: '45%', width: `${d.size}px`, height: `${d.size}px`, backgroundColor: d.color, animationDelay: `${d.delay}s` }} />
@@ -1121,14 +1217,28 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       </div>
       {focusHintPos && (
           <div
-              className="fixed pointer-events-none z-[110] flex flex-col items-center -translate-x-1/2 -translate-y-full"
+              className="engine-cursor-skills fixed z-[110] flex items-center gap-1.5 -translate-x-1/2 -translate-y-full"
               style={{ left: focusHintPos.left, top: focusHintPos.top }}
           >
-              <span className="engine-focus-hint flex items-center gap-1.5 bg-[#0b101a]/95 border border-emerald-400/35 text-emerald-300 text-[9px] font-bold uppercase tracking-[0.18em] px-2.5 py-1 whitespace-nowrap animate-bounce">
-                  <span className="keycap">TAB</span>
-                  <span>{UI.focus_ready.replace('TAB ⚡', '').trim()}</span>
-              </span>
-              <span className="w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-t-[4px] border-t-emerald-400 animate-bounce"></span>
+              {firewallGrace > 0 && (
+                  <span className="engine-cursor-skill engine-cursor-skill--active" aria-live="polite">
+                      <span className="engine-cursor-skill-label">{UI.shield_active} ×{firewallGrace}</span>
+                  </span>
+              )}
+              {getReadyActiveSkills(overclockCharge, modifiers.maxOverclock, isOverclockActive).map((skill) => {
+                  const details = skill === 'focus'
+                    ? { key: 'TAB', label: 'FOCUS', effect: UI.skill_focus_short, use: activateOverclock }
+                    : skill === 'firewall'
+                      ? { key: '↑', label: 'FIREWALL', effect: UI.skill_firewall_short, use: useFirewall }
+                      : { key: '↓', label: language === 'ru' ? 'СБРОС' : 'PURGE', effect: UI.skill_purge_short, use: usePurgeTrace };
+                  return (
+                    <button key={skill} type="button" onClick={details.use} className="engine-cursor-skill" title={details.effect}>
+                        <span className="keycap">{details.key}</span>
+                        <span className="engine-cursor-skill-label">{details.label}</span>
+                        <span className="engine-cursor-skill-effect">{details.effect}</span>
+                    </button>
+                  );
+              })}
           </div>
       )}
       {isCriticalHack && (
@@ -1321,64 +1431,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         </div>
       </div>
 
-      {/* Skill bar — active abilities that spend Energy. Slot 1 Focus (TAB), 2 Firewall, 3 Purge. */}
-      {(() => {
-        const focusReady = overclockCharge >= modifiers.maxOverclock && !isOverclockActive;
-        const fwCost = FIREWALL_COST();
-        const pgCost = PURGE_COST();
-        const skills = [
-          {
-            id: 'focus', name: UI.skill_focus, hotkey: 'TAB', costTier: 3,
-            state: isOverclockActive ? 'active' : focusReady ? 'ready' : 'charging',
-            disabled: isOverclockActive || !focusReady,
-            badge: null as string | null,
-            onUse: () => { if (focusReady) activateOverclock(); },
-            icon: (<><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"></path></>)
-          },
-          {
-            id: 'firewall', name: UI.skill_firewall, hotkey: null, costTier: 1,
-            state: !isOverclockActive && overclockCharge >= fwCost ? 'ready' : 'charging',
-            disabled: isOverclockActive || overclockCharge < fwCost,
-            badge: firewallGrace > 0 ? `×${firewallGrace}` : null,
-            onUse: useFirewall,
-            icon: (<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>)
-          },
-          {
-            id: 'purge', name: UI.skill_purge, hotkey: null, costTier: 2,
-            state: !isOverclockActive && overclockCharge >= pgCost ? 'ready' : 'charging',
-            disabled: isOverclockActive || overclockCharge < pgCost,
-            badge: null as string | null,
-            onUse: usePurgeTrace,
-            icon: (<><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path><path d="M10 11v6M14 11v6"></path></>)
-          }
-        ];
-        return (
-          <div className="engine-skillbar mt-2 flex shrink-0 items-center justify-center gap-2.5 py-2.5 px-3 bg-white/[0.02] border border-white/[0.06] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-            {skills.map(s => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={s.onUse}
-                disabled={s.disabled}
-                className={`engine-skill-slot ${s.state === 'active' ? 'engine-skill-active' : s.state === 'ready' ? 'engine-skill-ready' : 'engine-skill-charging'}`}
-                title={s.name}
-              >
-                <div className="pointer-events-none flex flex-col items-center gap-1">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{s.icon}</svg>
-                  {s.hotkey
-                    ? <span className="keycap" style={{ fontSize: '7px', height: '1.25em', minWidth: '2.1em', padding: '0 0.3em' }}>{s.hotkey}</span>
-                    : <span className="flex gap-0.5">{[0, 1, 2].map(d => <span key={d} className={`h-1 w-1 rounded-full ${d < s.costTier ? 'bg-current opacity-80' : 'bg-white/15'}`}></span>)}</span>}
-                </div>
-                {s.badge && <span className="absolute top-0.5 right-1 font-display text-[10px] font-bold tabular-nums text-emerald-300">{s.badge}</span>}
-              </button>
-            ))}
-            <div className="engine-skill-slot engine-skill-locked" aria-hidden="true">
-              <span className="text-lg leading-none text-slate-600">+</span>
-            </div>
-          </div>
-        );
-      })()}
-      <input ref={inputRef} type="text" value={inputValue} onChange={handleInput} aria-label={language === 'ru' ? 'Поле тренировки печати' : 'Typing practice input'} className="fixed opacity-0 top-0 left-0 w-px h-px overflow-hidden -z-10 pointer-events-none" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} autoFocus disabled={isWaitingForAi || isCriticalHack || isDecisionActive} />
+      <input ref={inputRef} type="text" value={inputValue} onChange={handleInput} aria-label={language === 'ru' ? 'Поле тренировки печати' : 'Typing practice input'} className="fixed opacity-0 top-0 left-0 w-px h-px overflow-hidden -z-10 pointer-events-none" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} autoFocus disabled={isWaitingForAi || isCriticalHack || isDecisionActive || showSkillBriefing} />
     </div>
   );
 };

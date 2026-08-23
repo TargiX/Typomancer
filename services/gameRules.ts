@@ -18,6 +18,7 @@ export interface SectorSummary {
 }
 
 export type TypingFocus = 'accuracy' | 'consistency' | 'speed' | 'mastery';
+export type ActiveTypingSkill = 'firewall' | 'purge' | 'focus';
 
 const clamp = (value: number, min = 0, max = 100) => Math.max(min, Math.min(max, value));
 
@@ -47,6 +48,19 @@ export const getTypingFocus = ({ avgWpm, accuracy, consistency }: SectorSummary)
   if (consistency < 82) return 'consistency';
   if (avgWpm < 55) return 'speed';
   return 'mastery';
+};
+
+export const getReadyActiveSkills = (
+  charge: number,
+  maxCharge: number,
+  focusActive = false
+): ActiveTypingSkill[] => {
+  if (focusActive || maxCharge <= 0) return [];
+  const ready: ActiveTypingSkill[] = [];
+  if (charge >= Math.round(maxCharge * 0.4)) ready.push('firewall');
+  if (charge >= Math.round(maxCharge * 0.55)) ready.push('purge');
+  if (charge >= maxCharge) ready.push('focus');
+  return ready;
 };
 
 type SegmentKind = 'NARRATIVE' | 'BREACH' | 'DIALOG' | 'SIGNAL';

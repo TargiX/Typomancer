@@ -6,6 +6,7 @@ import {
   SECTOR_ROUNDS,
   calculateSegmentCredits,
   calculateSegmentScore,
+  getReadyActiveSkills,
   getTypingFocus,
   getStealthLevel,
   isLowHealth,
@@ -35,6 +36,14 @@ test('typing debrief prioritizes accuracy before speed', () => {
   assert.equal(getTypingFocus({ avgWpm: 72, accuracy: 99, consistency: 70, totalMistakes: 1, score: 80 }), 'consistency');
   assert.equal(getTypingFocus({ avgWpm: 48, accuracy: 99, consistency: 94, totalMistakes: 1, score: 80 }), 'speed');
   assert.equal(getTypingFocus({ avgWpm: 68, accuracy: 99, consistency: 91, totalMistakes: 1, score: 80 }), 'mastery');
+});
+
+test('active typing skills surface as their energy thresholds become ready', () => {
+  assert.deepEqual(getReadyActiveSkills(39, 100), []);
+  assert.deepEqual(getReadyActiveSkills(40, 100), ['firewall']);
+  assert.deepEqual(getReadyActiveSkills(55, 100), ['firewall', 'purge']);
+  assert.deepEqual(getReadyActiveSkills(100, 100), ['firewall', 'purge', 'focus']);
+  assert.deepEqual(getReadyActiveSkills(100, 100, true), []);
 });
 
 test('forgiven typos never increase score', () => {
