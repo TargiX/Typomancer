@@ -50,6 +50,10 @@ export const getTypingFocus = ({ avgWpm, accuracy, consistency }: SectorSummary)
   return 'mastery';
 };
 
+export const getTypingAccuracy = (mistakes: number, characters: number): number => (
+  characters > 0 ? clamp(100 - ((Math.max(0, mistakes) / characters) * 100)) : 100
+);
+
 export const getReadyActiveSkills = (
   charge: number,
   maxCharge: number,

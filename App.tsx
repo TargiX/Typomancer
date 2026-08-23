@@ -6,9 +6,21 @@ import { getGenreSkin, PerkGroupId, UpgradeId } from './services/genreSkin';
 import { DAILY_MAX_ATTEMPTS, DailyBrief, getDailyBrief, getDailyState, recordDailyAttempt } from './services/dailyMode';
 import { CAMPAIGN_SECTORS, getStealthLevel, getTypingFocus, summarizeSector } from './services/gameRules';
 import { RunCheckpoint, clearRunCheckpoint, loadRunCheckpoint, saveRunCheckpoint } from './services/runCheckpoint';
+import {
+  createBalancedCalibration,
+  getAdaptiveDifficulty,
+  getLocalDateKey,
+  loadPlayerProgress,
+  recordRun,
+  savePlayerProgress,
+  setCalibration,
+  type CalibrationResult
+} from './services/playerProgress';
 import { audioEngine } from './services/audioEngine';
 import TypingEngine from './components/TypingEngine';
 import RunComic from './components/RunComic';
+import CalibrationPanel from './components/CalibrationPanel';
+import OperatorRecord from './components/OperatorRecord';
 
 // --- TRANSLATIONS ---
 const TRANSLATIONS = {
@@ -35,6 +47,7 @@ const TRANSLATIONS = {
         daily_tomorrow: "BACK TOMORROW",
         daily_severed: "SEVERED",
         black_market: "[2] THE BLACK MARKET",
+        operator_record: "[4] OPERATOR RECORD",
         powered_by: "Works with Gemini, but has a full local campaign fallback",
         perfectionist: "PERFECTIONIST · +30% XP",
         perfectionist_desc: "Case-sensitive typing. Typos are never forgiven.",
@@ -130,6 +143,7 @@ const TRANSLATIONS = {
         daily_tomorrow: "ЗАВТРА НОВЫЙ СЕКТОР",
         daily_severed: "ОБРЫВ",
         black_market: "[2] ЧЕРНЫЙ РЫНОК",
+        operator_record: "[4] ДОСЬЕ ОПЕРАТОРА",
         powered_by: "Работает с Gemini, но имеет полноценную локальную кампанию",
         perfectionist: "ПЕРФЕКЦИОНИСТ · +30% XP",
         perfectionist_desc: "Регистр важен. Опечатки не прощаются.",
@@ -574,11 +588,15 @@ const App: React.FC = () => {
   const [currentDailyId, setCurrentDailyId] = useState<string | null>(null);
   const [currentDailyDateLabel, setCurrentDailyDateLabel] = useState<string | null>(null);
   const [runCheckpoint, setRunCheckpoint] = useState<RunCheckpoint | null>(() => loadRunCheckpoint());
+  const [playerProgress, setPlayerProgressState] = useState(() => loadPlayerProgress());
   const runGenreRef = useRef<StoryGenreId>('cyberpunk');
   const isDailyRunRef = useRef(false);
   const currentDailyIdRef = useRef<string | null>(null);
   const activeDailyBriefRef = useRef<DailyBrief>(dailyBrief);
   const dailyAttemptRecordedRef = useRef(false);
+  const runRecordedRef = useRef(false);
+  const runStartedAtRef = useRef(Date.now());
+  const calibrationNextRef = useRef<'campaign' | 'daily' | 'record'>('campaign');
   const totalScoreRef = useRef(0);
   const deathSequenceTimerRef = useRef<number | null>(null);
 
@@ -631,6 +649,10 @@ const App: React.FC = () => {
     speed: UI.focus_speed,
     mastery: UI.focus_mastery
   }[typingFocus];
+  const adaptiveDifficulty = useMemo(
+    () => getAdaptiveDifficulty(playerProgress.calibration),
+    [playerProgress.calibration]
+  );
 
   useEffect(() => {
     try {
@@ -704,6 +726,86 @@ const App: React.FC = () => {
   }, [currentDailyId, dailyBrief.dailyId, finalStats, gameState, genrePack, isDailyRun, language, totalScore, victoryReport]);
 
   useEffect(() => {
+    if (runRecordedRef.current) return;
+
+    let stats: {
+      outcome: 'victory' | 'defeat';
+      level: number;
+      score: number;
+      wpm: number;
+      bestWpm: number;
+      accuracy: number;
+      consistency: number;
+      mistakes: number;
+      characters: number;
+    } | null = null;
+
+    if (gameState === GameState.GAME_OVER && finalStats) {
+      stats = {
+        outcome: 'defeat',
+        level: finalStats.level,
+        score: finalStats.score,
+        wpm: finalStats.wpm,
+        bestWpm: finalStats.bestWpm || finalStats.wpm,
+        accuracy: finalStats.accuracy,
+        consistency: finalStats.consistency ?? 100,
+        mistakes: finalStats.mistakes || 0,
+        characters: finalStats.characters || 0
+      };
+    } else if (gameState === GameState.VICTORY && victoryReport) {
+      const metrics = storyLog
+        .filter((item) => item.wpm > 0 && (item.characters || 0) > 0)
+        .map((item) => ({
+          wpm: item.wpm,
+          mistakes: item.mistakes || 0,
+          score: item.score,
+          characters: item.characters || item.text.length
+        }));
+      const summary = summarizeSector(metrics);
+      stats = {
+        outcome: 'victory',
+        level: victoryReport.level,
+        score: totalScore,
+        wpm: Math.round(summary.avgWpm || victoryReport.avgWpm),
+        bestWpm: metrics.reduce((best, metric) => Math.max(best, metric.wpm), 0),
+        accuracy: summary.accuracy,
+        consistency: summary.consistency,
+        mistakes: summary.totalMistakes,
+        characters: metrics.reduce((sum, metric) => sum + metric.characters, 0)
+      };
+    }
+
+    if (!stats) return;
+    runRecordedRef.current = true;
+    const endedAt = new Date();
+    const focus = getTypingFocus({
+      avgWpm: stats.wpm,
+      accuracy: stats.accuracy,
+      consistency: stats.consistency,
+      totalMistakes: stats.mistakes,
+      score: stats.score
+    });
+    setPlayerProgressState((current) => savePlayerProgress(recordRun(current, {
+      id: `${endedAt.toISOString()}-${Math.random().toString(36).slice(2, 8)}`,
+      endedAt: endedAt.toISOString(),
+      dateKey: getLocalDateKey(endedAt),
+      outcome: stats.outcome,
+      daily: isDailyRunRef.current,
+      genre: runGenreRef.current,
+      level: stats.level,
+      score: stats.score,
+      wpm: stats.wpm,
+      bestWpm: stats.bestWpm,
+      accuracy: stats.accuracy,
+      consistency: stats.consistency,
+      mistakes: stats.mistakes,
+      characters: stats.characters,
+      durationSeconds: Math.max(1, Math.round((endedAt.getTime() - runStartedAtRef.current) / 1000)),
+      focus
+    })));
+  }, [finalStats, gameState, storyLog, totalScore, victoryReport]);
+
+  useEffect(() => {
       let mods = { ...DEFAULT_MODIFIERS };
       const u = userProfile.upgrades;
       mods.maxHealth += (u.synapticWeave * META_UPGRADES.synapticWeave.effectPerLevel);
@@ -714,12 +816,14 @@ const App: React.FC = () => {
       mods.focusMistakeForgiveness += Math.floor(u.focusLens / 2);
       mods.breachRewardMultiplier += (u.patternScanner * META_UPGRADES.patternScanner.effectPerLevel);
       mods.evidenceMultiplier += (u.patternScanner * META_UPGRADES.patternScanner.effectPerLevel);
+      mods.traceSpeedMultiplier *= adaptiveDifficulty.traceSpeedMultiplier;
+      if (!userProfile.strictCase) mods.mistakeGraceCount += adaptiveDifficulty.mistakeGraceCount;
       mods.traceSpeedMultiplier = Math.max(0.1, mods.traceSpeedMultiplier);
       activePerks.forEach(perk => {
           mods = perk.apply(mods);
       });
       setCurrentModifiers(mods);
-  }, [activePerks, userProfile.upgrades]);
+  }, [activePerks, adaptiveDifficulty, userProfile.strictCase, userProfile.upgrades]);
 
   useEffect(() => {
     return () => {
@@ -749,7 +853,10 @@ const App: React.FC = () => {
             if (e.key === '1' || e.key === 'Enter') initializeSession();
             if (e.key === '2') setGameState(GameState.BLACK_MARKET);
             if (e.key === '3' && !dailyAttemptsExhausted) initializeDailySession();
+            if (e.key === '4') setGameState(GameState.OPERATOR_RECORD);
             if (e.key.toLowerCase() === 'r' && runCheckpoint) resumeSession();
+        } else if (gameState === GameState.OPERATOR_RECORD) {
+            if (e.key === 'Escape') setGameState(GameState.MENU);
         } else if (gameState === GameState.GAME_OVER || gameState === GameState.VICTORY) {
             if (e.key === 'Enter' || e.key === ' ') setGameState(GameState.MENU);
         } else if (gameState === GameState.BLACK_MARKET) {
@@ -765,7 +872,7 @@ const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [dailyAttemptsExhausted, deathSequenceActive, gameState, isSectorSummaryReady, offeredPerks, runCheckpoint, userProfile]);
+  }, [dailyAttemptsExhausted, deathSequenceActive, gameState, isSectorSummaryReady, offeredPerks, playerProgress.calibration, runCheckpoint, userProfile]);
 
   const handleToggleMusic = () => {
       const active = audioEngine.toggle();
@@ -864,6 +971,8 @@ const App: React.FC = () => {
   };
 
   const prepareSession = () => {
+      runRecordedRef.current = false;
+      runStartedAtRef.current = Date.now();
       setStoryLog([]);
       setTotalScore(0);
       totalScoreRef.current = 0;
@@ -900,7 +1009,12 @@ const App: React.FC = () => {
       setCurrentDailyId(null);
       currentDailyIdRef.current = null;
       setCurrentDailyDateLabel(null);
-      setGameState(GameState.GENRE_SELECTION);
+      if (!playerProgress.calibration) {
+          calibrationNextRef.current = 'campaign';
+          setGameState(GameState.CALIBRATION);
+      } else {
+          setGameState(GameState.GENRE_SELECTION);
+      }
       if (!musicActive) handleToggleMusic();
   };
 
@@ -916,6 +1030,8 @@ const App: React.FC = () => {
           return definition ? [generatePerkObject(definition, savedPerk.tier - 1)] : [];
       });
       setStoryLog([]);
+      runRecordedRef.current = false;
+      runStartedAtRef.current = Date.now();
       setFinalStats(null);
       setVictoryReport(null);
       setComicFrames([]);
@@ -971,8 +1087,27 @@ const App: React.FC = () => {
       setCurrentDailyDateLabel(brief.dateLabel);
       setSelectedGenre(brief.genre);
       runGenreRef.current = brief.genre;
-      setGameState(GameState.STARTER_PERK_SELECTION);
+      if (!playerProgress.calibration) {
+          calibrationNextRef.current = 'daily';
+          setGameState(GameState.CALIBRATION);
+      } else {
+          setGameState(GameState.STARTER_PERK_SELECTION);
+      }
       if (!musicActive) handleToggleMusic();
+  };
+
+  const finishCalibration = (result: CalibrationResult) => {
+      setPlayerProgressState((current) => savePlayerProgress(setCalibration(current, result)));
+      if (calibrationNextRef.current === 'daily') setGameState(GameState.STARTER_PERK_SELECTION);
+      else if (calibrationNextRef.current === 'record') setGameState(GameState.OPERATOR_RECORD);
+      else setGameState(GameState.GENRE_SELECTION);
+  };
+
+  const skipCalibration = () => finishCalibration(createBalancedCalibration());
+
+  const recalibrate = () => {
+      calibrationNextRef.current = 'record';
+      setGameState(GameState.CALIBRATION);
   };
 
   const handleGenreSelect = (genre: StoryGenreId) => {
@@ -1637,6 +1772,13 @@ const App: React.FC = () => {
                             <span className="keycap">2</span>
                             <span>{stripKeyHint(UI.black_market)}</span>
                         </button>
+                        <button
+                            onClick={() => setGameState(GameState.OPERATOR_RECORD)}
+                            className="btn-cyber btn-cyber-ghost px-8 py-3.5 font-display font-bold tracking-[0.06em] text-sky-200 hover:text-white transition-colors flex items-center justify-center gap-3"
+                        >
+                            <span className="keycap">4</span>
+                            <span>{stripKeyHint(UI.operator_record)}</span>
+                        </button>
                     </div>
 
                     <button
@@ -1663,6 +1805,19 @@ const App: React.FC = () => {
                         {UI.powered_by}
                     </div>
                 </div>
+            )}
+
+            {gameState === GameState.CALIBRATION && (
+                <CalibrationPanel language={language} onComplete={finishCalibration} onSkip={skipCalibration} />
+            )}
+
+            {gameState === GameState.OPERATOR_RECORD && (
+                <OperatorRecord
+                    language={language}
+                    progress={playerProgress}
+                    onClose={() => setGameState(GameState.MENU)}
+                    onRecalibrate={recalibrate}
+                />
             )}
 
             {gameState === GameState.BLACK_MARKET && (
