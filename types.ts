@@ -112,6 +112,8 @@ export interface GameStats {
   round: number;
   score: number;
   credits: number;
+  mistakes?: number;
+  characters?: number;
   mission?: MissionState;
 }
 
@@ -119,6 +121,7 @@ export interface GameModifiers {
   traceSpeedMultiplier: number;
   mistakeGraceCount: number;
   healthRegenWpmThreshold: number;
+  healthRegenAmount: number;
   criticalHackChance: number;
   maxHealth: number;
   maxOverclock: number;
@@ -146,6 +149,8 @@ export interface LevelReport {
   level: number;
   avgWpm: number;
   totalMistakes: number;
+  accuracy?: number;
+  consistency?: number;
   finalHealth: number;
   traceLevel: number;
   narrativeSummary: string;

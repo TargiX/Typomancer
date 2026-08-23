@@ -4,6 +4,8 @@ import { generateStoryStart, generateCharacterProfile, generateLevelSummary, gen
 import { GENRE_ORDER, getGenrePack } from './services/genreConfig';
 import { getGenreSkin, PerkGroupId, UpgradeId } from './services/genreSkin';
 import { DAILY_MAX_ATTEMPTS, DailyBrief, getDailyBrief, getDailyState, recordDailyAttempt } from './services/dailyMode';
+import { CAMPAIGN_SECTORS, getStealthLevel, summarizeSector } from './services/gameRules';
+import { RunCheckpoint, clearRunCheckpoint, loadRunCheckpoint, saveRunCheckpoint } from './services/runCheckpoint';
 import { audioEngine } from './services/audioEngine';
 import TypingEngine from './components/TypingEngine';
 import RunComic from './components/RunComic';
@@ -24,6 +26,9 @@ const TRANSLATIONS = {
         intro_desc: "Type to move, decide to bend the city, survive to publish the proof.",
         mistakes_warn: "Every typo changes heat, trust, evidence, and the ending.",
         init_link: "[1] INITIALIZE LINK",
+        quick_session: "A complete sector takes about 5–7 minutes. Continue only when you want a longer training run.",
+        resume_run: "RESUME OPERATION",
+        resume_sector: "Sector",
         daily_sector: "DAILY SECTOR",
         daily_left: "LEFT",
         daily_best: "BEST",
@@ -53,6 +58,10 @@ const TRANSLATIONS = {
         corruption: "Corruption",
         route: "Route",
         select_upgrade: "SELECT NEURAL UPGRADE",
+        continue_hint: "Choose one upgrade to continue deeper.",
+        bank_exit: "SAVE & EXIT",
+        accuracy: "Accuracy",
+        consistency: "Consistency",
         generating_sector: "GENERATING NEW SECTOR...",
         generating_scenario: "GENERATING SCENARIO...",
         critical_failure: "CRITICAL FAILURE",
@@ -63,7 +72,7 @@ const TRANSLATIONS = {
         level: "Level",
         wpm: "WPM",
         operation_dossier: "OPERATION DOSSIER",
-        campaign_goal: "Goal: survive four sectors and publish enough evidence.",
+        campaign_goal: "Finish one sector in 5–7 minutes, then bank the result or continue through four.",
         focus_hint: "TAB activates Focus Mode when charged: trace pauses, mistakes hurt less, rewards double.",
         victory_title: "LEDGER PUBLISHED",
         victory_subtitle: "You won the run. The ending reflects your typing and choices.",
@@ -103,6 +112,9 @@ const TRANSLATIONS = {
         intro_desc: "Печатай, чтобы двигаться; выбирай, чтобы менять город; выживи, чтобы опубликовать улики.",
         mistakes_warn: "Каждая опечатка меняет угрозу, доверие, улики и финал.",
         init_link: "[1] ИНИЦИАЛИЗАЦИЯ",
+        quick_session: "Полный сектор занимает около 5–7 минут. Продолжай только если хочешь длинную тренировку.",
+        resume_run: "ПРОДОЛЖИТЬ ОПЕРАЦИЮ",
+        resume_sector: "Сектор",
         daily_sector: "ДНЕВНОЙ СЕКТОР",
         daily_left: "ОСТАЛОСЬ",
         daily_best: "ЛУЧШИЙ",
@@ -132,6 +144,10 @@ const TRANSLATIONS = {
         corruption: "Коррупция",
         route: "Маршрут",
         select_upgrade: "ВЫБОР НЕЙРО-АПГРЕЙДА",
+        continue_hint: "Выбери один апгрейд, чтобы идти глубже.",
+        bank_exit: "СОХРАНИТЬ И ВЫЙТИ",
+        accuracy: "Точность",
+        consistency: "Стабильность",
         generating_sector: "ГЕНЕРАЦИЯ НОВОГО СЕКТОРА...",
         generating_scenario: "ГЕНЕРАЦИЯ СЦЕНАРИЯ...",
         critical_failure: "КРИТИЧЕСКИЙ СБОЙ",
@@ -142,7 +158,7 @@ const TRANSLATIONS = {
         level: "Уровень",
         wpm: "СЛ/М",
         operation_dossier: "ДОСЬЕ ОПЕРАЦИИ",
-        campaign_goal: "Цель: пережить четыре сектора и опубликовать достаточно улик.",
+        campaign_goal: "Пройди сектор за 5–7 минут, затем сохрани результат или продолжай до четырёх.",
         focus_hint: "TAB включает Фокус-Мод при полном заряде: след заморожен, ошибки мягче, награды удвоены.",
         victory_title: "РЕЕСТР ОПУБЛИКОВАН",
         victory_subtitle: "Ты выиграл забег. Финал зависит от печати и решений.",
@@ -250,6 +266,7 @@ const DEFAULT_MODIFIERS: GameModifiers = {
     traceSpeedMultiplier: 1.0,
     mistakeGraceCount: 0,
     healthRegenWpmThreshold: 0,
+    healthRegenAmount: 0,
     criticalHackChance: 0,
     maxHealth: 20,
     maxOverclock: 50,
@@ -301,12 +318,13 @@ const META_UPGRADES: Record<UpgradeId, { baseCost: number; effectPerLevel: numbe
     patternScanner: { baseCost: 220, effectPerLevel: 0.08, maxLevel: 8 }
 };
 
-const CAMPAIGN_FINAL_LEVEL = 4;
+const CAMPAIGN_FINAL_LEVEL = CAMPAIGN_SECTORS;
 
 interface RoundData {
     wpm: number;
     mistakes: number;
     score: number;
+    characters: number;
 }
 
 // Live "signal monitor" that replaces the cliché status pill: the label continuously
@@ -526,6 +544,7 @@ const App: React.FC = () => {
   const [levelBuffer, setLevelBuffer] = useState<RoundData[]>([]); 
   const [lastLevelReport, setLastLevelReport] = useState<LevelReport | null>(null);
   const [levelXpGained, setLevelXpGained] = useState(0);
+  const [isSectorSummaryReady, setIsSectorSummaryReady] = useState(false);
   const [narrativeContext, setNarrativeContext] = useState<string>("");
   const [campaignState, setCampaignState] = useState<MissionState>(DEFAULT_MISSION_STATE);
   const [comicFrames, setComicFrames] = useState<ComicFrame[]>([]);
@@ -535,6 +554,7 @@ const App: React.FC = () => {
   const [isDailyRun, setIsDailyRun] = useState(false);
   const [currentDailyId, setCurrentDailyId] = useState<string | null>(null);
   const [currentDailyDateLabel, setCurrentDailyDateLabel] = useState<string | null>(null);
+  const [runCheckpoint, setRunCheckpoint] = useState<RunCheckpoint | null>(() => loadRunCheckpoint());
   const runGenreRef = useRef<StoryGenreId>('cyberpunk');
   const isDailyRunRef = useRef(false);
   const currentDailyIdRef = useRef<string | null>(null);
@@ -579,13 +599,16 @@ const App: React.FC = () => {
   }, [language, hubSkin, genrePack, inSimulation]);
 
   useEffect(() => {
-    const saved = localStorage.getItem('narrativeFlowProfile');
-    if (saved) {
-        try {
+    try {
+      const saved = localStorage.getItem('narrativeFlowProfile');
+      if (saved) {
             const parsed = JSON.parse(saved);
+            const totalXp = Number.isFinite(parsed.totalXp) ? Math.max(0, parsed.totalXp) : 0;
             setUserProfile({ 
                 ...DEFAULT_PROFILE, 
                 ...parsed, 
+                totalXp,
+                stealthLevel: getStealthLevel(totalXp),
                 upgrades: { ...DEFAULT_PROFILE.upgrades, ...parsed.upgrades }
             });
             if (parsed.language) setLanguage(parsed.language);
@@ -593,13 +616,17 @@ const App: React.FC = () => {
                 setSelectedGenre(parsed.lastGenre);
                 runGenreRef.current = parsed.lastGenre;
             }
-        } catch (e) { console.error("Profile load fail", e); }
-    }
+      }
+    } catch (e) { console.error("Profile load fail", e); }
   }, []);
 
   useEffect(() => {
     const profileToSave = { ...userProfile, language, lastGenre: selectedGenre };
-    localStorage.setItem('narrativeFlowProfile', JSON.stringify(profileToSave));
+    try {
+      localStorage.setItem('narrativeFlowProfile', JSON.stringify(profileToSave));
+    } catch (e) {
+      console.error("Profile save fail", e);
+    }
   }, [userProfile, language, selectedGenre]);
 
   useEffect(() => {
@@ -667,7 +694,7 @@ const App: React.FC = () => {
             if (index >= 0 && index < offeredPerks.length) {
                 if (gameState === GameState.STARTER_PERK_SELECTION) {
                     handleStarterPerkSelect(offeredPerks[index]);
-                } else {
+                } else if (isSectorSummaryReady) {
                     handleSelectPerk(offeredPerks[index]);
                 }
             }
@@ -681,6 +708,7 @@ const App: React.FC = () => {
             if (e.key === '1' || e.key === 'Enter') initializeSession();
             if (e.key === '2') setGameState(GameState.BLACK_MARKET);
             if (e.key === '3' && !dailyAttemptsExhausted) initializeDailySession();
+            if (e.key.toLowerCase() === 'r' && runCheckpoint) resumeSession();
         } else if (gameState === GameState.GAME_OVER || gameState === GameState.VICTORY) {
             if (e.key === 'Enter' || e.key === ' ') setGameState(GameState.MENU);
         } else if (gameState === GameState.BLACK_MARKET) {
@@ -696,7 +724,7 @@ const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [dailyAttemptsExhausted, gameState, offeredPerks, userProfile]);
+  }, [dailyAttemptsExhausted, gameState, isSectorSummaryReady, offeredPerks, runCheckpoint, userProfile]);
 
   const handleToggleMusic = () => {
       const active = audioEngine.toggle();
@@ -728,7 +756,10 @@ const App: React.FC = () => {
               const newMods = { ...mods };
               if (def.groupId === 'neural_buffer') newMods.mistakeGraceCount = Math.max(newMods.mistakeGraceCount, tierData.grace);
               if (def.groupId === 'ghost_protocol') newMods.traceSpeedMultiplier *= tierData.mult;
-              if (def.groupId === 'adrenaline_spike') newMods.healthRegenWpmThreshold = tierData.thresh;
+              if (def.groupId === 'adrenaline_spike') {
+                  newMods.healthRegenWpmThreshold = tierData.thresh;
+                  newMods.healthRegenAmount = tierData.regen;
+              }
               if (def.groupId === 'titanium_firewall') newMods.maxHealth = Math.max(newMods.maxHealth, tierData.maxHp);
               if (def.groupId === 'critical_override') newMods.criticalHackChance = tierData.chance;
               if (def.groupId === 'focus_lattice') { newMods.focusDurationMs += tierData.duration; newMods.focusMistakeForgiveness += tierData.forgiveness; }
@@ -804,6 +835,7 @@ const App: React.FC = () => {
       setCharacterDesc("");
       setActivePerks([]); 
       setLevelBuffer([]);
+      setIsSectorSummaryReady(false);
       setCurrentLevel(1);
       const starters = PERK_DEFINITIONS
           .sort(() => 0.5 - Math.random())
@@ -814,6 +846,8 @@ const App: React.FC = () => {
   };
 
   const initializeSession = () => {
+      clearRunCheckpoint();
+      setRunCheckpoint(null);
       prepareSession();
       setIsDailyRun(false);
       isDailyRunRef.current = false;
@@ -822,6 +856,57 @@ const App: React.FC = () => {
       setCurrentDailyDateLabel(null);
       setGameState(GameState.GENRE_SELECTION);
       if (!musicActive) handleToggleMusic();
+  };
+
+  const resumeSession = async () => {
+      const checkpoint = loadRunCheckpoint();
+      if (!checkpoint) {
+          setRunCheckpoint(null);
+          return;
+      }
+
+      const restoredPerks = checkpoint.perks.flatMap((savedPerk) => {
+          const definition = PERK_DEFINITIONS.find((candidate) => candidate.groupId === savedPerk.groupId);
+          return definition ? [generatePerkObject(definition, savedPerk.tier - 1)] : [];
+      });
+      setStoryLog([]);
+      setFinalStats(null);
+      setVictoryReport(null);
+      setComicFrames([]);
+      setShowComic(false);
+      setLevelBuffer([]);
+      setActivePerks(restoredPerks);
+      setCampaignState(checkpoint.mission);
+      setNarrativeContext(checkpoint.narrativeContext);
+      setCurrentHealth(checkpoint.health);
+      setCurrentLevel(checkpoint.nextLevel);
+      setTotalScore(checkpoint.totalScore);
+      totalScoreRef.current = checkpoint.totalScore;
+      setSelectedGenre(checkpoint.genre);
+      runGenreRef.current = checkpoint.genre;
+      setIsDailyRun(false);
+      isDailyRunRef.current = false;
+      setCurrentDailyId(null);
+      currentDailyIdRef.current = null;
+      setCurrentDailyDateLabel(null);
+      setGameState(GameState.LOADING);
+      if (!musicActive) handleToggleMusic();
+
+      try {
+          const nextStart = await generateNextLevelStart(
+              checkpoint.nextLevel,
+              checkpoint.narrativeContext,
+              language,
+              checkpoint.mission,
+              checkpoint.genre
+          );
+          setInitialSegment(nextStart);
+      } catch {
+          const fallback = getGenrePack(checkpoint.genre).local[language].levelStart[checkpoint.nextLevel - 1]
+              || (language === 'ru' ? "Связь восстановлена. Операция продолжается." : "The link is restored. The operation continues.");
+          setInitialSegment({ text: fallback, mood: StoryMood.TENSE, type: SegmentType.NARRATIVE, skill: 'flow' });
+      }
+      setGameState(GameState.PLAYING);
   };
 
   const initializeDailySession = () => {
@@ -889,21 +974,32 @@ const App: React.FC = () => {
   };
 
   const handleLevelComplete = async (finalRoundStats: GameStats, finalTrace: number, finalMission?: MissionState) => {
-      const allRounds = levelBuffer;
-      const avgWpm = allRounds.length > 0 ? allRounds.reduce((sum, r) => sum + r.wpm, 0) / allRounds.length : finalRoundStats.wpm;
-      const totalMistakes = allRounds.reduce((sum, r) => sum + r.mistakes, 0); 
-      const levelScore = allRounds.reduce((sum, r) => sum + r.score, 0);
+      const allRounds = [
+          ...levelBuffer,
+          {
+              wpm: finalRoundStats.wpm,
+              mistakes: finalRoundStats.mistakes || 0,
+              score: finalRoundStats.score,
+              characters: finalRoundStats.characters || 0
+          }
+      ];
+      const sectorSummary = summarizeSector(allRounds);
+      const { avgWpm, totalMistakes, score: levelScore, accuracy, consistency } = sectorSummary;
       const strictBonus = userProfile.strictCase ? STRICT_CASE_XP_MULTIPLIER : 1;
       const xp = Math.floor(levelScore * (1 + (finalRoundStats.level * 0.1)) * strictBonus);
       setLevelXpGained(xp);
       const creditsEarned = finalRoundStats.credits || 0;
       const mission = finalMission || finalRoundStats.mission || campaignState;
       setCampaignState(mission);
-      setUserProfile(prev => ({ 
-          ...prev, 
-          totalXp: prev.totalXp + xp,
-          credits: Math.floor((prev.credits || 0) + creditsEarned)
-      }));
+      setUserProfile(prev => {
+          const totalXp = prev.totalXp + xp;
+          return {
+              ...prev,
+              totalXp,
+              stealthLevel: getStealthLevel(totalXp),
+              credits: Math.floor((prev.credits || 0) + creditsEarned)
+          };
+      });
       setCurrentHealth(finalRoundStats.health);
       let performanceRating: 'bad' | 'average' | 'good' | 'legendary' = 'average';
       if (finalTrace >= 90 || finalRoundStats.health <= 5 || mission.corruption > 55) performanceRating = 'bad';
@@ -914,6 +1010,8 @@ const App: React.FC = () => {
           level: finalRoundStats.level,
           avgWpm,
           totalMistakes,
+          accuracy,
+          consistency,
           finalHealth: finalRoundStats.health,
           traceLevel: finalTrace,
           narrativeSummary: language === 'ru' ? "Анализ данных миссии..." : "Analyzing mission data...",
@@ -922,13 +1020,16 @@ const App: React.FC = () => {
           route: mission.route
       };
 
-      const isFinal = finalRoundStats.level >= CAMPAIGN_FINAL_LEVEL;
+      const isFinal = isDailyRunRef.current || finalRoundStats.level >= CAMPAIGN_FINAL_LEVEL;
+      const upgradeOptions = isFinal ? [] : getUpgradeOptions(performanceRating);
       setLastLevelReport(report);
       if (isFinal) {
           const endingTitle = getEndingTitle(report);
           setVictoryReport({ ...report, endingTitle });
           setGameState(GameState.VICTORY);
       } else {
+          setIsSectorSummaryReady(false);
+          setOfferedPerks(upgradeOptions);
           setGameState(GameState.LEVEL_COMPLETE);
       }
 
@@ -938,18 +1039,43 @@ const App: React.FC = () => {
       addToLog(`[${UI.level.toUpperCase()} ${finalRoundStats.level} ${UI.seq_complete}]: ${summary}`, 'neutral', 0, 0, 0, `${UI.evidence}: ${mission.evidence} · ${UI.heat}: ${mission.heat}%`);
 
       if (isFinal) {
+          clearRunCheckpoint();
+          setRunCheckpoint(null);
           setVictoryReport(completedReport);
       } else {
           setLastLevelReport(completedReport);
-          setOfferedPerks(getUpgradeOptions(performanceRating));
+          const checkpoint = saveRunCheckpoint({
+              nextLevel: finalRoundStats.level + 1,
+              health: finalRoundStats.health,
+              genre: runGenreRef.current,
+              narrativeContext: summary,
+              totalScore: totalScoreRef.current,
+              perks: activePerks.map((perk) => ({ groupId: perk.groupId, tier: perk.tier })),
+              mission
+          });
+          setRunCheckpoint(checkpoint);
+          setIsSectorSummaryReady(true);
       }
   };
 
   const handleSelectPerk = async (perk: Perk) => {
-      setActivePerks(prev => {
-          const others = prev.filter(p => p.groupId !== perk.groupId);
-          return [...others, perk];
-      });
+      const nextActivePerks = [
+          ...activePerks.filter(existing => existing.groupId !== perk.groupId),
+          perk
+      ];
+      setActivePerks(nextActivePerks);
+      if (runCheckpoint) {
+          const updatedCheckpoint = saveRunCheckpoint({
+              nextLevel: runCheckpoint.nextLevel,
+              health: runCheckpoint.health,
+              genre: runCheckpoint.genre,
+              narrativeContext: runCheckpoint.narrativeContext,
+              totalScore: runCheckpoint.totalScore,
+              mission: runCheckpoint.mission,
+              perks: nextActivePerks.map(activePerk => ({ groupId: activePerk.groupId, tier: activePerk.tier }))
+          });
+          setRunCheckpoint(updatedCheckpoint);
+      }
       setGameState(GameState.LOADING);
       const nextLvl = currentLevel + 1;
       setCurrentLevel(nextLvl);
@@ -978,11 +1104,17 @@ const App: React.FC = () => {
     const bonusXp = Math.floor(finalScore * (1 + (stats.level * 0.1))); 
     setFinalStats({ ...stats, score: finalScore });
     if (stats.mission) setCampaignState(stats.mission);
-    setUserProfile(prev => ({ 
-        ...prev, 
-        totalXp: prev.totalXp + bonusXp,
-        credits: Math.floor((prev.credits || 0) + (stats.credits || 0))
-    }));
+    setUserProfile(prev => {
+        const totalXp = prev.totalXp + bonusXp;
+        return {
+            ...prev,
+            totalXp,
+            stealthLevel: getStealthLevel(totalXp),
+            credits: Math.floor((prev.credits || 0) + (stats.credits || 0))
+        };
+    });
+    clearRunCheckpoint();
+    setRunCheckpoint(null);
     setGameState(GameState.GAME_OVER);
   };
 
@@ -1005,7 +1137,7 @@ const App: React.FC = () => {
     setTotalScore(totalScoreRef.current);
     setStoryLog(prev => [...prev, { text, performance, score, wpm, meta, type }]);
     if (performance !== 'neutral') {
-        setLevelBuffer(prev => [...prev, { wpm, mistakes, score }]); 
+        setLevelBuffer(prev => [...prev, { wpm, mistakes, score, characters: text.length }]);
     }
   };
 
@@ -1086,7 +1218,8 @@ const App: React.FC = () => {
         <button
             key={perk.id}
             onClick={() => isStarter ? handleStarterPerkSelect(perk) : handleSelectPerk(perk)}
-            className={`screens-cut-card screens-perk-card group relative overflow-hidden border bg-[#0b101a] ${rarityClass} transition-all duration-300 text-left h-full focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-400/70`}
+            disabled={!isStarter && !isSectorSummaryReady}
+            className={`screens-cut-card screens-perk-card group relative overflow-hidden border bg-[#0b101a] ${rarityClass} transition-all duration-300 text-left h-full focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-400/70 disabled:cursor-wait disabled:opacity-55`}
         >
             <div className="screens-card-art-frame screens-card-banner screens-perk-card-banner">
                 <EmblemTile
@@ -1355,13 +1488,23 @@ const App: React.FC = () => {
                         </div>
                     </div>
                     <div className="flex flex-col gap-3.5">
+                        {runCheckpoint && (
+                            <button
+                                onClick={resumeSession}
+                                className="btn-cyber btn-cyber-primary px-8 py-4 font-display font-bold tracking-[0.06em] text-[#04120b] flex items-center justify-center gap-3"
+                            >
+                                <span className="keycap">R</span>
+                                <span>{UI.resume_run} · {UI.resume_sector} {runCheckpoint.nextLevel}</span>
+                            </button>
+                        )}
                         <button
                             onClick={initializeSession}
-                            className="btn-cyber btn-cyber-primary px-8 py-4 font-display font-bold tracking-[0.06em] text-[#04120b] flex items-center justify-center gap-3"
+                            className={`${runCheckpoint ? 'btn-cyber btn-cyber-ghost text-emerald-200' : 'btn-cyber btn-cyber-primary text-[#04120b]'} px-8 py-4 font-display font-bold tracking-[0.06em] flex items-center justify-center gap-3`}
                         >
                             <span className="keycap">1</span>
                             <span>{stripKeyHint(UI.init_link)}</span>
                         </button>
+                        <p className="px-3 text-[10px] leading-relaxed text-slate-500">{UI.quick_session}</p>
                         <button
                             onClick={initializeDailySession}
                             disabled={dailyAttemptsExhausted}
@@ -1561,7 +1704,7 @@ const App: React.FC = () => {
                             "{lastLevelReport.narrativeSummary}"
                         </p>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-8">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-8">
                         <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]">
                             <div className="font-display text-3xl font-bold text-white tabular-nums leading-none">{Math.round(lastLevelReport.avgWpm)}</div>
                             <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.avg_speed} · {UI.wpm}</div>
@@ -1586,8 +1729,29 @@ const App: React.FC = () => {
                              <div className="font-display text-3xl font-bold text-sky-300 tabular-nums leading-none">{lastLevelReport.mission?.trust ?? campaignState.trust}</div>
                              <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.trust}</div>
                         </div>
+                        <div className="screens-stat-tile p-4 text-center border border-emerald-400/15 bg-emerald-400/[0.025]">
+                            <div className="font-display text-3xl font-bold text-emerald-300 tabular-nums leading-none">{Math.round(lastLevelReport.accuracy ?? 100)}%</div>
+                            <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.accuracy}</div>
+                        </div>
+                        <div className="screens-stat-tile p-4 text-center border border-violet-400/15 bg-violet-400/[0.025]">
+                            <div className="font-display text-3xl font-bold text-violet-300 tabular-nums leading-none">{Math.round(lastLevelReport.consistency ?? 100)}%</div>
+                            <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.consistency}</div>
+                        </div>
                     </div>
-                    <h3 className="font-display text-lg font-bold text-white mb-4 tracking-[0.04em]">{UI.select_upgrade}</h3>
+                    <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                        <div>
+                            <h3 className="font-display text-lg font-bold text-white tracking-[0.04em]">{UI.select_upgrade}</h3>
+                            <p className="mt-1 text-[10px] text-slate-500">{UI.continue_hint}</p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setGameState(GameState.MENU)}
+                            disabled={!isSectorSummaryReady}
+                            className="btn-cyber btn-cyber-ghost px-5 py-2.5 text-[10px] font-bold tracking-[0.12em] text-slate-300 hover:text-white disabled:cursor-wait disabled:opacity-45"
+                        >
+                            {UI.bank_exit}
+                        </button>
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {offeredPerks.map((perk, index) => renderPerkCard(perk, index, false))}
                     </div>
