@@ -6,6 +6,7 @@ import {
   SECTOR_ROUNDS,
   calculateSegmentCredits,
   calculateSegmentScore,
+  getCursorSkillStack,
   getReadyActiveSkills,
   getTypingAccuracy,
   getTypingFocus,
@@ -50,6 +51,14 @@ test('active typing skills surface as their energy thresholds become ready', () 
   assert.deepEqual(getReadyActiveSkills(55, 100), ['firewall', 'purge']);
   assert.deepEqual(getReadyActiveSkills(100, 100), ['firewall', 'purge', 'focus']);
   assert.deepEqual(getReadyActiveSkills(100, 100, true), []);
+});
+
+test('cursor skill stack keeps Focus in a stable bottom slot', () => {
+  assert.deepEqual(getCursorSkillStack(0, 100), ['focus']);
+  assert.deepEqual(getCursorSkillStack(40, 100), ['firewall', 'focus']);
+  assert.deepEqual(getCursorSkillStack(55, 100), ['firewall', 'purge', 'focus']);
+  assert.deepEqual(getCursorSkillStack(100, 100), ['firewall', 'purge', 'focus']);
+  assert.deepEqual(getCursorSkillStack(100, 100, true), ['focus']);
 });
 
 test('forgiven typos never increase score', () => {

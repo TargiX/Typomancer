@@ -67,6 +67,21 @@ export const getReadyActiveSkills = (
   return ready;
 };
 
+/**
+ * Keeps Focus as the fixed bottom anchor of the contextual skill stack.
+ * Optional skills are added above it in a stable order as Energy unlocks them.
+ */
+export const getCursorSkillStack = (
+  charge: number,
+  maxCharge: number,
+  focusActive = false
+): ActiveTypingSkill[] => {
+  if (maxCharge <= 0) return [];
+  const readyUtilities = getReadyActiveSkills(charge, maxCharge, focusActive)
+    .filter((skill) => skill !== 'focus');
+  return [...readyUtilities, 'focus'];
+};
+
 type SegmentKind = 'NARRATIVE' | 'BREACH' | 'DIALOG' | 'SIGNAL';
 
 interface SegmentRewardInput {

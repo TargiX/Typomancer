@@ -13,6 +13,7 @@ import {
   SECTOR_ROUNDS,
   calculateSegmentCredits,
   calculateSegmentScore,
+  getCursorSkillStack,
   getReadyActiveSkills,
   getTypingAccuracy,
   isLowHealth
@@ -502,7 +503,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         textContainerRef.current.scrollTop = textContainerRef.current.scrollHeight;
     }
 
-    const hasContextualSkill = firewallGrace > 0 || getReadyActiveSkills(overclockCharge, modifiers.maxOverclock, isOverclockActive).length > 0;
+    const hasContextualSkill = firewallGrace > 0 || getCursorSkillStack(overclockCharge, modifiers.maxOverclock, isOverclockActive).length > 0;
     if (hasContextualSkill && cursorRef.current) {
         const rect = cursorRef.current.getBoundingClientRect();
         setFocusHintPos({ left: rect.left + rect.width / 2, top: rect.top - 6 });
@@ -1280,7 +1281,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       </div>
       {focusHintPos && (
           <div
-              className="engine-cursor-skills fixed z-[110] flex items-center gap-1.5 -translate-x-1/2 -translate-y-full"
+              className="engine-cursor-skills fixed z-[110] -translate-x-1/2 -translate-y-full"
               style={{ left: focusHintPos.left, top: focusHintPos.top }}
           >
               {firewallGrace > 0 && (
@@ -1288,17 +1289,30 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                       <span className="engine-cursor-skill-label">{UI.shield_active} ×{firewallGrace}</span>
                   </span>
               )}
-              {getReadyActiveSkills(overclockCharge, modifiers.maxOverclock, isOverclockActive).map((skill) => {
+              {getCursorSkillStack(overclockCharge, modifiers.maxOverclock, isOverclockActive).map((skill) => {
                   const details = skill === 'focus'
                     ? { key: 'TAB', label: 'FOCUS', effect: UI.skill_focus_short, use: activateOverclock }
                     : skill === 'firewall'
                       ? { key: '↑', label: 'FIREWALL', effect: UI.skill_firewall_short, use: useFirewall }
                       : { key: '↓', label: language === 'ru' ? 'СБРОС' : 'PURGE', effect: UI.skill_purge_short, use: usePurgeTrace };
+                  const isFocus = skill === 'focus';
+                  const isReady = !isOverclockActive && (
+                    isFocus
+                      ? overclockCharge >= modifiers.maxOverclock
+                      : getReadyActiveSkills(overclockCharge, modifiers.maxOverclock).includes(skill)
+                  );
                   return (
-                    <button key={skill} type="button" onClick={details.use} className="engine-cursor-skill" title={details.effect}>
+                    <button
+                        key={skill}
+                        type="button"
+                        onClick={details.use}
+                        disabled={!isReady}
+                        aria-label={`${details.label}: ${details.effect}`}
+                        className={`engine-cursor-skill ${isFocus ? 'engine-cursor-skill--focus' : ''} ${isOverclockActive && isFocus ? 'engine-cursor-skill--active' : isReady ? 'engine-cursor-skill--ready' : 'engine-cursor-skill--charging'}`}
+                    >
                         <span className="keycap">{details.key}</span>
                         <span className="engine-cursor-skill-label">{details.label}</span>
-                        <span className="engine-cursor-skill-effect">{details.effect}</span>
+                        <span className="engine-cursor-skill-effect" role="tooltip">{details.effect}</span>
                     </button>
                   );
               })}

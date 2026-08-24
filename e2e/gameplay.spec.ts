@@ -51,6 +51,33 @@ test('bulk insertion cannot complete a typing line', async ({ page }) => {
   await expect(page.getByText('SCORE').locator('..')).toContainText('0');
 });
 
+test('contextual skills stack above a stable Focus anchor', async ({ page }) => {
+  await startCampaign(page);
+  const input = page.getByRole('textbox', { name: 'Typing practice input' });
+  const activeText = await page.locator('.engine-type-scroll span.relative.inline-block').innerText();
+  const stack = page.locator('.engine-cursor-skills');
+  const labels = stack.locator('.engine-cursor-skill-label');
+
+  await expect(labels).toHaveText(['FOCUS']);
+  await input.pressSequentially(activeText.slice(0, 20));
+  await expect(labels).toHaveText(['FIREWALL', 'FOCUS']);
+  await input.pressSequentially(activeText.slice(20, 28));
+  await expect(labels).toHaveText(['FIREWALL', 'PURGE', 'FOCUS']);
+
+  const geometry = await stack.evaluate((element) => {
+    const focus = element.querySelector('.engine-cursor-skill--focus');
+    return {
+      direction: getComputedStyle(element).flexDirection,
+      focusIsLast: element.lastElementChild === focus,
+      focusBottom: focus?.getBoundingClientRect().bottom,
+      stackBottom: element.getBoundingClientRect().bottom
+    };
+  });
+  expect(geometry.direction).toBe('column');
+  expect(geometry.focusIsLast).toBe(true);
+  expect(geometry.focusBottom).toBe(geometry.stackBottom);
+});
+
 test('banking a completed sector adds it to Operator Record', async ({ page }) => {
   await startCampaign(page);
   const activeLine = page.locator('.engine-type-scroll span.relative.inline-block');
