@@ -32,6 +32,10 @@ const typeActiveLine = async (page: Page) => {
   const input = page.getByRole('textbox', { name: 'Typing practice input' });
   const activeLine = page.locator('.engine-type-scroll span.relative.inline-block');
   const text = await activeLine.innerText();
+  await expect(input).toHaveValue('');
+  // TypingEngine briefly locks input while handing one completed line to the
+  // next. Give that 50 ms transition time to release before sending characters.
+  await page.waitForTimeout(75);
   await input.pressSequentially(text, { delay: 5 });
   return text;
 };
