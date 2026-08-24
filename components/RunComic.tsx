@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ComicFrame, Language } from '../types';
+import { selectRunComicFrames } from '../services/runComicFrames';
 
 interface StatChip {
   label: string;
@@ -89,17 +90,6 @@ const drawRoundedRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w:
   ctx.closePath();
 };
 
-// Pick up to `max` frames spread evenly across the run so the comic tells the
-// whole arc rather than only the final moments.
-const pickFrames = (frames: ComicFrame[], max: number): ComicFrame[] => {
-  const usable = frames.filter(f => f.caption && f.caption.trim().length > 0);
-  if (usable.length <= max) return usable;
-  const picked: ComicFrame[] = [];
-  const step = (usable.length - 1) / (max - 1);
-  for (let i = 0; i < max; i++) picked.push(usable[Math.round(i * step)]);
-  return picked;
-};
-
 const renderComic = async (
   target: HTMLCanvasElement,
   props: Pick<RunComicProps, 'frames' | 'title' | 'endingTitle' | 'outcome' | 'tagline' | 'stats' | 'dailyLabel' | 'ui'>
@@ -109,7 +99,7 @@ const renderComic = async (
   // visible context interleaves their save/clip/restore stacks and clips text away.
   const canvas = document.createElement('canvas');
   const { frames, title, endingTitle, outcome, tagline, stats, dailyLabel, ui } = props;
-  const selected = pickFrames(frames, 6);
+  const selected = selectRunComicFrames(frames, 6);
   const accent = outcome === 'victory' ? '#34d399' : '#f43f5e';
 
   // Wait for the web fonts before measuring — otherwise wrapText measures with the
