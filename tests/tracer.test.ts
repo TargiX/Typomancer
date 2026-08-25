@@ -6,6 +6,7 @@ import {
   TRACER_CATCH_STUN_MS,
   TRACER_GRACE_MS,
   TRACER_PURGE_KNOCKBACK,
+  getTracerSpeedScale,
   advanceTracer,
   getTracerCharsPerSecond,
   getTracerGap,
@@ -116,4 +117,25 @@ test('threat tiers describe the shrinking gap', () => {
   assert.equal(getTracerThreat(10, 40), 'clear');
   assert.equal(getTracerThreat(30, 40), 'closing');
   assert.equal(getTracerThreat(38, 40), 'critical');
+});
+
+test('an unbroken clean streak slows the chase, which is the accuracy reward', () => {
+  assert.equal(getTracerSpeedScale(0), 1);
+  assert.ok(getTracerSpeedScale(1) < getTracerSpeedScale(0));
+  assert.ok(getTracerSpeedScale(2) < getTracerSpeedScale(1));
+  assert.ok(getTracerSpeedScale(3) < getTracerSpeedScale(2));
+  // Even a perfect streak never stops the tracer outright.
+  assert.ok(getTracerSpeedScale(3) > 0);
+});
+
+test('a streak slows the tracer well below the pace of the player who earned it', () => {
+  const tracerCps = getTracerCharsPerSecond(calm) * getTracerSpeedScale(3);
+  const playerCps = (calm.baselineWpm * 5) / 60;
+  assert.ok(tracerCps < playerCps * 0.35, `tracer ${tracerCps} vs player ${playerCps}`);
+});
+
+test('an out-of-range tier cannot speed the tracer up or crash the loop', () => {
+  assert.equal(getTracerSpeedScale(-3), 1);
+  assert.equal(getTracerSpeedScale(99), getTracerSpeedScale(3));
+  assert.equal(getTracerSpeedScale(1.9), getTracerSpeedScale(1));
 });

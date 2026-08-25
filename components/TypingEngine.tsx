@@ -12,8 +12,10 @@ import {
   TRACER_CATCH_KNOCKBACK,
   TRACER_CATCH_TRACE_PENALTY,
   TRACER_PURGE_KNOCKBACK,
+  TRACER_TIER_KNOCKBACK,
   advanceTracer,
   getTracerCharsPerSecond,
+  getTracerSpeedScale,
   getTracerStartIndex,
   getTracerThreat,
   isTracerArmed,
@@ -216,6 +218,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   /** Timestamp of the first keystroke of the current segment; null until it lands. */
   const segmentFirstKeyAtRef = useRef<number | null>(null);
   const tracerCaughtAtRef = useRef<number | null>(null);
+  /** Read by the chase loop each frame so a streak slows the tracer as it builds. */
+  const comboTierRef = useRef(0);
   const [missionState, setMissionState] = useState<MissionState>(() => normalizeMissionState(missionSeed));
   const missionRef = useRef<MissionState>(normalizeMissionState(missionSeed));
   const timerRef = useRef<number | null>(null);
@@ -619,6 +623,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       tracerCaughtAtRef.current = null;
   }, [activeSegment]);
 
+  // Combo survives across segments, so the streak advantage must follow it rather
+  // than silently reset at every line break.
+  useEffect(() => { comboTierRef.current = comboTier(combo); }, [combo]);
+
   const handleTracerCatch = () => {
       tracerCaughtAtRef.current = Date.now();
       tracerRef.current = knockBackTracer(tracerRef.current, TRACER_CATCH_KNOCKBACK);
@@ -668,7 +676,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
               frame = requestAnimationFrame(step);
               return;
           }
-          tracerRef.current = advanceTracer(tracerRef.current, delta, charsPerSecond, activeSegment.text.length);
+          // Accuracy is the weapon: an unbroken streak slows the chase, and one
+          // typo hands the whole advantage back at once.
+          const streakSpeed = charsPerSecond * getTracerSpeedScale(comboTierRef.current);
+          tracerRef.current = advanceTracer(tracerRef.current, delta, streakSpeed, activeSegment.text.length);
           const front = Math.floor(tracerRef.current);
           setTracerBurnFront(prev => (prev === front ? prev : front));
           // A finished line is out of the tracer's reach: the caret only sits at the
@@ -966,6 +977,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
              triggerShieldEffect();
          } else {
              const newMistakes = mistakesInSegment + 1;
+             comboTierRef.current = 0;
              audioEngine.keyError();
              setMistakesInSegment(newMistakes);
              setCombo(0);
@@ -980,6 +992,15 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
          }
        } else {
            audioEngine.keyHit(comboTier(combo));
+           const nextTier = comboTier(combo + 1);
+           if (nextTier > comboTierRef.current) {
+               // Crossing a tier pushes the tracer back a visible distance. The
+               // continuous slowdown alone is too gradual to notice.
+               comboTierRef.current = nextTier;
+               tracerRef.current = knockBackTracer(tracerRef.current, TRACER_TIER_KNOCKBACK);
+               setTracerBurnFront(Math.floor(tracerRef.current));
+               audioEngine.skillReady();
+           }
            setCombo(c => c + 1);
            setComboPulse(p => p + 1);
            if (!isOverclockActive) {

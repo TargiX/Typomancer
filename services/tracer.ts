@@ -40,6 +40,24 @@ export const TRACER_CATCH_STUN_MS = 2500;
 /** Characters the Purge Trace protocol throws the tracer back. */
 export const TRACER_PURGE_KNOCKBACK = 25;
 
+/** Characters the tracer loses each time an unbroken streak reaches a new combo tier. */
+export const TRACER_TIER_KNOCKBACK = 6;
+
+/**
+ * How much a clean streak slows the chase, by combo tier.
+ *
+ * This is what makes the game an accuracy trainer rather than a speed one. Speed
+ * alone already outruns the tracer, so without this the only way to answer
+ * pressure is to type faster — which is the opposite of the skill being taught.
+ * Here accuracy is the weapon: an unbroken streak buys time, and a single typo
+ * hands all of it back at once.
+ */
+const COMBO_SPEED_SCALE: Record<number, number> = { 0: 1, 1: 0.85, 2: 0.7, 3: 0.55 };
+
+export const getTracerSpeedScale = (comboTier: number): number => (
+  COMBO_SPEED_SCALE[Math.max(0, Math.min(3, Math.floor(comboTier)))] ?? 1
+);
+
 /** Security Trace added when the tracer reaches your caret. */
 export const TRACER_CATCH_TRACE_PENALTY = 12;
 
