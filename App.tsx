@@ -96,7 +96,6 @@ const TRANSLATIONS = {
         health: "Health",
         trust: "Trust",
         evidence: "Evidence",
-        corruption: "Corruption",
         route: "Route",
         select_upgrade: "SELECT NEURAL UPGRADE",
         continue_hint: "Choose one upgrade to continue deeper.",
@@ -203,7 +202,6 @@ const TRANSLATIONS = {
         health: "Здоровье",
         trust: "Доверие",
         evidence: "Улики",
-        corruption: "Коррупция",
         route: "Маршрут",
         select_upgrade: "ВЫБОР НЕЙРО-АПГРЕЙДА",
         continue_hint: "Выбери один апгрейд, чтобы идти глубже.",
@@ -353,8 +351,6 @@ const DEFAULT_MISSION_STATE: MissionState = {
     heat: 18,
     trust: 44,
     evidence: 0,
-    corruption: 0,
-    signal: 55,
     route: 'balanced',
     flags: [],
     consequenceLog: []
@@ -1401,7 +1397,7 @@ const App: React.FC = () => {
       if (mission.evidence >= 55 && mission.route === 'loud') {
           return worldSkin.endings.loud[language];
       }
-      if (mission.corruption >= 45 || mission.trust < 18) {
+      if (mission.heat >= 75 || mission.trust < 18) {
           return worldSkin.endings.broken[language];
       }
       return worldSkin.endings.survivor[language];
@@ -1436,7 +1432,7 @@ const App: React.FC = () => {
       });
       setCurrentHealth(finalRoundStats.health);
       let performanceRating: 'bad' | 'average' | 'good' | 'legendary' = 'average';
-      if (finalTrace >= 90 || finalRoundStats.health <= 5 || mission.corruption > 55) performanceRating = 'bad';
+      if (finalTrace >= 90 || finalRoundStats.health <= 5 || mission.heat > 80) performanceRating = 'bad';
       else if (avgWpm > 75 && totalMistakes < 3 && mission.heat < 45) performanceRating = 'legendary';
       else if (avgWpm > 55 && totalMistakes < 8) performanceRating = 'good';
 
@@ -1938,8 +1934,7 @@ const App: React.FC = () => {
               {[
                 { key: 'heat', label: UI.heat, val: campaignState.heat, color: '#fbbf24', suffix: '%' },
                 { key: 'trust', label: UI.trust, val: campaignState.trust, color: '#38bdf8', suffix: '' },
-                { key: 'evidence', label: UI.evidence, val: campaignState.evidence, color: '#34d399', suffix: '' },
-                { key: 'corruption', label: UI.corruption, val: campaignState.corruption, color: '#a78bfa', suffix: '' }
+                { key: 'evidence', label: UI.evidence, val: campaignState.evidence, color: '#34d399', suffix: '' }
               ].map(m => (
                 <div key={m.key} className="flex items-center gap-3">
                   <span className="w-[68px] shrink-0 text-[9px] uppercase tracking-[0.16em] text-slate-500">{m.label}</span>

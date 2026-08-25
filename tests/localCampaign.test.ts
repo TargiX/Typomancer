@@ -12,8 +12,6 @@ const seedMission = (): MissionState => ({
   heat: 18,
   trust: 44,
   evidence: 0,
-  corruption: 0,
-  signal: 55,
   route: 'balanced',
   flags: [],
   consequenceLog: []
@@ -76,7 +74,7 @@ test('template choice ignores mission drift, so two runs of a sector pace identi
     ...seedMission(),
     heat: 91,
     evidence: 44,
-    corruption: 30
+    trust: 12
   });
   assert.equal(calm.goodPath.text, hostile.goodPath.text);
 });

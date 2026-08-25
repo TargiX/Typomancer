@@ -34,12 +34,20 @@ export enum SegmentType {
 export type TypingSkill = 'flow' | 'precision' | 'symbols' | 'numbers' | 'punctuation';
 export type RouteStyle = 'balanced' | 'silent' | 'loud';
 
+/**
+ * Three meters, each with a distinct source and a distinct consequence: Heat is
+ * how hunted you are, Trust is who is still with you, Evidence is how much proof
+ * you have and the win condition.
+ *
+ * There used to be five. `signal` was never shown to the player and never read
+ * by any rule — it existed only as a number in a prompt. `corruption` moved in
+ * lockstep with Heat (both rose on a fumbled line, both fed trace pressure), so
+ * it asked the player to track two readings of one thing.
+ */
 export interface MissionState {
   heat: number;
   trust: number;
   evidence: number;
-  corruption: number;
-  signal: number;
   route: RouteStyle;
   flags: string[];
   consequenceLog: string[];
@@ -67,8 +75,6 @@ export interface DecisionImpact {
   heat?: number;
   trust?: number;
   evidence?: number;
-  corruption?: number;
-  signal?: number;
   route?: RouteStyle;
   flag?: string;
   trace?: number;

@@ -111,8 +111,6 @@ const normalizeMissionState = (mission?: MissionState): MissionState => ({
   heat: mission?.heat ?? 18,
   trust: mission?.trust ?? 44,
   evidence: mission?.evidence ?? 0,
-  corruption: mission?.corruption ?? 0,
-  signal: mission?.signal ?? 55,
   route: mission?.route ?? 'balanced',
   flags: mission?.flags ? [...mission.flags] : [],
   consequenceLog: mission?.consequenceLog ? [...mission.consequenceLog] : [],
@@ -283,7 +281,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           heat: "HEAT",
           trust: "TRUST",
           evidence: "EVIDENCE",
-          corruption: "CORRUPTION",
           route: "ROUTE",
           consequence: "CONSEQUENCE",
           clean: "clean",
@@ -334,7 +331,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           heat: "УГРОЗА",
           trust: "ДОВЕРИЕ",
           evidence: "УЛИКИ",
-          corruption: "КОРРУПЦИЯ",
           route: "МАРШРУТ",
           consequence: "ПОСЛЕДСТВИЕ",
           clean: "чисто",
@@ -571,7 +567,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
 
     const BASE_INCREMENT = 0.065; 
     const stealthDivisor = 1 + (stealthLevel * 0.1);
-    const missionPressure = 1 + (missionRef.current.heat / 140) + (missionRef.current.corruption / 200) - (missionRef.current.trust / 320);
+    // Heat absorbed corruption, so its divisor widened to keep total pressure
+    // roughly where it was before the two meters merged.
+    const missionPressure = 1 + (missionRef.current.heat / 160) - (missionRef.current.trust / 320);
     const segmentPressure = 1 + ((activeSegment.pressure || 0) * 0.06);
     const perkMultiplier = modifiers.traceSpeedMultiplier * Math.max(0.45, missionPressure) * segmentPressure; 
 
@@ -645,7 +643,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           traceSpeedMultiplier: modifiers.traceSpeedMultiplier,
           stealthLevel,
           heat: missionRef.current.heat,
-          corruption: missionRef.current.corruption,
           trust: missionRef.current.trust,
           segmentPressure: activeSegment.pressure || 0
       });
@@ -756,7 +753,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       fmt(UI.heat, impact.heat, '%');
       fmt(UI.trust, impact.trust);
       fmt(UI.evidence, impact.evidence);
-      fmt(UI.corruption, impact.corruption);
       fmt(UI.security, impact.trace, '%');
       fmt(UI.hp, impact.health);
       fmt(UI.credits, impact.credits);
@@ -800,13 +796,12 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     }, 1900);
   };
 
-  // Scene atmosphere driven by mission meters: hostile heat/corruption tints the
-  // frame red/violet, a calm clean run cools it toward emerald. This is the
-  // "consequences you can feel" layer over the generated art.
+  // Scene atmosphere driven by mission meters: rising Heat tints the frame
+  // orange, then red, then violet; a calm clean run cools it toward emerald.
+  // This is the "consequences you can feel" layer over the generated art.
   const atmosphere = () => {
     const heat = missionState.heat;
-    const corruption = missionState.corruption;
-    if (corruption >= 45) return { color: 'rgba(126,34,206,0.32)', label: 'compromised' };
+    if (heat >= 85) return { color: 'rgba(126,34,206,0.32)', label: 'compromised' };
     if (heat >= 70) return { color: 'rgba(220,38,38,0.34)', label: 'burning' };
     if (heat >= 50) return { color: 'rgba(234,88,12,0.22)', label: 'hot' };
     if (heat <= 28 && missionState.trust >= 50) return { color: 'rgba(16,185,129,0.20)', label: 'ghost' };
@@ -820,8 +815,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           heat: clamp(prev.heat + (impact.heat || 0)),
           trust: clamp(prev.trust + (impact.trust || 0)),
           evidence: clamp(prev.evidence + (impact.evidence || 0)),
-          corruption: clamp(prev.corruption + (impact.corruption || 0)),
-          signal: clamp(prev.signal + (impact.signal || 0)),
           route: impact.route || prev.route,
           flags: impact.flag && !prev.flags.includes(impact.flag) ? [...prev.flags, impact.flag] : prev.flags,
           consequenceLog: appendConsequence(prev.consequenceLog, note),
@@ -876,30 +869,25 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       let evidenceDelta = 0;
       let heatDelta = 0;
       let trustDelta = 0;
-      let corruptionDelta = 0;
-      let signalDelta = 0;
       let traceDelta = 0;
       const pressure = segment.pressure || 1;
 
+      // Heat carries what Corruption used to: a fumbled line makes you more
+      // hunted, which is the one thing both meters were ever saying.
       if (performance === 'good') {
           evidenceDelta = Math.ceil((isBreach ? 5 : isSignal ? 4 : isDialog ? 3 : 2) * modifiers.evidenceMultiplier);
           heatDelta = -3 - (isBreach ? 2 : 0);
           trustDelta = isDialog ? 3 : 1;
-          signalDelta = 2;
           traceDelta = isBreach ? -14 : -5;
       } else if (performance === 'average') {
           evidenceDelta = Math.ceil((isBreach ? 2 : 1) * modifiers.evidenceMultiplier);
-          heatDelta = 2 + pressure;
+          heatDelta = 3 + pressure;
           trustDelta = isDialog ? -1 : 0;
-          corruptionDelta = 1;
-          signalDelta = -1;
           traceDelta = isBreach ? -4 : 2;
       } else {
           evidenceDelta = isBreach ? 1 : 0;
-          heatDelta = 6 + Math.min(10, totalErrors) + pressure;
+          heatDelta = 9 + Math.min(10, totalErrors) + Math.floor(totalErrors / 2) + pressure;
           trustDelta = -3;
-          corruptionDelta = 3 + Math.floor(totalErrors / 2);
-          signalDelta = -5;
           traceDelta = 8 + pressure;
       }
 
@@ -910,7 +898,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
 
       const meta = `${UI.evidence} ${evidenceDelta >= 0 ? '+' : ''}${evidenceDelta} · ${UI.heat} ${heatDelta >= 0 ? '+' : ''}${heatDelta}% · ${UI.trust} ${trustDelta >= 0 ? '+' : ''}${trustDelta}`;
       commitMission(
-          { heat: heatDelta, trust: trustDelta, evidence: evidenceDelta, corruption: corruptionDelta, signal: signalDelta },
+          { heat: heatDelta, trust: trustDelta, evidence: evidenceDelta },
           describeSegmentBeat(segment.text, performance, language)
       );
       setTracePercent(p => clamp(p + traceDelta));
@@ -918,7 +906,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       spawnDelta(UI.evidence, evidenceDelta, '#34d399');
       spawnDelta(UI.heat, heatDelta, '#fbbf24', '%');
       spawnDelta(UI.trust, trustDelta, '#38bdf8');
-      if (corruptionDelta) spawnDelta(UI.corruption, corruptionDelta, '#a78bfa');
 
       return { meta, evidenceDelta, heatDelta, traceDelta };
   };

@@ -36,8 +36,6 @@ test('player journey connects calibration, Daily play, debrief, targeted practic
     heat: 24,
     trust: 48,
     evidence: 4,
-    corruption: 0,
-    signal: 68,
     route: 'balanced',
     flags: [],
     consequenceLog: []

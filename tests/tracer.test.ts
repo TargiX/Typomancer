@@ -22,7 +22,6 @@ const calm = {
   traceSpeedMultiplier: 1,
   stealthLevel: 0,
   heat: 18,
-  corruption: 0,
   trust: 44,
   segmentPressure: 0
 };
@@ -36,8 +35,8 @@ test('a player typing at their calibrated pace outruns the tracer', () => {
 });
 
 test('tracer speed scales with the same pressure the trace bar reads', () => {
-  const hot = getTracerCharsPerSecond({ ...calm, heat: 90, corruption: 40, trust: 10 });
-  const cool = getTracerCharsPerSecond({ ...calm, heat: 5, corruption: 0, trust: 80 });
+  const hot = getTracerCharsPerSecond({ ...calm, heat: 90, trust: 10 });
+  const cool = getTracerCharsPerSecond({ ...calm, heat: 5, trust: 80 });
   assert.ok(hot > cool);
 
   const pressured = getTracerCharsPerSecond({ ...calm, segmentPressure: 5 });

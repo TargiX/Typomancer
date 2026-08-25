@@ -34,7 +34,6 @@ export interface GenreSkin {
     heat: L;
     trust: L;
     evidence: L;
-    corruption: L;
     route: L;
     security: L;
     health: L;
@@ -107,7 +106,6 @@ const CYBERPUNK: GenreSkin = {
     heat: enRu('Heat', 'Угроза'),
     trust: enRu('Trust', 'Доверие'),
     evidence: enRu('Evidence', 'Улики'),
-    corruption: enRu('Corruption', 'Коррупция'),
     route: enRu('Route', 'Маршрут'),
     security: enRu('Security Trace', 'Трассировка'),
     health: enRu('Health', 'Здоровье'),
@@ -268,7 +266,6 @@ const SPACE_HORROR: GenreSkin = {
     heat: enRu('Contagion', 'Зараза'),
     trust: enRu('Crew Trust', 'Доверие экипажа'),
     evidence: enRu('Blackbox', 'Черный ящик'),
-    corruption: enRu('Hull Rot', 'Гниль корпуса'),
     route: enRu('Deck Route', 'Маршрут палуб'),
     security: enRu('Proximity Alarm', 'Сенсор приближения'),
     health: enRu('Suit Integrity', 'Целостность скафандра'),
@@ -429,7 +426,6 @@ const NOIR: GenreSkin = {
     heat: enRu('Heat', 'Жар'),
     trust: enRu('Favor', 'Блат'),
     evidence: enRu('Ledger', 'Реестр'),
-    corruption: enRu('Dirty Hands', 'Грязные руки'),
     route: enRu('Case Route', 'Линия дела'),
     security: enRu('Tail Pressure', 'Давление хвоста'),
     health: enRu('Grit', 'Живучесть'),
@@ -590,7 +586,6 @@ const DARK_FABLE: GenreSkin = {
     heat: enRu('Curse', 'Проклятие'),
     trust: enRu('Wood Favor', 'Милость леса'),
     evidence: enRu('Names', 'Имена'),
-    corruption: enRu('Thorn-Debt', 'Шиповой долг'),
     route: enRu('Path', 'Тропа'),
     security: enRu("Forest's Ear", 'Слух леса'),
     health: enRu('Vitality', 'Живость'),

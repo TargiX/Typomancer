@@ -12,8 +12,6 @@ const mission: MissionState = {
   heat: 34,
   trust: 50,
   evidence: 12,
-  corruption: 2,
-  signal: 70,
   route: 'balanced',
   flags: [],
   consequenceLog: []

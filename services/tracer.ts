@@ -56,7 +56,6 @@ export interface TracerPressureInput {
   traceSpeedMultiplier: number;
   stealthLevel: number;
   heat: number;
-  corruption: number;
   trust: number;
   /** Per-segment authored pressure, 0 for a calm line. */
   segmentPressure: number;
@@ -72,14 +71,13 @@ export const getTracerCharsPerSecond = ({
   traceSpeedMultiplier,
   stealthLevel,
   heat,
-  corruption,
   trust,
   segmentPressure
 }: TracerPressureInput): number => {
   const safeWpm = Math.min(MAX_BASELINE_WPM, Math.max(MIN_BASELINE_WPM, baselineWpm || DEFAULT_BASELINE_WPM));
   const playerCharsPerSecond = (safeWpm * 5) / 60;
 
-  const missionPressure = Math.max(0.45, 1 + (heat / 140) + (corruption / 200) - (trust / 320));
+  const missionPressure = Math.max(0.45, 1 + (heat / 160) - (trust / 320));
   const linePressure = 1 + (Math.max(0, segmentPressure) * 0.06);
   const stealthDivisor = 1 + (Math.max(0, stealthLevel) * 0.1);
 
