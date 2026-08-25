@@ -32,6 +32,7 @@ import {
   getTypingAccuracy,
   isLowHealth
 } from '../services/gameRules';
+import { appendConsequence, describeDecisionBeat, describeSegmentBeat } from '../services/missionLog';
 import { captureProductEvent, getDeviceClass } from '../services/productAnalytics';
 import type { TypingObservation } from '../services/typingTraining';
 
@@ -823,7 +824,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           signal: clamp(prev.signal + (impact.signal || 0)),
           route: impact.route || prev.route,
           flags: impact.flag && !prev.flags.includes(impact.flag) ? [...prev.flags, impact.flag] : prev.flags,
-          consequenceLog: [note, ...prev.consequenceLog].slice(0, 7),
+          consequenceLog: appendConsequence(prev.consequenceLog, note),
           lastDecision: decisionId || prev.lastDecision
       };
       missionRef.current = next;
@@ -834,10 +835,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const applyDecisionImpact = (impact: DecisionImpact | undefined, choiceText: string, choiceId: string) => {
       const safeImpact = impact || {};
       const meta = describeImpact(safeImpact);
-      const note = language === 'ru'
-          ? `Решение: ${choiceText}${meta ? ` (${meta})` : ''}`
-          : `Decision: ${choiceText}${meta ? ` (${meta})` : ''}`;
-      commitMission(safeImpact, note, choiceId);
+      commitMission(safeImpact, describeDecisionBeat(choiceText, language), choiceId);
       if (safeImpact.trace) setTracePercent(p => clamp(p + safeImpact.trace!));
       if (safeImpact.health) setHealth(h => clamp(h + safeImpact.health!, 0, modifiers.maxHealth));
       if (safeImpact.credits) setCredits(c => c + safeImpact.credits!);
@@ -911,10 +909,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       }
 
       const meta = `${UI.evidence} ${evidenceDelta >= 0 ? '+' : ''}${evidenceDelta} · ${UI.heat} ${heatDelta >= 0 ? '+' : ''}${heatDelta}% · ${UI.trust} ${trustDelta >= 0 ? '+' : ''}${trustDelta}`;
-      const note = language === 'ru'
-          ? `${performance === 'good' ? 'Чистый' : performance === 'average' ? 'Шумный' : 'Сорванный'} сегмент: ${meta}`
-          : `${performance === 'good' ? 'Clean' : performance === 'average' ? 'Messy' : 'Compromised'} segment: ${meta}`;
-      commitMission({ heat: heatDelta, trust: trustDelta, evidence: evidenceDelta, corruption: corruptionDelta, signal: signalDelta }, note);
+      commitMission(
+          { heat: heatDelta, trust: trustDelta, evidence: evidenceDelta, corruption: corruptionDelta, signal: signalDelta },
+          describeSegmentBeat(segment.text, performance, language)
+      );
       setTracePercent(p => clamp(p + traceDelta));
 
       spawnDelta(UI.evidence, evidenceDelta, '#34d399');
