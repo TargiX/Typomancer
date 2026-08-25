@@ -68,8 +68,14 @@ export const getReadyActiveSkills = (
 };
 
 /**
- * Keeps Focus as the fixed bottom anchor of the contextual skill stack.
- * Optional skills are added above it in a stable order as Energy unlocks them.
+ * Only the skills the player can actually spend Energy on right now. A key you
+ * cannot press is noise next to the caret, and the Energy rail already shows
+ * what is coming.
+ *
+ * Rendered top-to-bottom, so this is reversed against the cost order: the
+ * cheapest unlock sits nearest the caret and every later unlock stacks above
+ * it. Nothing below a new arrival ever moves, which is the layout stability the
+ * old permanent Focus anchor was there to provide.
  */
 export const getCursorSkillStack = (
   charge: number,
@@ -77,9 +83,7 @@ export const getCursorSkillStack = (
   focusActive = false
 ): ActiveTypingSkill[] => {
   if (maxCharge <= 0) return [];
-  const readyUtilities = getReadyActiveSkills(charge, maxCharge, focusActive)
-    .filter((skill) => skill !== 'focus');
-  return [...readyUtilities, 'focus'];
+  return [...getReadyActiveSkills(charge, maxCharge, focusActive)].reverse();
 };
 
 type SegmentKind = 'NARRATIVE' | 'BREACH' | 'DIALOG' | 'SIGNAL';

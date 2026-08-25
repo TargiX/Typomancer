@@ -1466,20 +1466,16 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                     : skill === 'firewall'
                       ? { key: '↑', label: 'FIREWALL', effect: UI.skill_firewall_short, use: useFirewall }
                       : { key: '↓', label: language === 'ru' ? 'СБРОС' : 'PURGE', effect: UI.skill_purge_short, use: usePurgeTrace };
+                  // Everything in the stack is castable by construction, so there is
+                  // no disabled state left to render here.
                   const isFocus = skill === 'focus';
-                  const isReady = !isOverclockActive && (
-                    isFocus
-                      ? overclockCharge >= modifiers.maxOverclock
-                      : getReadyActiveSkills(overclockCharge, modifiers.maxOverclock).includes(skill)
-                  );
                   return (
                     <button
                         key={skill}
                         type="button"
                         onClick={details.use}
-                        disabled={!isReady}
                         aria-label={`${details.label}: ${details.effect}`}
-                        className={`engine-cursor-skill ${isFocus ? 'engine-cursor-skill--focus' : ''} ${isOverclockActive && isFocus ? 'engine-cursor-skill--active' : isReady ? 'engine-cursor-skill--ready' : 'engine-cursor-skill--charging'}`}
+                        className={`engine-cursor-skill engine-cursor-skill--ready ${isFocus ? 'engine-cursor-skill--focus' : ''}`}
                     >
                         <span className="keycap">{details.key}</span>
                         <span className="engine-cursor-skill-label">{details.label}</span>

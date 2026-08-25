@@ -54,12 +54,27 @@ test('active typing skills surface as their energy thresholds become ready', () 
   assert.deepEqual(getReadyActiveSkills(100, 100, true), []);
 });
 
-test('cursor skill stack keeps Focus in a stable bottom slot', () => {
-  assert.deepEqual(getCursorSkillStack(0, 100), ['focus']);
-  assert.deepEqual(getCursorSkillStack(40, 100), ['firewall', 'focus']);
-  assert.deepEqual(getCursorSkillStack(55, 100), ['firewall', 'purge', 'focus']);
-  assert.deepEqual(getCursorSkillStack(100, 100), ['firewall', 'purge', 'focus']);
-  assert.deepEqual(getCursorSkillStack(100, 100, true), ['focus']);
+test('cursor skill stack shows only what the player can actually cast', () => {
+  // A key you cannot press is noise next to the caret; the Energy rail already
+  // communicates what is still charging.
+  assert.deepEqual(getCursorSkillStack(0, 100), []);
+  assert.deepEqual(getCursorSkillStack(39, 100), []);
+  assert.deepEqual(getCursorSkillStack(40, 100), ['firewall']);
+  assert.deepEqual(getCursorSkillStack(55, 100), ['purge', 'firewall']);
+  assert.deepEqual(getCursorSkillStack(100, 100), ['focus', 'purge', 'firewall']);
+  // Focus Mode is announced by its own banner, so the stack empties while it runs.
+  assert.deepEqual(getCursorSkillStack(100, 100, true), []);
+});
+
+test('unlocking a skill never moves the ones already next to the caret', () => {
+  // The stack renders top-to-bottom, so the last entry sits nearest the caret.
+  // Each new unlock must land above the existing entries, not shove them.
+  const steps = [0, 40, 55, 100].map((charge) => getCursorSkillStack(charge, 100));
+  for (let i = 1; i < steps.length; i += 1) {
+    const previous = steps[i - 1];
+    const current = steps[i];
+    assert.deepEqual(current.slice(current.length - previous.length), previous);
+  }
 });
 
 test('forgiven typos never increase score', () => {

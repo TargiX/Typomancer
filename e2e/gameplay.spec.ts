@@ -55,31 +55,37 @@ test('bulk insertion cannot complete a typing line', async ({ page }) => {
   await expect(page.getByText('SCORE').locator('..')).toContainText('0');
 });
 
-test('contextual skills stack above a stable Focus anchor', async ({ page }) => {
+test('the caret only offers skills the player can cast, and unlocks stack upward', async ({ page }) => {
   await startCampaign(page);
   const input = page.getByRole('textbox', { name: 'Typing practice input' });
   const activeText = await page.locator('.engine-type-scroll span.relative.inline-block').innerText();
   const stack = page.locator('.engine-cursor-skills');
   const labels = stack.locator('.engine-cursor-skill-label');
 
-  await expect(labels).toHaveText(['FOCUS']);
-  await input.pressSequentially(activeText.slice(0, 20));
-  await expect(labels).toHaveText(['FIREWALL', 'FOCUS']);
-  await input.pressSequentially(activeText.slice(20, 28));
-  await expect(labels).toHaveText(['FIREWALL', 'PURGE', 'FOCUS']);
+  // Energy starts empty, so there is nothing to offer and nothing to render.
+  await expect(labels).toHaveCount(0);
 
-  const geometry = await stack.evaluate((element) => {
-    const focus = element.querySelector('.engine-cursor-skill--focus');
-    return {
-      direction: getComputedStyle(element).flexDirection,
-      focusIsLast: element.lastElementChild === focus,
-      focusBottom: focus?.getBoundingClientRect().bottom,
-      stackBottom: element.getBoundingClientRect().bottom
-    };
-  });
+  await input.pressSequentially(activeText.slice(0, 20), { delay: 5 });
+  await expect(labels).toHaveText(['FIREWALL']);
+  const firewallBottom = await stack.locator('.engine-cursor-skill').last().evaluate(
+    (element) => element.getBoundingClientRect().bottom
+  );
+
+  await input.pressSequentially(activeText.slice(20, 28), { delay: 5 });
+  await expect(labels).toHaveText(['PURGE', 'FIREWALL']);
+
+  const geometry = await stack.evaluate((element) => ({
+    direction: getComputedStyle(element).flexDirection,
+    bottomLabel: element.lastElementChild?.querySelector('.engine-cursor-skill-label')?.textContent,
+    bottomEdge: element.lastElementChild?.getBoundingClientRect().bottom
+  }));
   expect(geometry.direction).toBe('column');
-  expect(geometry.focusIsLast).toBe(true);
-  expect(geometry.focusBottom).toBe(geometry.stackBottom);
+  // The cheapest unlock stays put by the caret; PURGE arrived above it.
+  expect(geometry.bottomLabel).toBe('FIREWALL');
+  expect(geometry.bottomEdge).toBe(firewallBottom);
+
+  // Nothing in the stack is ever a dead key.
+  await expect(stack.locator('.engine-cursor-skill:disabled')).toHaveCount(0);
 });
 
 test('the tracer eats the line behind a stalled player and PURGE throws it back', async ({ page }) => {
