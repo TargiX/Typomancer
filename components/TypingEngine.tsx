@@ -32,6 +32,7 @@ import {
   getTypingAccuracy,
   isLowHealth
 } from '../services/gameRules';
+import { FORK_REVEAL_MS, buildForkReveal, describeFork, type ForkReveal } from '../services/forkReveal';
 import { appendConsequence, describeDecisionBeat, describeSegmentBeat } from '../services/missionLog';
 import { captureProductEvent, getDeviceClass } from '../services/productAnalytics';
 import type { TypingObservation } from '../services/typingTraining';
@@ -194,6 +195,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const [combo, setCombo] = useState(0);
   const [comboPulse, setComboPulse] = useState(0);
   const [deltaPopups, setDeltaPopups] = useState<DeltaPopup[]>([]);
+  // The branch the player's accuracy just bought them, surfaced for a few seconds.
+  const [forkReveal, setForkReveal] = useState<ForkReveal | null>(null);
+  const forkRevealTimerRef = useRef<number | null>(null);
   const [typeCueActive, setTypeCueActive] = useState(true);
   // Remember WHICH segment got the TYPE cue (not a boolean) — StrictMode re-runs the
   // effect for the same segment, and a plain flag would cancel the cue instantly.
@@ -305,7 +309,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           route_loud: "LOUD",
           type_cue: "TYPE",
           type_subcue: "BEGIN INPUT",
-          score_word: "SCORE"
+          score_word: "SCORE",
+          fork_error_one: "error",
+          fork_error_many: "errors"
       },
       ru: {
           overclock_active: "ФОКУС-МОД АКТИВЕН",
@@ -355,7 +361,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           route_loud: "ГРОМКО",
           type_cue: "TYPE",
           type_subcue: "НАЧИНАЙ ВВОД",
-          score_word: "СЧЁТ"
+          score_word: "СЧЁТ",
+          fork_error_one: "ошибка",
+          fork_error_many: "ошибок"
       }
   };
 
@@ -1056,6 +1064,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const triggerGameOver = (finalHealth: number, totalErrorsOverride?: number) => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (overclockTimerRef.current) clearTimeout(overclockTimerRef.current);
+    if (forkRevealTimerRef.current) clearTimeout(forkRevealTimerRef.current);
     const { totalErrors: recordedErrors } = getErrorReport();
     const totalErrors = totalErrorsOverride ?? recordedErrors;
     const typedCharacters = inputValue.length + (totalErrorsOverride === undefined ? 0 : 1);
@@ -1183,6 +1192,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
 
     const outcome = applySegmentOutcome(performanceType, totalErrors, wpm, activeSegment);
     audioEngine.segmentClear(performanceType);
+    setForkReveal(buildForkReveal(branch, performanceType, totalErrors));
+    if (forkRevealTimerRef.current) clearTimeout(forkRevealTimerRef.current);
+    forkRevealTimerRef.current = window.setTimeout(() => setForkReveal(null), FORK_REVEAL_MS);
     addToLog(activeSegment.text, performanceType, segmentScore, wpm, totalErrors, outcome.meta, activeSegment.type);
     onCaptureFrame?.({ image: currentImageRef.current, caption: activeSegment.text, performance: performanceType, level: currentLevel });
     setHistory(prev => [...prev, { ...activeSegment, performance: performanceType }]);
@@ -1591,6 +1603,26 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                 </span>
             ))}
         </div>
+        {forkReveal && (() => {
+            const copy = describeFork(forkReveal, language);
+            return (
+                <div className={`engine-fork-reveal engine-fork-reveal--${forkReveal.performance} absolute inset-x-4 top-4 z-40 pointer-events-none`}>
+                    <div className="flex items-baseline gap-2">
+                        <span className="engine-fork-verdict">{copy.verdict}</span>
+                        <span className="engine-fork-errors">
+                            {forkReveal.errors} {forkReveal.errors === 1 ? UI.fork_error_one : UI.fork_error_many}
+                        </span>
+                    </div>
+                    <p className="engine-fork-detail">{copy.detail}</p>
+                    {forkReveal.missedText && (
+                        <div className="engine-fork-missed">
+                            <span className="engine-fork-missed-label">{copy.missedLabel}</span>
+                            <span className="engine-fork-missed-text">{forkReveal.missedText}</span>
+                        </div>
+                    )}
+                </div>
+            );
+        })()}
         <div className="absolute left-4 bottom-4 right-4 z-30 flex flex-wrap items-center gap-2">
             <span className="engine-chip engine-chip--skill bg-[#0b101a]/90 border border-white/[0.08] px-2.5 py-1 text-[9px] text-slate-300 uppercase tracking-[0.18em]">{skillIcon[activeSegment.skill || 'flow']} {activeSegment.skill || 'flow'}</span>
             <span className="engine-chip engine-chip--objective bg-[#0b101a]/90 border border-white/[0.08] px-2.5 py-1 text-[9px] text-slate-300 uppercase tracking-[0.18em]">{UI.objective}: <span className="normal-case tracking-normal text-slate-200">{activeSegment.objective}</span></span>

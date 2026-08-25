@@ -443,3 +443,76 @@ button.engine-cursor-skill:disabled {
 .engine-skillbar {
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 10px 100%, 0 calc(100% - 10px));
 }
+
+/* THE FORK REVEAL — the branch the player's accuracy just bought them.
+   The rule was always there; this is the first time the player can see it. */
+@keyframes engine-fork-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.engine-fork-reveal {
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-left-width: 3px;
+  background: rgba(7, 10, 17, 0.93);
+  backdrop-filter: blur(2px);
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  animation: engine-fork-in 220ms ease-out both;
+}
+
+.engine-fork-reveal--good { border-left-color: rgba(52, 211, 153, 0.9); }
+.engine-fork-reveal--average { border-left-color: rgba(251, 191, 36, 0.9); }
+.engine-fork-reveal--bad { border-left-color: rgba(244, 63, 94, 0.9); }
+
+.engine-fork-verdict {
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.engine-fork-reveal--good .engine-fork-verdict { color: #6ee7b7; }
+.engine-fork-reveal--average .engine-fork-verdict { color: #fcd34d; }
+.engine-fork-reveal--bad .engine-fork-verdict { color: #fda4af; }
+
+.engine-fork-errors {
+  font-size: 0.56rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.85);
+}
+
+.engine-fork-detail {
+  margin-top: 3px;
+  font-size: 0.68rem;
+  line-height: 1.4;
+  color: #cbd5e1;
+}
+
+.engine-fork-missed {
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.engine-fork-missed-label {
+  display: block;
+  font-size: 0.5rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.7);
+}
+
+.engine-fork-missed-text {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.7rem;
+  line-height: 1.45;
+  font-style: italic;
+  color: #94a3b8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .engine-fork-reveal { animation: none; }
+}

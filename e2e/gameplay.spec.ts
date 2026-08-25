@@ -116,6 +116,37 @@ test('the tracer eats the line behind a stalled player and PURGE throws it back'
     .toBeLessThan(beforePurge);
 });
 
+test('a lost branch shows the player the line clean typing would have earned', async ({ page }) => {
+  await startCampaign(page);
+  const input = page.getByRole('textbox', { name: 'Typing practice input' });
+  const activeText = await page.locator('.engine-type-scroll span.relative.inline-block').innerText();
+  const reveal = page.locator('.engine-fork-reveal');
+
+  await expect(reveal).toHaveCount(0);
+
+  // Enough uncorrected typos to lose the good branch (more than 4 counted), but
+  // short of the 10 that end the run — which would take the input away mid-test.
+  const typoCount = 7;
+  const wrong = activeText.slice(0, typoCount).replace(/./g, (character) => (character === 'z' ? 'q' : 'z'));
+  await input.pressSequentially(wrong, { delay: 5 });
+  await input.pressSequentially(activeText.slice(typoCount), { delay: 5 });
+
+  await expect(reveal).toHaveClass(/engine-fork-reveal--bad/);
+  await expect(reveal.locator('.engine-fork-missed-text')).not.toBeEmpty();
+});
+
+test('a clean line is never told what it missed', async ({ page }) => {
+  await startCampaign(page);
+  const input = page.getByRole('textbox', { name: 'Typing practice input' });
+  const activeText = await page.locator('.engine-type-scroll span.relative.inline-block').innerText();
+  const reveal = page.locator('.engine-fork-reveal');
+
+  await input.pressSequentially(activeText, { delay: 5 });
+
+  await expect(reveal).toHaveClass(/engine-fork-reveal--good/);
+  await expect(reveal.locator('.engine-fork-missed-text')).toHaveCount(0);
+});
+
 test('banking a completed sector adds it to Operator Record', async ({ page }) => {
   await startCampaign(page);
   const activeLine = page.locator('.engine-type-scroll span.relative.inline-block');
