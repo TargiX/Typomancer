@@ -604,7 +604,7 @@ const App: React.FC = () => {
   const [totalScore, setTotalScore] = useState(0);
   const [currentLevel, setCurrentLevel] = useState(1);
   const [currentHealth, setCurrentHealth] = useState(20);
-  const [musicActive, setMusicActive] = useState(false);
+  const [musicActive, setMusicActive] = useState(() => audioEngine.isEnabled());
   const [language, setLanguage] = useState<Language>('en'); // Global Language State
   
   const [userProfile, setUserProfile] = useState<UserProfile>(DEFAULT_PROFILE);
@@ -950,38 +950,48 @@ const App: React.FC = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
         if (deathSequenceActive) return;
+        // Consuming a shortcut must also swallow the key. Otherwise the same
+        // keypress that opens a screen is delivered again to whatever input that
+        // screen focuses — pressing [1] on the menu used to type "1" as the first
+        // character of the calibration prompt and score it as a miss.
+        const consume = () => e.preventDefault();
+
         if (gameState === GameState.STARTER_PERK_SELECTION || gameState === GameState.LEVEL_COMPLETE) {
             const index = parseInt(e.key) - 1;
             if (index >= 0 && index < offeredPerks.length) {
                 if (gameState === GameState.STARTER_PERK_SELECTION) {
                     handleStarterPerkSelect(offeredPerks[index]);
+                    consume();
                 } else if (isSectorSummaryReady) {
                     handleSelectPerk(offeredPerks[index]);
+                    consume();
                 }
             }
         } else if (gameState === GameState.GENRE_SELECTION) {
-            if (e.key === 'Escape') setGameState(GameState.MENU);
+            if (e.key === 'Escape') { setGameState(GameState.MENU); consume(); }
             const index = parseInt(e.key) - 1;
             if (index >= 0 && index < GENRE_ORDER.length) {
                 handleGenreSelect(GENRE_ORDER[index]);
+                consume();
             }
         } else if (gameState === GameState.MENU) {
-            if (e.key === '1' || e.key === 'Enter') initializeSession();
-            if (e.key === '2') setGameState(GameState.BLACK_MARKET);
-            if (e.key === '3' && !dailyAttemptsExhausted) initializeDailySession();
-            if (e.key === '4') setGameState(GameState.OPERATOR_RECORD);
-            if (e.key.toLowerCase() === 'r' && runCheckpoint) resumeSession();
+            if (e.key === '1' || e.key === 'Enter') { initializeSession(); consume(); }
+            if (e.key === '2') { setGameState(GameState.BLACK_MARKET); consume(); }
+            if (e.key === '3' && !dailyAttemptsExhausted) { initializeDailySession(); consume(); }
+            if (e.key === '4') { setGameState(GameState.OPERATOR_RECORD); consume(); }
+            if (e.key.toLowerCase() === 'r' && runCheckpoint) { resumeSession(); consume(); }
         } else if (gameState === GameState.OPERATOR_RECORD) {
-            if (e.key === 'Escape') setGameState(GameState.MENU);
+            if (e.key === 'Escape') { setGameState(GameState.MENU); consume(); }
         } else if (gameState === GameState.GAME_OVER || gameState === GameState.VICTORY) {
-            if (e.key === 'Enter' || e.key === ' ') setGameState(GameState.MENU);
+            if (e.key === 'Enter' || e.key === ' ') { setGameState(GameState.MENU); consume(); }
         } else if (gameState === GameState.BLACK_MARKET) {
-            if (e.key === 'Escape') setGameState(GameState.MENU);
-            
+            if (e.key === 'Escape') { setGameState(GameState.MENU); consume(); }
+
             const index = parseInt(e.key) - 1;
             const upgradeKeys = Object.keys(META_UPGRADES) as (keyof UserUpgrades)[];
             if (index >= 0 && index < upgradeKeys.length) {
                 handleBuyUpgrade(upgradeKeys[index]);
+                consume();
             }
         }
     };
@@ -989,6 +999,19 @@ const App: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [dailyAttemptsExhausted, deathSequenceActive, gameState, isSectorSummaryReady, offeredPerks, playerProgress.calibration, runCheckpoint, userProfile]);
+
+  // Browsers refuse to open an AudioContext outside a user gesture, so the very
+  // first click or keypress is what actually brings audio up — including on the
+  // menu, which used to stay silent until a run started.
+  useEffect(() => {
+      const unlock = () => audioEngine.unlock();
+      window.addEventListener('pointerdown', unlock);
+      window.addEventListener('keydown', unlock);
+      return () => {
+          window.removeEventListener('pointerdown', unlock);
+          window.removeEventListener('keydown', unlock);
+      };
+  }, []);
 
   const handleToggleMusic = () => {
       const active = audioEngine.toggle();
@@ -1146,7 +1169,7 @@ const App: React.FC = () => {
       } else {
           setGameState(GameState.GENRE_SELECTION);
       }
-      if (!musicActive) handleToggleMusic();
+      audioEngine.unlock();
   };
 
   const resumeSession = async () => {
@@ -1184,7 +1207,7 @@ const App: React.FC = () => {
       currentDailyIdRef.current = null;
       setCurrentDailyDateLabel(null);
       setGameState(GameState.LOADING);
-      if (!musicActive) handleToggleMusic();
+      audioEngine.unlock();
       captureProductEvent('typomancer_run_started', {
           ...getAnalyticsContext(),
           daily: false,
@@ -1239,7 +1262,7 @@ const App: React.FC = () => {
       } else {
           setGameState(GameState.STARTER_PERK_SELECTION);
       }
-      if (!musicActive) handleToggleMusic();
+      audioEngine.unlock();
   };
 
   const finishCalibration = (result: CalibrationResult, observations: TypingObservation[] = [], skipped = false) => {
@@ -2302,7 +2325,7 @@ const App: React.FC = () => {
                              <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.credits}</div>
                         </div>
                         <div className="screens-stat-tile p-4 text-center border border-amber-400/15 bg-amber-400/[0.025]">
-                             <div className="font-display text-3xl font-bold text-amber-300 tabular-nums leading-none">{Math.floor(lastLevelReport.traceLevel)}%</div>
+                             <div className="font-display text-3xl font-bold text-amber-300 tabular-nums leading-none">{Math.round(lastLevelReport.mission?.heat ?? campaignState.heat)}%</div>
                              <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.heat}</div>
                         </div>
                         <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]">

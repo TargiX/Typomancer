@@ -7,12 +7,13 @@ import {
   getDeterministicStoryBranch,
   getDeterministicStrategicDecision
 } from '../services/geminiService';
-import { audioEngine } from '../services/audioEngine';
+import { audioEngine, type ComboTier } from '../services/audioEngine';
 import {
   DECISION_ROUND,
   SECTOR_ROUNDS,
   calculateSegmentCredits,
   calculateSegmentScore,
+  getComboMultiplier,
   getCursorSkillStack,
   getReadyActiveSkills,
   getTypingAccuracy,
@@ -277,7 +278,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           route_silent: "SILENT",
           route_loud: "LOUD",
           type_cue: "TYPE",
-          type_subcue: "BEGIN INPUT"
+          type_subcue: "BEGIN INPUT",
+          score_word: "SCORE"
       },
       ru: {
           overclock_active: "ФОКУС-МОД АКТИВЕН",
@@ -325,7 +327,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           route_silent: "ТИХО",
           route_loud: "ГРОМКО",
           type_cue: "TYPE",
-          type_subcue: "НАЧИНАЙ ВВОД"
+          type_subcue: "НАЧИНАЙ ВВОД",
+          score_word: "СЧЁТ"
       }
   };
 
@@ -452,10 +455,12 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const activateOverclock = () => {
       if (isOverclockActive || overclockCharge < modifiers.maxOverclock) return;
       captureSkillEvent('typomancer_skill_used', 'focus');
+      audioEngine.focusStart();
       setIsOverclockActive(true);
       setOverclockCharge(0);
       if (overclockTimerRef.current) clearTimeout(overclockTimerRef.current);
       overclockTimerRef.current = window.setTimeout(() => {
+          audioEngine.focusEnd();
           setIsOverclockActive(false);
       }, modifiers.focusDurationMs);
   };
@@ -481,6 +486,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       const cost = PURGE_COST();
       if (isOverclockActive || isDecisionActive || overclockCharge < cost) return;
       captureSkillEvent('typomancer_skill_used', 'purge');
+      audioEngine.purge();
       setOverclockCharge(c => Math.max(0, c - cost));
       setTracePercent(p => clamp(p - 25));
       inputRef.current?.focus();
@@ -492,6 +498,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           const key = `${currentLevel}:${skill}`;
           if (trackedReadySkillsRef.current.has(key)) continue;
           trackedReadySkillsRef.current.add(key);
+          audioEngine.skillReady();
           captureSkillEvent('typomancer_skill_became_ready', skill);
       }
   }, [currentLevel, isOverclockActive, modifiers.maxOverclock, overclockCharge]);
@@ -638,7 +645,12 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       return UI.route_balanced;
   };
 
-  const comboMultiplier = combo >= 50 ? 3 : combo >= 25 ? 2 : combo >= 10 ? 1.5 : 1;
+  const comboMultiplier = getComboMultiplier(combo);
+
+  // Maps the combo ladder onto the four brightness steps of the keystroke voice.
+  const comboTier = (value: number): ComboTier => (
+    value >= 50 ? 3 : value >= 25 ? 2 : value >= 10 ? 1 : 0
+  );
 
   const comboAccent = () => {
     if (combo >= 50) return { text: 'text-emerald-200', glow: 'rgba(52,211,153,0.95)' };
@@ -835,6 +847,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
              triggerShieldEffect();
          } else {
              const newMistakes = mistakesInSegment + 1;
+             audioEngine.keyError();
              setMistakesInSegment(newMistakes);
              setCombo(0);
              setOverclockCharge(c => Math.min(modifiers.maxOverclock, Math.max(0, c - 5 + modifiers.errorChargeGain)));
@@ -847,6 +860,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
              }
          }
        } else {
+           audioEngine.keyHit(comboTier(combo));
            setCombo(c => c + 1);
            setComboPulse(p => p + 1);
            if (!isOverclockActive) {
@@ -919,6 +933,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   };
 
   const triggerShieldEffect = () => {
+      audioEngine.shield();
       if (containerRef.current) {
           containerRef.current.classList.add('shadow-[inset_0_0_20px_rgba(52,211,153,0.5)]');
           setTimeout(() => {
@@ -1023,7 +1038,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       type: activeSegment.type,
       wpm,
       overclock: isOverclockActive,
-      breachMultiplier: modifiers.breachRewardMultiplier
+      breachMultiplier: modifiers.breachRewardMultiplier,
+      comboMultiplier
     });
     const segmentCredits = calculateSegmentCredits({
       errors: totalErrors,
@@ -1055,6 +1071,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     }
 
     const outcome = applySegmentOutcome(performanceType, totalErrors, wpm, activeSegment);
+    audioEngine.segmentClear(performanceType);
     addToLog(activeSegment.text, performanceType, segmentScore, wpm, totalErrors, outcome.meta, activeSegment.type);
     onCaptureFrame?.({ image: currentImageRef.current, caption: activeSegment.text, performance: performanceType, level: currentLevel });
     setHistory(prev => [...prev, { ...activeSegment, performance: performanceType }]);
@@ -1083,7 +1100,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         type: activeSegment.type,
         wpm,
         overclock: isOverclockActive,
-        breachMultiplier: modifiers.breachRewardMultiplier
+        breachMultiplier: modifiers.breachRewardMultiplier,
+        comboMultiplier
       });
       const segmentCredits = calculateSegmentCredits({
         errors: totalErrors,
@@ -1093,6 +1111,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         creditMultiplier: modifiers.creditMultiplier
       });
       const outcome = applySegmentOutcome(performanceType, totalErrors, wpm, activeSegment);
+      audioEngine.segmentClear(performanceType);
       addToLog(activeSegment.text, performanceType, score, wpm, totalErrors, outcome.meta, activeSegment.type);
       onCaptureFrame?.({ image: currentImageRef.current, caption: activeSegment.text, performance: performanceType, level: currentLevel });
       const stats: GameStats = {
@@ -1382,7 +1401,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                             {combo}
                         </span>
                         <span className={`block mt-1 text-[10px] font-bold tracking-[0.18em] ${comboAccent().text}`}>
-                            COMBO{comboMultiplier > 1 ? ` ·${comboMultiplier}×` : ''}
+                            COMBO{comboMultiplier > 1 ? ` ·${comboMultiplier}× ${UI.score_word}` : ''}
                         </span>
                         <span className="block my-1.5 h-px bg-white/10"></span>
                     </div>

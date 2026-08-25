@@ -6,6 +6,7 @@ import {
   SECTOR_ROUNDS,
   calculateSegmentCredits,
   calculateSegmentScore,
+  getComboMultiplier,
   getCursorSkillStack,
   getReadyActiveSkills,
   getTypingAccuracy,
@@ -64,6 +65,36 @@ test('cursor skill stack keeps Focus in a stable bottom slot', () => {
 test('forgiven typos never increase score', () => {
   assert.equal(calculateSegmentScore({ errors: 0, wpm: 45, type: 'NARRATIVE' }), 12);
   assert.equal(calculateSegmentScore({ errors: 1, wpm: 45, type: 'NARRATIVE' }), 10);
+});
+
+test('combo ladder steps at 10, 25 and 50 unbroken keystrokes', () => {
+  assert.equal(getComboMultiplier(0), 1);
+  assert.equal(getComboMultiplier(9), 1);
+  assert.equal(getComboMultiplier(10), 1.5);
+  assert.equal(getComboMultiplier(24), 1.5);
+  assert.equal(getComboMultiplier(25), 2);
+  assert.equal(getComboMultiplier(49), 2);
+  assert.equal(getComboMultiplier(50), 3);
+});
+
+test('combo multiplier scales segment score', () => {
+  const base = calculateSegmentScore({ errors: 0, wpm: 45, type: 'NARRATIVE' });
+  assert.equal(calculateSegmentScore({ errors: 0, wpm: 45, type: 'NARRATIVE', comboMultiplier: 3 }), base * 3);
+  // Focus doubling and the combo ladder compound rather than replace each other.
+  assert.equal(
+    calculateSegmentScore({ errors: 0, wpm: 45, type: 'NARRATIVE', overclock: true, comboMultiplier: 2 }),
+    base * 4
+  );
+});
+
+test('combo multiplier never reduces a segment score', () => {
+  const base = calculateSegmentScore({ errors: 2, wpm: 45, type: 'NARRATIVE' });
+  assert.equal(calculateSegmentScore({ errors: 2, wpm: 45, type: 'NARRATIVE', comboMultiplier: 0 }), base);
+});
+
+test('credits stay outside the combo ladder so the shop economy holds', () => {
+  const base = calculateSegmentCredits({ errors: 0, type: 'NARRATIVE' });
+  assert.equal(calculateSegmentCredits({ errors: 0, type: 'NARRATIVE', comboMultiplier: 3 }), base);
 });
 
 test('segment credits reward performance rather than AI sentence length', () => {

@@ -6,11 +6,28 @@
  * Implements a precise scheduling system for rhythmic stability.
  */
 
+export const AUDIO_ENABLED_STORAGE_KEY = 'typomancerAudioEnabled';
+
+// A minor pentatonic, in semitones from A. The keystroke voice walks this scale so
+// typing arpeggiates in the same key as the sequencer instead of clicking atonally.
+const PENTATONIC_SEMITONES = [0, 3, 5, 7, 10];
+const noteFreq = (semitone: number, octave: number) => 440 * Math.pow(2, (semitone + (octave * 12)) / 12);
+
+export type ComboTier = 0 | 1 | 2 | 3;
+
 class NeuralAudioEngine {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
+  /**
+   * SFX live on their own bus wired straight to the destination. The music bus is
+   * faded to zero whenever the sequencer is off, so routing keystrokes through it
+   * would silence every hit for anyone who plays without the soundtrack.
+   */
+  private sfxGain: GainNode | null = null;
   private isPlaying: boolean = false;
-  
+  private enabled: boolean = true;
+  private keyStep = 0;
+
   // Sequencer State
   private tempo = 110;
   private lookahead = 25.0; // ms
@@ -23,15 +40,118 @@ class NeuralAudioEngine {
   // Persistent Nodes
   private droneNodes: AudioNode[] = [];
 
-  constructor() {}
+  constructor() {
+    try {
+      this.enabled = window.localStorage.getItem(AUDIO_ENABLED_STORAGE_KEY) !== '0';
+    } catch {
+      // Storage can be unavailable in privacy-restricted browser contexts.
+      this.enabled = true;
+    }
+  }
 
-  private initContext() {
-    if (!this.ctx) {
+  /** Returns false when the browser refuses us an audio context at all. */
+  private initContext(): boolean {
+    if (this.ctx) return true;
+    try {
       this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
       this.masterGain = this.ctx.createGain();
       this.masterGain.connect(this.ctx.destination);
       this.masterGain.gain.setValueAtTime(0, this.ctx.currentTime);
+
+      this.sfxGain = this.ctx.createGain();
+      this.sfxGain.connect(this.ctx.destination);
+      this.sfxGain.gain.setValueAtTime(1, this.ctx.currentTime);
+    } catch {
+      // No audio output available. Everything below degrades to a silent no-op
+      // rather than taking the typing loop down with it.
+      this.ctx = null;
+      return false;
     }
+    return true;
+  }
+
+  /**
+   * Returns the SFX bus only when we are allowed to make noise right now: audio
+   * enabled, context built, and the browser has actually granted us playback.
+   */
+  private sfxBus(): { ctx: AudioContext; bus: GainNode; now: number } | null {
+    if (!this.enabled) return null;
+    if (!this.ctx || !this.sfxGain) return null;
+    if (this.ctx.state !== 'running') return null;
+    return { ctx: this.ctx, bus: this.sfxGain, now: this.ctx.currentTime };
+  }
+
+  /** Short filtered noise transient — the physical "contact" under a key sound. */
+  private noiseBurst(
+    ctx: AudioContext,
+    bus: GainNode,
+    time: number,
+    { duration, gain, type, frequency, Q = 1 }: {
+      duration: number;
+      gain: number;
+      type: BiquadFilterType;
+      frequency: number;
+      Q?: number;
+    }
+  ) {
+    const bufferSize = Math.max(1, Math.floor(ctx.sampleRate * duration));
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = type;
+    filter.frequency.value = frequency;
+    filter.Q.value = Q;
+
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(gain, time);
+    env.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+
+    source.connect(filter);
+    filter.connect(env);
+    env.connect(bus);
+    source.start(time);
+    source.stop(time + duration);
+  }
+
+  /** Pitched blip with a lowpass envelope. The melodic half of every SFX. */
+  private blip(
+    ctx: AudioContext,
+    bus: GainNode,
+    time: number,
+    { freq, endFreq, duration, gain, type = 'triangle', cutoff = 6000 }: {
+      freq: number;
+      endFreq?: number;
+      duration: number;
+      gain: number;
+      type?: OscillatorType;
+      cutoff?: number;
+    }
+  ) {
+    const osc = ctx.createOscillator();
+    const filter = ctx.createBiquadFilter();
+    const env = ctx.createGain();
+
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, time);
+    if (endFreq && endFreq > 0) osc.frequency.exponentialRampToValueAtTime(endFreq, time + duration);
+
+    filter.type = 'lowpass';
+    filter.frequency.value = cutoff;
+
+    env.gain.setValueAtTime(0.0001, time);
+    env.gain.exponentialRampToValueAtTime(gain, time + 0.004);
+    env.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+
+    osc.connect(filter);
+    filter.connect(env);
+    env.connect(bus);
+    osc.start(time);
+    osc.stop(time + duration + 0.02);
   }
 
   // --- SYNTHESIS INSTRUMENTS ---
@@ -297,34 +417,179 @@ class NeuralAudioEngine {
 
   // --- PUBLIC API ---
 
-  public toggle() {
-      this.initContext();
-      if (this.ctx!.state === 'suspended') {
-        this.ctx!.resume();
-      }
-      
-      this.isPlaying = !this.isPlaying;
-      
-      if (this.isPlaying) {
-          // Fade In
-          this.masterGain?.gain.setTargetAtTime(0.4, this.ctx!.currentTime, 0.5);
-          
-          this.startDrone();
-          
-          // Reset Sequencer
-          this.current16thNote = 0;
-          this.nextNoteTime = this.ctx!.currentTime + 0.1;
-          this.scheduler();
-      } else {
-          // Fade Out
-          this.masterGain?.gain.setTargetAtTime(0, this.ctx!.currentTime, 0.1);
-          if (this.timerID) clearTimeout(this.timerID);
-          setTimeout(() => this.stopDrone(), 200); 
-      }
-      
-      return this.isPlaying;
+  public isEnabled() {
+      return this.enabled;
   }
-  
+
+  /**
+   * Opens the audio context from a real user gesture and starts the soundtrack if
+   * the player has not explicitly muted it. Safe to call on every gesture.
+   */
+  public unlock() {
+      if (!this.enabled) return;
+      if (!this.initContext()) return;
+      if (this.ctx!.state === 'suspended') this.ctx!.resume();
+      if (!this.isPlaying) this.startMusic();
+  }
+
+  /**
+   * Turns all audio on or off and remembers the choice. Muting is a deliberate
+   * player decision, so starting a run must never silently undo it.
+   */
+  public setEnabled(on: boolean) {
+      this.enabled = on;
+      try {
+          window.localStorage.setItem(AUDIO_ENABLED_STORAGE_KEY, on ? '1' : '0');
+      } catch {
+          // Storage can be unavailable in privacy-restricted browser contexts.
+      }
+      if (on) {
+          if (!this.initContext()) return this.enabled;
+          if (this.ctx!.state === 'suspended') this.ctx!.resume();
+          if (!this.isPlaying) this.startMusic();
+      } else if (this.isPlaying) {
+          this.stopMusic();
+      }
+      return this.enabled;
+  }
+
+  public toggle() {
+      return this.setEnabled(!this.enabled);
+  }
+
+  // --- SFX ---
+
+  /**
+   * One correct keystroke. Walks the pentatonic so a clean streak arpeggiates
+   * upward; `tier` (from the combo ladder) raises the octave and opens the filter
+   * so a big combo is audibly brighter than a cold start.
+   */
+  public keyHit(tier: ComboTier = 0) {
+      const ch = this.sfxBus();
+      if (!ch) return;
+      const { ctx, bus, now } = ch;
+
+      const degree = this.keyStep % PENTATONIC_SEMITONES.length;
+      const loopOctave = Math.floor(this.keyStep / PENTATONIC_SEMITONES.length) % 2;
+      this.keyStep = (this.keyStep + 1) % (PENTATONIC_SEMITONES.length * 2);
+
+      const baseOctave = tier >= 3 ? 1 : tier >= 2 ? 0 : -1;
+      const freq = noteFreq(PENTATONIC_SEMITONES[degree], baseOctave + loopOctave);
+
+      this.blip(ctx, bus, now, {
+          freq,
+          duration: 0.075,
+          gain: 0.05 + (tier * 0.012),
+          type: 'triangle',
+          cutoff: 2600 + (tier * 1400)
+      });
+      this.noiseBurst(ctx, bus, now, {
+          duration: 0.018,
+          gain: 0.03 + (tier * 0.006),
+          type: 'highpass',
+          frequency: 4200
+      });
+  }
+
+  /** A counted mistake: detuned low thud, deliberately sour against the key. */
+  public keyError() {
+      const ch = this.sfxBus();
+      if (!ch) return;
+      const { ctx, bus, now } = ch;
+      this.keyStep = 0;
+      this.blip(ctx, bus, now, { freq: 104, endFreq: 62, duration: 0.2, gain: 0.24, type: 'square', cutoff: 900 });
+      this.blip(ctx, bus, now, { freq: 98, endFreq: 60, duration: 0.2, gain: 0.16, type: 'sawtooth', cutoff: 700 });
+      this.noiseBurst(ctx, bus, now, { duration: 0.09, gain: 0.11, type: 'lowpass', frequency: 1400 });
+  }
+
+  /** A mistake absorbed by Firewall or grace — soft, clearly not a failure. */
+  public shield() {
+      const ch = this.sfxBus();
+      if (!ch) return;
+      const { ctx, bus, now } = ch;
+      this.blip(ctx, bus, now, { freq: 880, endFreq: 1320, duration: 0.16, gain: 0.13, type: 'sine', cutoff: 5200 });
+      this.noiseBurst(ctx, bus, now, { duration: 0.12, gain: 0.05, type: 'bandpass', frequency: 2400, Q: 6 });
+  }
+
+  /** An active protocol just became affordable. */
+  public skillReady() {
+      const ch = this.sfxBus();
+      if (!ch) return;
+      const { ctx, bus, now } = ch;
+      this.blip(ctx, bus, now, { freq: noteFreq(0, 0), duration: 0.1, gain: 0.1, type: 'triangle' });
+      this.blip(ctx, bus, now + 0.08, { freq: noteFreq(7, 0), duration: 0.16, gain: 0.11, type: 'triangle' });
+  }
+
+  /** Focus Mode engaged: rising fifth plus a noise sweep. */
+  public focusStart() {
+      const ch = this.sfxBus();
+      if (!ch) return;
+      const { ctx, bus, now } = ch;
+      this.blip(ctx, bus, now, { freq: noteFreq(0, -1), endFreq: noteFreq(0, 1), duration: 0.5, gain: 0.2, type: 'sawtooth', cutoff: 3400 });
+      this.blip(ctx, bus, now + 0.06, { freq: noteFreq(7, 0), duration: 0.45, gain: 0.12, type: 'sine' });
+      this.noiseBurst(ctx, bus, now, { duration: 0.42, gain: 0.09, type: 'bandpass', frequency: 1800, Q: 2 });
+  }
+
+  /** Focus Mode expired: the same gesture, falling. */
+  public focusEnd() {
+      const ch = this.sfxBus();
+      if (!ch) return;
+      const { ctx, bus, now } = ch;
+      this.blip(ctx, bus, now, { freq: noteFreq(0, 1), endFreq: noteFreq(0, -1), duration: 0.35, gain: 0.13, type: 'sawtooth', cutoff: 2200 });
+  }
+
+  /** Security Trace purged: a downward wash, the pressure visibly dropping. */
+  public purge() {
+      const ch = this.sfxBus();
+      if (!ch) return;
+      const { ctx, bus, now } = ch;
+      this.blip(ctx, bus, now, { freq: noteFreq(10, 0), endFreq: noteFreq(0, -1), duration: 0.4, gain: 0.16, type: 'triangle', cutoff: 2800 });
+      this.noiseBurst(ctx, bus, now, { duration: 0.34, gain: 0.08, type: 'lowpass', frequency: 2600 });
+  }
+
+  /** End-of-segment stinger, pitched by how the line went. */
+  public segmentClear(performance: 'good' | 'average' | 'bad') {
+      const ch = this.sfxBus();
+      if (!ch) return;
+      const { ctx, bus, now } = ch;
+      if (performance === 'good') {
+          [0, 3, 7].forEach((semitone, index) => {
+              this.blip(ctx, bus, now + (index * 0.055), { freq: noteFreq(semitone, 0), duration: 0.2, gain: 0.12, type: 'triangle' });
+          });
+      } else if (performance === 'average') {
+          this.blip(ctx, bus, now, { freq: noteFreq(0, 0), duration: 0.18, gain: 0.1, type: 'triangle' });
+      } else {
+          this.blip(ctx, bus, now, { freq: noteFreq(1, -1), endFreq: noteFreq(0, -2), duration: 0.34, gain: 0.15, type: 'sawtooth', cutoff: 900 });
+      }
+  }
+
+  // --- MUSIC ---
+
+  private startMusic() {
+      if (!this.initContext()) return;
+      if (this.ctx!.state === 'suspended') this.ctx!.resume();
+      this.isPlaying = true;
+
+      // Fade In
+      this.masterGain?.gain.setTargetAtTime(0.4, this.ctx!.currentTime, 0.5);
+
+      this.startDrone();
+
+      // Reset Sequencer
+      this.current16thNote = 0;
+      this.nextNoteTime = this.ctx!.currentTime + 0.1;
+      this.scheduler();
+  }
+
+  private stopMusic() {
+      this.isPlaying = false;
+      if (!this.ctx) return;
+      // Fade Out
+      this.masterGain?.gain.setTargetAtTime(0, this.ctx.currentTime, 0.1);
+      if (this.timerID) clearTimeout(this.timerID);
+      setTimeout(() => this.stopDrone(), 200);
+  }
+
   public setIntensity(val: number) {
       // Smoothly update intensity
       this.intensity = val;

@@ -91,20 +91,36 @@ interface SegmentRewardInput {
   overclock?: boolean;
   breachMultiplier?: number;
   creditMultiplier?: number;
+  comboMultiplier?: number;
 }
+
+/**
+ * Combo counts unbroken correct keystrokes and survives across segments, so this
+ * ladder rewards sustained clean typing rather than one lucky line. It scales
+ * score (and through it XP and Stealth Level) but deliberately not credits —
+ * the shop economy is already generous and a 3x on top would flatten it.
+ */
+export const getComboMultiplier = (combo: number): number => {
+  if (combo >= 50) return 3;
+  if (combo >= 25) return 2;
+  if (combo >= 10) return 1.5;
+  return 1;
+};
 
 export const calculateSegmentScore = ({
   errors,
   type,
   wpm = 0,
   overclock = false,
-  breachMultiplier = 1
+  breachMultiplier = 1,
+  comboMultiplier = 1
 }: SegmentRewardInput): number => {
   let score = Math.max(0, 12 - (errors * 2));
   if (type === 'BREACH' && errors <= 2) score += Math.round(5 * breachMultiplier);
   if (type === 'SIGNAL' && errors <= 1) score += 3;
   if (wpm > 70 && errors <= 1) score += 4;
-  return overclock ? score * 2 : score;
+  if (overclock) score *= 2;
+  return Math.round(score * Math.max(1, comboMultiplier));
 };
 
 export const calculateSegmentCredits = ({
