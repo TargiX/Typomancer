@@ -7,6 +7,7 @@ A consequence-driven RPG typing game. You play as Agent Nox, a field hacker tryi
 ## What changed in this version
 
 - **Full four-sector campaign loop** with a real win state and multiple endings.
+- **Sectors have a shape:** an authored curve runs from a short opening line through a turning point to a long, maximum-pressure climax, instead of seven interchangeable beats. Escalation is authored rather than derived from Heat, so a clean run still feels the sector tighten.
 - **Consequences beyond the current sentence:** typing performance and tactical choices change Heat (how hunted you are), Trust (who is still with you), Evidence (your proof, and the win condition), and Route.
 - **You can see the fork:** lose the clean branch and the game quotes the line accurate typing would have earned you instead. Which branch you get is judged on accuracy against the length of the line, not a flat typo count, so a short line is not a free pass and the worst branch is actually reachable.
 - **The debrief leads with accuracy**, not speed, and names the one thing to work on next.

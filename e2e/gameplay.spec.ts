@@ -159,7 +159,9 @@ test('banking a completed sector adds it to Operator Record', async ({ page }) =
   await startCampaign(page);
   const activeLine = page.locator('.engine-type-scroll span.relative.inline-block');
 
+  const beats: string[] = [];
   for (let round = 1; round <= 7; round += 1) {
+    beats.push((await page.locator('.engine-beat').innerText()).trim());
     const completedText = await typeActiveLine(page);
     if (round === 3) {
       await page.getByRole('button', { name: /STEALTH/ }).click();
@@ -168,6 +170,12 @@ test('banking a completed sector adds it to Operator Record', async ({ page }) =
       await expect(activeLine).not.toHaveText(completedText);
     }
   }
+
+  // The sector runs on an authored curve, so it opens gently and ends on a climax
+  // rather than being seven interchangeable beats.
+  expect(beats[0]).toBe('OPENING');
+  expect(beats[beats.length - 1]).toBe('CLIMAX');
+  expect(new Set(beats).size).toBeGreaterThan(2);
 
   await expect(page.getByRole('heading', { name: 'SEQUENCE COMPLETE' })).toBeVisible();
 

@@ -516,3 +516,33 @@ button.engine-cursor-skill:disabled {
 @media (prefers-reduced-motion: reduce) {
   .engine-fork-reveal { animation: none; }
 }
+
+/* SECTOR BEAT — where the player is on the sector's curve.
+   Escalation that cannot be seen coming reads as random difficulty. */
+.engine-beat {
+  font-size: 0.5rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: rgba(148, 163, 184, 0.75);
+}
+
+.engine-beat--build { color: rgba(125, 211, 252, 0.85); }
+.engine-beat--turn { color: rgba(196, 181, 253, 0.9); }
+.engine-beat--escalate { color: rgba(251, 191, 36, 0.95); }
+
+@keyframes engine-beat-climax {
+  0%, 100% { opacity: 0.75; }
+  50% { opacity: 1; }
+}
+
+.engine-beat--climax {
+  color: #fda4af;
+  text-shadow: 0 0 10px rgba(244, 63, 94, 0.5);
+  animation: engine-beat-climax 1.1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .engine-beat--climax { animation: none; }
+}

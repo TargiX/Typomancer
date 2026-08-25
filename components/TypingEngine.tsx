@@ -38,6 +38,7 @@ import {
 import { FORK_REVEAL_MS, buildForkReveal, describeFork, type ForkReveal } from '../services/forkReveal';
 import { appendConsequence, describeDecisionBeat, describeSegmentBeat } from '../services/missionLog';
 import { captureProductEvent, getDeviceClass } from '../services/productAnalytics';
+import { getRoundShape } from '../services/sectorRhythm';
 import type { TypingObservation } from '../services/typingTraining';
 
 const CRACK_PATHS = [
@@ -323,7 +324,12 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           type_subcue: "BEGIN INPUT",
           score_word: "SCORE",
           fork_error_one: "error",
-          fork_error_many: "errors"
+          fork_error_many: "errors",
+          beat_establish: "OPENING",
+          beat_build: "BUILDING",
+          beat_turn: "TURNING POINT",
+          beat_escalate: "CLOSING IN",
+          beat_climax: "CLIMAX"
       },
       ru: {
           overclock_active: "ФОКУС-МОД АКТИВЕН",
@@ -375,7 +381,12 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           type_subcue: "НАЧИНАЙ ВВОД",
           score_word: "СЧЁТ",
           fork_error_one: "ошибка",
-          fork_error_many: "ошибок"
+          fork_error_many: "ошибок",
+          beat_establish: "ЗАВЯЗКА",
+          beat_build: "НАРАСТАНИЕ",
+          beat_turn: "ПЕРЕЛОМ",
+          beat_escalate: "КОЛЬЦО СЖИМАЕТСЯ",
+          beat_climax: "КУЛЬМИНАЦИЯ"
       }
   };
 
@@ -791,6 +802,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       if (route === 'loud') return UI.route_loud;
       return UI.route_balanced;
   };
+
+  const roundShape = getRoundShape(round, SECTOR_ROUNDS, currentLevel);
 
   const comboMultiplier = getComboMultiplier(combo);
 
@@ -1521,6 +1534,12 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                     <div>
                         <div className="text-[9px] uppercase tracking-[0.22em] text-slate-500">{UI.round}</div>
                         <div className="font-display mt-1 text-xl font-bold tabular-nums leading-none text-slate-100">{round}<span className="ml-1 text-[10px] font-mono text-slate-600">/{SECTOR_ROUNDS}</span></div>
+                        {/* The sector escalates on an authored curve; naming the beat
+                            is what lets the player feel it coming rather than only
+                            noticing the line got longer. */}
+                        <div className={`engine-beat engine-beat--${roundShape.beat} mt-1.5`}>
+                            {UI[`beat_${roundShape.beat}` as keyof typeof UI]}
+                        </div>
                     </div>
                 </div>
                 <div className="border-l border-white/[0.06] pl-5">
