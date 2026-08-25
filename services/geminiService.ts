@@ -180,9 +180,29 @@ const getLocalBranch = (
   // the opening rounds, where the player should just read and type the story.
   const isDrill = (t: LocalBranchTemplate) => t.type === SegmentType.BREACH || t.type === SegmentType.SIGNAL;
   const proseTemplates = allTemplates.filter(t => !isDrill(t));
-  const drillsAllowed = level >= FINAL_LEVEL || round >= SECTOR_ROUNDS - 1 || (round >= 4 && ((level * 7 + round * 3) % 3 === 0));
-  const templates = drillsAllowed && proseTemplates.length ? allTemplates : (proseTemplates.length ? proseTemplates : allTemplates);
-  const template = pick(templates, (level * 17) + (round * 5) + (mission?.heat || 0) + (mission?.evidence || 0));
+  const templatesFor = (r: number) => {
+    const drillsAllowed = level >= FINAL_LEVEL || r >= SECTOR_ROUNDS - 1 || (r >= 4 && ((level * 7 + r * 3) % 3 === 0));
+    return drillsAllowed && proseTemplates.length ? allTemplates : (proseTemplates.length ? proseTemplates : allTemplates);
+  };
+
+  // The round must advance the pool by exactly one. The old seed added round * 5
+  // to a mission term that drifts by roughly zero on a clean run (evidence up 3,
+  // heat down 3), and 5 % 5 === 0 against a five-template pool — so sector four
+  // served the identical line all seven rounds.
+  // Resolved from round 1 forward, because the step-off below changes what the
+  // previous round actually served — comparing against the raw pick would let a
+  // corrected round collide with the next one.
+  const resolveTemplate = (r: number): LocalBranchTemplate => {
+    const pool = templatesFor(r);
+    const candidate = pool[Math.abs((level * 3) + r) % pool.length];
+    if (r <= 1) return candidate;
+    // The pool widens once mid-sector when drills unlock, and the wider pool can
+    // land back on the line we just used. Step off it.
+    if (candidate !== resolveTemplate(r - 1)) return candidate;
+    return pool[(pool.indexOf(candidate) + 1) % pool.length];
+  };
+
+  const template = resolveTemplate(round);
   const type = template.type || SegmentType.NARRATIVE;
   const heat = mission?.heat || 0;
   const pressure = clamp(Math.round((heat / 25) + (round / 4)), 1, 5);

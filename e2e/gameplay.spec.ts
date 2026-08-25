@@ -67,9 +67,10 @@ test('the caret only offers skills the player can cast, and unlocks stack upward
 
   await input.pressSequentially(activeText.slice(0, 20), { delay: 5 });
   await expect(labels).toHaveText(['FIREWALL']);
-  const firewallBottom = await stack.locator('.engine-cursor-skill').last().evaluate(
-    (element) => element.getBoundingClientRect().bottom
-  );
+  const before = await stack.locator('.engine-cursor-skill').last().evaluate((element) => ({
+    bottom: element.getBoundingClientRect().bottom,
+    rowHeight: element.getBoundingClientRect().height
+  }));
 
   await input.pressSequentially(activeText.slice(20, 28), { delay: 5 });
   await expect(labels).toHaveText(['PURGE', 'FIREWALL']);
@@ -77,12 +78,14 @@ test('the caret only offers skills the player can cast, and unlocks stack upward
   const geometry = await stack.evaluate((element) => ({
     direction: getComputedStyle(element).flexDirection,
     bottomLabel: element.lastElementChild?.querySelector('.engine-cursor-skill-label')?.textContent,
-    bottomEdge: element.lastElementChild?.getBoundingClientRect().bottom
+    bottomEdge: element.lastElementChild?.getBoundingClientRect().bottom ?? 0
   }));
   expect(geometry.direction).toBe('column');
-  // The cheapest unlock stays put by the caret; PURGE arrived above it.
+  // The cheapest unlock stays put by the caret; PURGE arrived above it. The stack
+  // is anchored to the caret, which drifts sub-pixel as the line advances, so the
+  // claim worth testing is that FIREWALL did not get pushed up by a whole row.
   expect(geometry.bottomLabel).toBe('FIREWALL');
-  expect(geometry.bottomEdge).toBe(firewallBottom);
+  expect(Math.abs(geometry.bottomEdge - before.bottom)).toBeLessThan(before.rowHeight / 2);
 
   // Nothing in the stack is ever a dead key.
   await expect(stack.locator('.engine-cursor-skill:disabled')).toHaveCount(0);
