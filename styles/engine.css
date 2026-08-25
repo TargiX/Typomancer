@@ -546,3 +546,52 @@ button.engine-cursor-skill:disabled {
 @media (prefers-reduced-motion: reduce) {
   .engine-beat--climax { animation: none; }
 }
+
+/* DECISION IMPACT — the price of a tactical choice, shown before it is taken.
+   The card used to carry only flavour, and the numbers arrived after the choice
+   was locked in. */
+.engine-decision-impact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.engine-impact-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 3px 7px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(255, 255, 255, 0.02);
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+}
+
+.engine-impact-chip-label {
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.8);
+}
+
+.engine-impact-chip-value {
+  font-size: 0.66rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.engine-impact-chip--good {
+  border-color: rgba(52, 211, 153, 0.35);
+}
+
+.engine-impact-chip--good .engine-impact-chip-value {
+  color: #6ee7b7;
+}
+
+.engine-impact-chip--bad {
+  border-color: rgba(251, 146, 60, 0.35);
+}
+
+.engine-impact-chip--bad .engine-impact-chip-value {
+  color: #fdba74;
+}

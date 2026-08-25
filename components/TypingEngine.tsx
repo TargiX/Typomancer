@@ -38,6 +38,7 @@ import {
 import { FORK_REVEAL_MS, buildForkReveal, describeFork, type ForkReveal } from '../services/forkReveal';
 import { appendConsequence, describeDecisionBeat, describeSegmentBeat } from '../services/missionLog';
 import { captureProductEvent, getDeviceClass } from '../services/productAnalytics';
+import { formatImpactValue, getDecisionImpactChips } from '../services/decisionImpact';
 import { getRoundShape } from '../services/sectorRhythm';
 import type { TypingObservation } from '../services/typingTraining';
 
@@ -797,6 +798,31 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       return parts.join(' · ');
   };
 
+  const impactLabels = {
+      heat: UI.heat,
+      trust: UI.trust,
+      evidence: UI.evidence,
+      trace: UI.security,
+      health: UI.hp,
+      credits: UI.credits
+  };
+
+  // The price of a choice belongs on the card, not in the log afterwards.
+  const renderImpactChips = (impact?: DecisionImpact) => {
+      const chips = getDecisionImpactChips(impact, impactLabels);
+      if (!chips.length) return null;
+      return (
+          <div className="engine-decision-impact mt-4">
+              {chips.map((chip) => (
+                  <span key={chip.key} className={`engine-impact-chip engine-impact-chip--${chip.tone}`}>
+                      <span className="engine-impact-chip-label">{chip.label}</span>
+                      <span className="engine-impact-chip-value">{formatImpactValue(chip)}</span>
+                  </span>
+              ))}
+          </div>
+      );
+  };
+
   const routeLabel = (route = missionRef.current.route) => {
       if (route === 'silent') return UI.route_silent;
       if (route === 'loud') return UI.route_loud;
@@ -1414,6 +1440,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                            <h3 className="font-display text-xl font-bold text-rose-400 mb-2 group-hover:text-rose-300">{UI.aggressive}</h3>
                            <p className="text-slate-300 text-lg">"{nextDecision.options[0].text}"</p>
                            <div className="mt-4 text-xs text-rose-300/80 font-mono">{nextDecision.options[0].preview || describeImpact(nextDecision.options[0].impact)}</div>
+                           {renderImpactChips(nextDecision.options[0].impact)}
                            <div className="mt-5 flex items-center gap-2.5 font-mono uppercase tracking-[0.18em]">
                                <span className="keycap text-lg">1</span>
                                <span className="text-[12px] text-slate-300 group-hover:text-white transition-colors">{UI.press_1.replace('[1]', '').trim()}</span>
@@ -1423,6 +1450,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                            <h3 className="font-display text-xl font-bold text-emerald-400 mb-2 group-hover:text-emerald-300">{UI.stealth}</h3>
                            <p className="text-slate-300 text-lg">"{nextDecision.options[1].text}"</p>
                            <div className="mt-4 text-xs text-emerald-300/80 font-mono">{nextDecision.options[1].preview || describeImpact(nextDecision.options[1].impact)}</div>
+                           {renderImpactChips(nextDecision.options[1].impact)}
                            <div className="mt-5 flex items-center gap-2.5 font-mono uppercase tracking-[0.18em]">
                                <span className="keycap text-lg">2</span>
                                <span className="text-[12px] text-slate-300 group-hover:text-white transition-colors">{UI.press_2.replace('[2]', '').trim()}</span>

@@ -16,6 +16,7 @@ import { getGenrePack, type LocalBranchTemplate } from "./genreConfig.ts";
 import { SECTOR_ROUNDS } from "./gameRules.ts";
 import { getRecentConsequences } from "./missionLog.ts";
 import { isProseSegmentType, repairProseLine } from "./proseRepair.ts";
+import { clampDecisionImpact } from "./decisionImpact.ts";
 import { getBeatDirection, getRoundShape } from "./sectorRhythm.ts";
 
 type Schema = Record<string, unknown>;
@@ -549,7 +550,7 @@ export const generateStrategicDecision = async (
       opt.id = opt.id || (index === 0 ? 'aggressive' : 'stealth');
       opt.type = opt.type || (index === 0 ? 'aggressive' : 'stealth');
       opt.preview = opt.preview || fallback.options[index].preview;
-      opt.impact = { ...fallback.options[index].impact, ...opt.impact };
+      opt.impact = clampDecisionImpact({ ...fallback.options[index].impact, ...opt.impact });
       opt.outcome = sanitizeSegment(opt.outcome, index === 0 ? 'flow' : 'symbols');
     });
     return data as DecisionPoint;
