@@ -132,13 +132,13 @@
   display: block;
   margin-top: 17px;
   font-family: 'Rajdhani', sans-serif;
-  font-size: 1.25rem;
+  font-size: var(--fs-title);
   color: #f8fafc;
 }
 
 .engine-skill-briefing-card p {
   margin-top: 5px;
-  font-size: 0.68rem;
+  font-size: var(--fs-label);
   line-height: 1.5;
   color: #94a3b8;
 }
@@ -230,7 +230,7 @@ button.engine-cursor-skill:disabled {
 }
 
 .engine-cursor-skill-label {
-  font-size: 0.54rem;
+  font-size: var(--fs-micro);
   font-weight: 800;
   letter-spacing: 0.1em;
 }
@@ -244,7 +244,7 @@ button.engine-cursor-skill:disabled {
   padding: 5px 7px;
   border: 1px solid rgba(148, 163, 184, 0.18);
   background: rgba(7, 10, 17, 0.98);
-  font-size: 0.56rem;
+  font-size: var(--fs-micro);
   line-height: 1.35;
   color: #94a3b8;
   opacity: 0;
@@ -291,7 +291,7 @@ button.engine-cursor-skill:disabled {
 
   .engine-type-scroll {
     padding: 18px 22px;
-    font-size: 1.05rem;
+    font-size: var(--fs-lead);
   }
 
   .engine-skill-briefing-grid {
@@ -364,13 +364,13 @@ button.engine-cursor-skill:disabled {
 
 .engine-rail-cap-top {
   top: 5px;
-  font-size: 8px;
+  font-size: var(--fs-micro);
   color: rgba(148, 163, 184, 0.85);
 }
 
 .engine-rail-cap-bottom {
   bottom: 5px;
-  font-size: 11px;
+  font-size: var(--fs-label);
 }
 
 .engine-skill-slot {
@@ -466,7 +466,7 @@ button.engine-cursor-skill:disabled {
 .engine-fork-reveal--bad { border-left-color: rgba(244, 63, 94, 0.9); }
 
 .engine-fork-verdict {
-  font-size: 0.62rem;
+  font-size: var(--fs-micro);
   font-weight: 800;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -477,7 +477,7 @@ button.engine-cursor-skill:disabled {
 .engine-fork-reveal--bad .engine-fork-verdict { color: #fda4af; }
 
 .engine-fork-errors {
-  font-size: 0.56rem;
+  font-size: var(--fs-micro);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: rgba(148, 163, 184, 0.85);
@@ -485,7 +485,7 @@ button.engine-cursor-skill:disabled {
 
 .engine-fork-detail {
   margin-top: 3px;
-  font-size: 0.68rem;
+  font-size: var(--fs-label);
   line-height: 1.4;
   color: #cbd5e1;
 }
@@ -498,7 +498,7 @@ button.engine-cursor-skill:disabled {
 
 .engine-fork-missed-label {
   display: block;
-  font-size: 0.5rem;
+  font-size: var(--fs-micro);
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: rgba(148, 163, 184, 0.7);
@@ -507,7 +507,7 @@ button.engine-cursor-skill:disabled {
 .engine-fork-missed-text {
   display: block;
   margin-top: 2px;
-  font-size: 0.7rem;
+  font-size: var(--fs-label);
   line-height: 1.45;
   font-style: italic;
   color: #94a3b8;
@@ -520,7 +520,7 @@ button.engine-cursor-skill:disabled {
 /* SECTOR BEAT — where the player is on the sector's curve.
    Escalation that cannot be seen coming reads as random difficulty. */
 .engine-beat {
-  font-size: 0.62rem;
+  font-size: var(--fs-micro);
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -567,7 +567,7 @@ button.engine-cursor-skill:disabled {
 }
 
 .engine-impact-chip-label {
-  font-size: 0.5rem;
+  font-size: var(--fs-micro);
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -575,7 +575,7 @@ button.engine-cursor-skill:disabled {
 }
 
 .engine-impact-chip-value {
-  font-size: 0.66rem;
+  font-size: var(--fs-label);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }

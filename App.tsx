@@ -443,6 +443,9 @@ const loadStoredProfile = (): { profile: UserProfile; language?: Language; lastG
     }
 };
 
+/** Notches in a HUD gauge. Enough to read a trend, few enough to count. */
+const HUD_GAUGE_SEGMENTS = 16;
+
 const DEFAULT_MISSION_STATE: MissionState = {
     heat: 18,
     trust: 44,
@@ -555,7 +558,7 @@ const SystemBeacon: React.FC<{ label: string }> = ({ label }) => {
             </span>
 
             {/* decoding label */}
-            <span className="relative z-20 beacon-flicker font-mono text-[11px] font-bold tracking-[0.22em] text-emerald-300 whitespace-nowrap" style={{ textShadow: '0 0 8px rgba(52,211,153,0.45)' }}>
+            <span className="relative z-20 beacon-flicker font-mono fs-label font-bold tracking-[0.22em] text-emerald-300 whitespace-nowrap" style={{ textShadow: '0 0 8px rgba(52,211,153,0.45)' }}>
                 {text}
             </span>
 
@@ -567,7 +570,7 @@ const SystemBeacon: React.FC<{ label: string }> = ({ label }) => {
             </div>
 
             {/* drifting ping */}
-            <span className="relative z-20 font-mono text-[9px] tracking-[0.15em] text-emerald-500/70 tabular-nums whitespace-nowrap">
+            <span className="relative z-20 font-mono fs-micro tracking-[0.15em] text-emerald-500/70 tabular-nums whitespace-nowrap">
                 {ping}ms
             </span>
         </div>
@@ -698,6 +701,7 @@ const App: React.FC = () => {
   const [currentHealth, setCurrentHealth] = useState(20);
   const [musicActive, setMusicActive] = useState(() => audioEngine.isEnabled());
   const [storedBoot] = useState(loadStoredProfile);
+  const [pactOpen, setPactOpen] = useState(false);
   const [language, setLanguage] = useState<Language>(storedBoot.language ?? 'en'); // Global Language State
   
   const [userProfile, setUserProfile] = useState<UserProfile>(storedBoot.profile);
@@ -1919,7 +1923,7 @@ const App: React.FC = () => {
             <div className="screens-perk-meta flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
                     <span className="keycap opacity-70 group-hover:opacity-100">{index + 1}</span>
-                    <span className={`truncate text-[9px] font-bold uppercase tracking-[0.2em] ${rarityColor}`}>{perk.rarity}</span>
+                    <span className={`truncate fs-micro font-bold uppercase tracking-[0.2em] ${rarityColor}`}>{perk.rarity}</span>
                 </div>
                  <div className="flex gap-1" aria-label={`${UI.level} ${perk.tier}`}>
                      {Array.from({ length: perk.maxTier }, (_, tierIndex) => (
@@ -1930,12 +1934,12 @@ const App: React.FC = () => {
                      ))}
                  </div>
             </div>
-            <h4 className="screens-perk-title font-display text-lg font-bold leading-tight text-white transition-colors">{perk.name}</h4>
-            <p className="screens-perk-description text-sm text-slate-400 leading-relaxed">
+            <h4 className="screens-perk-title font-display fs-lead font-bold leading-tight text-white transition-colors">{perk.name}</h4>
+            <p className="screens-perk-description fs-body text-slate-400 leading-relaxed">
                 {perk.description}
             </p>
             {isLegendary && (
-                <div className="screens-perk-legend text-[9px] text-amber-300 font-bold uppercase tracking-[0.2em]">
+                <div className="screens-perk-legend fs-micro text-amber-300 font-bold uppercase tracking-[0.2em]">
                     {stripLeadingGlyph(UI.legendary_drop)}
                 </div>
             )}
@@ -1968,12 +1972,12 @@ const App: React.FC = () => {
             <div className="screens-world-heading flex min-w-0 items-start gap-3">
                 <span className="keycap shrink-0 opacity-70 group-hover:opacity-100">{index + 1}</span>
                 <div className="min-w-0">
-                    <h4 className="font-display text-lg font-bold" style={{ color: pack.accent }}>{pack.name[language]}</h4>
-                    <p className="text-[9px] mt-1 uppercase tracking-[0.18em] text-slate-500">{pack.ui.mainTitle[language]}</p>
+                    <h4 className="font-display fs-lead font-bold" style={{ color: pack.accent }}>{pack.name[language]}</h4>
+                    <p className="fs-micro mt-1 uppercase tracking-[0.18em] text-slate-500">{pack.ui.mainTitle[language]}</p>
                 </div>
             </div>
-            <p className="screens-world-description text-sm text-slate-400 leading-relaxed">{pack.tagline[language]}</p>
-            <p className="screens-world-goal text-[11px] text-slate-500 border-t border-white/[0.06] pt-3">{pack.ui.campaignGoal[language]}</p>
+            <p className="screens-world-description fs-body text-slate-400 leading-relaxed">{pack.tagline[language]}</p>
+            <p className="screens-world-goal fs-label text-slate-500 border-t border-white/[0.06] pt-3">{pack.ui.campaignGoal[language]}</p>
         </button>
       );
   };
@@ -2026,8 +2030,8 @@ const App: React.FC = () => {
               </svg>
             </div>
             <div className="min-w-0">
-              <h1 className="font-display text-[15px] font-bold tracking-[0.12em] text-white leading-none truncate">{UI.game_title}</h1>
-              <p className="mt-1.5 text-[9px] uppercase tracking-[0.22em] text-slate-500 truncate">
+              <h1 className="font-display fs-lead font-bold tracking-[0.12em] text-white leading-none truncate">{UI.game_title}</h1>
+              <p className="mt-1.5 fs-micro uppercase tracking-[0.22em] text-slate-500 truncate">
                 {inSimulation ? genrePack.ui.mainTitle[language] : UI.subtitle}
               </p>
             </div>
@@ -2035,7 +2039,7 @@ const App: React.FC = () => {
 
           {inSimulation && (
             <div
-              className="inline-flex items-center gap-2 self-start px-2.5 py-1 rounded-full border text-[10px] font-bold tracking-widest uppercase"
+              className="inline-flex items-center gap-2 self-start px-2.5 py-1 rounded-full border fs-micro font-bold tracking-widest uppercase"
               style={{ borderColor: `${genrePack.accent}66`, color: genrePack.accent, background: `${genrePack.accent}14` }}
               title={language === 'ru' ? 'Активная симуляция за стеклом пульта' : 'Active simulation behind the operator glass'}
             >
@@ -2050,15 +2054,15 @@ const App: React.FC = () => {
           <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] space-y-4">
             <div className="flex items-end justify-between">
               <div>
-                <div className="text-[9px] uppercase tracking-[0.22em] text-slate-500">{UI.wallet}</div>
+                <div className="fs-micro uppercase tracking-[0.22em] text-slate-500">{UI.wallet}</div>
                 <div className="font-display mt-1 text-2xl font-bold tabular-nums text-white leading-none">
-                  {Math.floor(userProfile.credits || 0)}<span className="text-sm text-emerald-400 ml-1 align-baseline">{UI.currency_suffix}</span>
+                  {Math.floor(userProfile.credits || 0)}<span className="fs-body text-emerald-400 ml-1 align-baseline">{UI.currency_suffix}</span>
                 </div>
               </div>
               {gameState === GameState.PLAYING && (
                 <div className="text-right">
-                  <div className="text-[9px] uppercase tracking-[0.22em] text-slate-500">{UI.score}</div>
-                  <div className="font-display mt-1 text-lg font-bold tabular-nums text-emerald-400 leading-none">{totalScore}</div>
+                  <div className="fs-micro uppercase tracking-[0.22em] text-slate-500">{UI.score}</div>
+                  <div className="font-display mt-1 fs-lead font-bold tabular-nums text-emerald-400 leading-none">{totalScore}</div>
                 </div>
               )}
             </div>
@@ -2072,14 +2076,24 @@ const App: React.FC = () => {
                 { key: 'evidence', label: UI.evidence, val: campaignState.evidence, color: '#34d399', suffix: '' }
               ].map(m => (
                 <div key={m.key} className="flex items-center gap-3">
-                  <span className="w-[68px] shrink-0 text-[9px] uppercase tracking-[0.16em] text-slate-500">{m.label}</span>
-                  <div className="flex-1 h-1 rounded-full bg-white/[0.06] overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-700"
-                      style={{ width: `${Math.min(100, Math.max(0, m.val))}%`, backgroundColor: m.color, boxShadow: `0 0 8px ${m.color}55` }}
-                    ></div>
+                  <span className="w-[68px] shrink-0 fs-micro uppercase tracking-[0.16em] text-slate-500">{m.label}</span>
+                  {/* Notches rather than a rounded progress bar: a filled rounded
+                      bar is what a web page shows while it loads something, a
+                      segmented gauge reads as an instrument — and the value
+                      becomes countable at a glance. */}
+                  <div className="hud-gauge flex-1" role="img" aria-label={`${m.label} ${Math.round(m.val)}${m.suffix}`}>
+                    {Array.from({ length: HUD_GAUGE_SEGMENTS }).map((_, index) => {
+                      const lit = index < Math.round((Math.min(100, Math.max(0, m.val)) / 100) * HUD_GAUGE_SEGMENTS);
+                      return (
+                        <span
+                          key={index}
+                          className={`hud-gauge-notch ${lit ? 'is-lit' : ''}`}
+                          style={lit ? { backgroundColor: m.color, boxShadow: `0 0 6px ${m.color}66` } : undefined}
+                        />
+                      );
+                    })}
                   </div>
-                  <span className="w-9 text-right text-[11px] tabular-nums text-slate-300">{Math.round(m.val)}{m.suffix}</span>
+                  <span className="w-9 text-right fs-label tabular-nums text-slate-300">{Math.round(m.val)}{m.suffix}</span>
                 </div>
               ))}
             </div>
@@ -2088,7 +2102,7 @@ const App: React.FC = () => {
           {activePerks.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {activePerks.map((p, i) => (
-                <span key={i} title={p.description} className={`text-[10px] px-2 py-0.5 rounded-full border cursor-help tracking-wide ${
+                <span key={i} title={p.description} className={`fs-micro px-2 py-0.5 rounded-full border cursor-help tracking-wide ${
                   p.tier === 3 ? 'border-amber-400/40 text-amber-300 bg-amber-400/10' :
                   p.tier === 2 ? 'border-violet-400/40 text-violet-300 bg-violet-400/10' :
                   'border-white/10 text-slate-300 bg-white/[0.03]'
@@ -2102,16 +2116,16 @@ const App: React.FC = () => {
 
         {/* Mission log */}
         <div className="relative z-10 flex-1 min-h-0 overflow-y-auto px-5 pb-4">
-          <div className="text-[9px] uppercase tracking-[0.22em] text-slate-600 mb-3 sticky top-0 bg-gradient-to-b from-[#0b101a] to-transparent pb-1">{language === 'ru' ? 'Журнал миссии' : 'Mission Log'}</div>
+          <div className="fs-micro uppercase tracking-[0.22em] text-slate-600 mb-3 sticky top-0 bg-gradient-to-b from-[#0b101a] to-transparent pb-1">{language === 'ru' ? 'Журнал миссии' : 'Mission Log'}</div>
           {storyLog.length === 0 ? (
-            <div className="text-slate-600 text-xs italic text-center mt-8 whitespace-pre-wrap">{UI.empty_log}</div>
+            <div className="text-slate-600 fs-label italic text-center mt-8 whitespace-pre-wrap">{UI.empty_log}</div>
           ) : (
             <div className="relative space-y-5 pl-1">
               <div className="absolute left-[11px] top-1 bottom-1 w-px bg-white/[0.07]"></div>
               {storyLog.map((log, idx) => (
                 <div key={idx} className="relative flex items-start gap-3 animate-fade-in-up">
                   {log.performance !== 'neutral' ? (
-                    <div className={`relative flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold tabular-nums z-10 bg-[#0b101a] ring-1 ${
+                    <div className={`relative flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center fs-micro font-bold tabular-nums z-10 bg-[#0b101a] ring-1 ${
                       log.performance === 'good' ? 'ring-emerald-500/60 text-emerald-400' :
                       log.performance === 'average' ? 'ring-amber-500/60 text-amber-400' :
                       'ring-rose-500/60 text-rose-400'
@@ -2123,16 +2137,16 @@ const App: React.FC = () => {
                       <span className="block w-1.5 h-1.5 bg-emerald-400/70 rounded-full"></span>
                     </div>
                   )}
-                  <div className={`text-[13px] leading-relaxed py-0.5 ${
+                  <div className={`fs-body leading-relaxed py-0.5 ${
                     log.performance === 'neutral' ? 'text-emerald-300/70 italic' :
                     log.performance === 'bad' ? 'text-rose-200/90' : 'text-slate-300'
                   }`}>
                     {log.text}
                     {log.wpm > 0 && (
-                      <span className="block text-[10px] text-slate-600 mt-1 tracking-wide">{UI.speed}: <span className="tabular-nums">{log.wpm}</span> {UI.wpm}</span>
+                      <span className="block fs-micro text-slate-600 mt-1 tracking-wide">{UI.speed}: <span className="tabular-nums">{log.wpm}</span> {UI.wpm}</span>
                     )}
                     {log.meta && (
-                      <span className="block text-[10px] text-emerald-500/60 mt-1">{log.meta}</span>
+                      <span className="block fs-micro text-emerald-500/60 mt-1">{log.meta}</span>
                     )}
                   </div>
                 </div>
@@ -2146,7 +2160,7 @@ const App: React.FC = () => {
         <div className="relative z-10 px-5 py-3 border-t border-white/[0.06] flex items-center gap-2">
           <button
             onClick={handleToggleMusic}
-            className={`flex-1 h-8 text-[10px] font-bold uppercase tracking-[0.16em] rounded-lg border transition-all flex items-center justify-center gap-2 ${musicActive ? 'border-emerald-400/40 text-emerald-300 bg-emerald-400/10' : 'border-white/10 text-slate-500 bg-white/[0.02] hover:text-slate-300'}`}
+            className={`flex-1 h-8 fs-micro font-bold uppercase tracking-[0.16em] rounded-lg border transition-all flex items-center justify-center gap-2 ${musicActive ? 'border-emerald-400/40 text-emerald-300 bg-emerald-400/10' : 'border-white/10 text-slate-500 bg-white/[0.02] hover:text-slate-300'}`}
           >
             <span>{musicActive ? stripLeadingGlyph(UI.audio_active) : UI.audio_muted}</span>
             {musicActive && (
@@ -2159,7 +2173,7 @@ const App: React.FC = () => {
           </button>
           <button
             onClick={handleToggleLanguage}
-            className="h-8 px-3 text-[10px] font-bold rounded-lg border border-white/10 bg-white/[0.02] text-slate-400 hover:text-white transition-colors"
+            className="h-8 px-3 fs-micro font-bold rounded-lg border border-white/10 bg-white/[0.02] text-slate-400 hover:text-white transition-colors"
           >
             {language === 'en' ? 'RU' : 'EN'}
           </button>
@@ -2181,21 +2195,17 @@ const App: React.FC = () => {
                             {UI.intro_desc}<br/>
                             <span className="text-amber-400/90">{UI.mistakes_warn}</span>
                         </p>
-                        <div className="text-xs text-slate-400 rounded-xl border border-white/[0.06] bg-white/[0.02] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] p-4 text-left space-y-2">
-                            <div className="flex gap-2.5"><span className="text-emerald-400/70 mt-px">◆</span><span>{UI.campaign_goal}</span></div>
-                            <div className="flex gap-2.5"><span className="text-emerald-400/70 mt-px">◆</span><span>{UI.focus_hint}</span></div>
-                        </div>
                     </div>
                     <div className="flex flex-col gap-3.5">
                         {incomingChallenge && (
                             <div className={`screens-cut-card border p-4 text-left ${isCurrentChallenge ? 'border-amber-400/35 bg-amber-400/[0.06]' : 'border-white/10 bg-white/[0.02]'}`}>
-                                <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-amber-300">{UI.challenge_title}</div>
+                                <div className="fs-micro font-bold uppercase tracking-[0.2em] text-amber-300">{UI.challenge_title}</div>
                                 {isCurrentChallenge ? (
                                     <div className="mt-2 flex items-center justify-between gap-4">
-                                        <div><span className="text-[10px] text-slate-500">{UI.challenge_target}</span><strong className="block text-2xl text-white tabular-nums">{incomingChallenge.targetScore}</strong></div>
-                                        <button type="button" onClick={initializeDailySession} disabled={dailyAttemptsExhausted} className="btn-cyber btn-cyber-primary px-4 py-2.5 text-[10px] font-bold text-[#04120b]">{UI.challenge_accept}</button>
+                                        <div><span className="fs-micro text-slate-500">{UI.challenge_target}</span><strong className="block text-2xl text-white tabular-nums">{incomingChallenge.targetScore}</strong></div>
+                                        <button type="button" onClick={initializeDailySession} disabled={dailyAttemptsExhausted} className="btn-cyber btn-cyber-primary px-4 py-2.5 fs-micro font-bold text-[#04120b]">{UI.challenge_accept}</button>
                                     </div>
-                                ) : <p className="mt-2 text-xs leading-relaxed text-slate-400">{UI.challenge_expired}</p>}
+                                ) : <p className="mt-2 fs-label leading-relaxed text-slate-400">{UI.challenge_expired}</p>}
                             </div>
                         )}
                         {runCheckpoint && (
@@ -2214,7 +2224,7 @@ const App: React.FC = () => {
                             <span className="keycap">1</span>
                             <span>{stripKeyHint(UI.init_link)}</span>
                         </button>
-                        <p className="px-3 text-[10px] leading-relaxed text-slate-500">{UI.quick_session}</p>
+                        <p className="px-3 fs-micro leading-relaxed text-slate-500">{UI.quick_session}</p>
                         <button
                             onClick={initializeDailySession}
                             disabled={dailyAttemptsExhausted}
@@ -2231,15 +2241,15 @@ const App: React.FC = () => {
                                 <span className="tracking-[0.06em]">{UI.daily_sector}</span>
                                 {dailyAttemptsExhausted ? (
                                     <>
-                                        <span className="mt-1 max-w-full truncate font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-300/75 tabular-nums">
+                                        <span className="mt-1 max-w-full truncate font-mono fs-micro font-bold uppercase tracking-[0.12em] text-emerald-300/75 tabular-nums">
                                             {UI.daily_best}: {dailyState.bestScore} · {dailyState.bestEnding || UI.daily_severed}
                                         </span>
-                                        <span className="mt-0.5 font-mono text-[8px] font-bold uppercase tracking-[0.16em] text-slate-500">
+                                        <span className="mt-0.5 font-mono fs-micro font-bold uppercase tracking-[0.16em] text-slate-500">
                                             {UI.daily_tomorrow}
                                         </span>
                                     </>
                                 ) : (
-                                    <span className="mt-1 max-w-full truncate font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-300/75 tabular-nums">
+                                    <span className="mt-1 max-w-full truncate font-mono fs-micro font-bold uppercase tracking-[0.12em] text-emerald-300/75 tabular-nums">
                                         {dailyGenrePack.name[language]} · {dailyAttemptsLeft}/{DAILY_MAX_ATTEMPTS} {UI.daily_left}
                                     </span>
                                 )}
@@ -2264,14 +2274,26 @@ const App: React.FC = () => {
                     {/* THE PACT — the only progression that raises the bar instead of
                         lowering it. Perfectionist used to sit here alone; it is now
                         one clause among five. */}
+                    {/* Collapsed by default. Five clauses expanded is a wall of text on
+                        the first screen a newcomer sees, and it pushed the menu past the
+                        fold on a laptop. A returning player opens it deliberately. */}
                     <div className="screens-pact mx-auto">
-                        <div className="flex items-baseline justify-between gap-3">
-                            <span className="screens-pact-title">{UI.pact_title}</span>
+                        <button
+                            type="button"
+                            onClick={() => setPactOpen(open => !open)}
+                            aria-expanded={pactOpen}
+                            className="flex w-full items-baseline justify-between gap-3 text-left"
+                        >
+                            <span className="screens-pact-title">
+                                {UI.pact_title}
+                                <span className="screens-pact-toggle">{pactOpen ? '−' : '+'}</span>
+                            </span>
                             <span className={`screens-pact-reward ${pactRewardMultiplier > 1 ? 'is-active' : ''}`}>
                                 x{pactRewardMultiplier.toFixed(2)} {UI.pact_reward}
                             </span>
-                        </div>
-                        <p className="screens-pact-hint">{UI.pact_hint}</p>
+                        </button>
+                        {pactOpen && <p className="screens-pact-hint">{UI.pact_hint}</p>}
+                        {pactOpen && (
                         <div className="screens-pact-clauses">
                             {PACT_CLAUSES.map((clause) => {
                                 const active = isPactClauseActive(activePact, clause.id);
@@ -2294,16 +2316,17 @@ const App: React.FC = () => {
                                 );
                             })}
                         </div>
+                        )}
                     </div>
 
-                    <p className="text-[11px] leading-relaxed text-slate-500 max-w-sm mx-auto">
+                    <p className="fs-label leading-relaxed text-slate-500 max-w-sm mx-auto">
                         <span className="text-emerald-400/80">◆</span> {UI.accuracy_hook}
                     </p>
 
-                    <div className="text-[11px] text-slate-600 pt-2">
+                    <div className="fs-label text-slate-600 pt-2">
                         {UI.powered_by}
                     </div>
-                    <div className="text-[9px] leading-relaxed text-slate-700">
+                    <div className="fs-micro leading-relaxed text-slate-700">
                         {UI.privacy_note}
                     </div>
                 </div>
@@ -2335,11 +2358,11 @@ const App: React.FC = () => {
                     <div className="p-6 border-b border-white/[0.06] bg-white/[0.015] flex justify-between items-end gap-6">
                         <div>
                             <h2 className="font-display text-3xl font-bold text-white tracking-tight">{UI.market_title}</h2>
-                            <p className="text-slate-500 text-sm mt-1">{UI.market_subtitle}</p>
+                            <p className="text-slate-500 fs-body mt-1">{UI.market_subtitle}</p>
                         </div>
                         <div className="text-right">
-                            <div className="text-[9px] text-slate-500 uppercase tracking-[0.2em]">{UI.avail_credits}</div>
-                            <div className="font-display text-4xl font-bold text-white tabular-nums leading-none mt-1">{Math.floor(userProfile.credits)} <span className="text-sm text-emerald-400">{UI.currency_suffix}</span></div>
+                            <div className="fs-micro text-slate-500 uppercase tracking-[0.2em]">{UI.avail_credits}</div>
+                            <div className="font-display text-4xl font-bold text-white tabular-nums leading-none mt-1">{Math.floor(userProfile.credits)} <span className="fs-body text-emerald-400">{UI.currency_suffix}</span></div>
                         </div>
                     </div>
                     <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2362,27 +2385,27 @@ const App: React.FC = () => {
                                     <span className="keycap absolute top-3 right-3 opacity-60 group-hover:opacity-100">{idx + 1}</span>
                                     <div className="screens-upgrade-content">
                                         <div className="screens-upgrade-heading mb-3 pr-9">
-                                            <h3 className="min-w-0 font-display text-lg font-bold text-slate-100 leading-tight">{copy.name[language]}</h3>
+                                            <h3 className="min-w-0 font-display fs-lead font-bold text-slate-100 leading-tight">{copy.name[language]}</h3>
                                             <div className="flex shrink-0 gap-1 pt-1" aria-label={`${UI.level} ${currentLvl}/${def.maxLevel}`}>
                                                 {Array.from({ length: 10 }, (_, levelIndex) => (
                                                     <span key={levelIndex} className={`h-2 w-2 border ${levelIndex < Math.round((currentLvl / def.maxLevel) * 10) ? 'border-emerald-300 bg-emerald-300 shadow-[0_0_5px_rgba(52,211,153,0.35)]' : 'border-white/10 bg-white/[0.025]'}`} />
                                                 ))}
                                             </div>
                                         </div>
-                                        <p className="text-slate-400 text-sm mb-5 flex-1">{copy.desc[language]}</p>
+                                        <p className="text-slate-400 fs-body mb-5 flex-1">{copy.desc[language]}</p>
                                         <div className="screens-upgrade-footer flex flex-col items-start gap-3 mt-auto">
-                                            <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">
+                                            <div className="fs-micro uppercase tracking-[0.14em] text-slate-500">
                                                 {UI.effect}: <span className="text-emerald-400">{describeUpgradeEffect(key, currentLvl)}</span>
                                             </div>
                                             {isMaxed ? (
-                                                <button disabled className="btn-cyber btn-cyber-ghost self-end px-4 py-2 text-[10px] font-bold tracking-[0.14em] text-slate-600 cursor-not-allowed opacity-50">
+                                                <button disabled className="btn-cyber btn-cyber-ghost self-end px-4 py-2 fs-micro font-bold tracking-[0.14em] text-slate-600 cursor-not-allowed opacity-50">
                                                     {UI.maxed_out}
                                                 </button>
                                             ) : (
                                                 <button
                                                     onClick={() => handleBuyUpgrade(key)}
                                                     disabled={!canAfford}
-                                                    className={`btn-cyber btn-cyber-ghost self-end px-4 py-2 text-[10px] font-bold tracking-[0.12em] flex items-center gap-2 transition-all ${canAfford ? 'text-emerald-200 hover:text-white hover:shadow-[0_0_22px_rgba(52,211,153,0.12)]' : 'text-slate-600 cursor-not-allowed opacity-45'}`}
+                                                    className={`btn-cyber btn-cyber-ghost self-end px-4 py-2 fs-micro font-bold tracking-[0.12em] flex items-center gap-2 transition-all ${canAfford ? 'text-emerald-200 hover:text-white hover:shadow-[0_0_22px_rgba(52,211,153,0.12)]' : 'text-slate-600 cursor-not-allowed opacity-45'}`}
                                                 >
                                                     <span>{UI.install}</span>
                                                     <span className={canAfford ? 'text-emerald-400 tabular-nums' : 'tabular-nums'}>{nextCost} {UI.currency_suffix}</span>
@@ -2398,10 +2421,10 @@ const App: React.FC = () => {
                         })}
                     </div>
                     <div className="p-4 border-t border-white/[0.06] bg-black/10 flex flex-col items-center gap-3">
-                        <p className="text-[11px] text-slate-600 text-center max-w-xl">{UI.genre_persists_note}</p>
+                        <p className="fs-label text-slate-600 text-center max-w-xl">{UI.genre_persists_note}</p>
                         <button 
                             onClick={() => setGameState(GameState.MENU)}
-                            className="btn-cyber btn-cyber-ghost px-6 py-2 text-slate-400 hover:text-white transition-colors uppercase tracking-[0.16em] text-[10px] font-bold flex items-center gap-2"
+                            className="btn-cyber btn-cyber-ghost px-6 py-2 text-slate-400 hover:text-white transition-colors uppercase tracking-[0.16em] fs-micro font-bold flex items-center gap-2"
                         >
                             <span className="keycap">ESC</span>
                             <span>{stripKeyHint(UI.return_menu)}</span>
@@ -2414,8 +2437,8 @@ const App: React.FC = () => {
                 <div className="screens-cut-panel w-full max-w-4xl max-h-[calc(100vh-3rem)] bg-[#0b101a]/95 border border-white/[0.07] p-8 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_80px_rgba(0,0,0,0.4)] animate-fade-in-up flex flex-col overflow-hidden">
                     <div className="shrink-0 border-b border-white/[0.06] pb-5 mb-6 text-center">
                         <h2 className="font-display text-3xl font-bold text-white mb-2 tracking-tight">{UI.genre_title}</h2>
-                        <p className="text-slate-400 text-sm">{UI.genre_subtitle}</p>
-                        <p className="text-slate-600 text-[10px] uppercase tracking-[0.14em] mt-3">{UI.genre_persists_note}</p>
+                        <p className="text-slate-400 fs-body">{UI.genre_subtitle}</p>
+                        <p className="text-slate-600 fs-micro uppercase tracking-[0.14em] mt-3">{UI.genre_persists_note}</p>
                     </div>
                     <div className="min-h-0 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-4 pr-1">
                         {GENRE_ORDER.map((genreId, index) => renderGenreCard(genreId, index))}
@@ -2423,7 +2446,7 @@ const App: React.FC = () => {
                     <button
                         type="button"
                         onClick={() => setGameState(GameState.MENU)}
-                        className="btn-cyber btn-cyber-ghost mt-6 shrink-0 w-full py-2.5 text-slate-500 hover:text-white transition-colors uppercase tracking-[0.16em] text-[10px] font-bold flex items-center justify-center gap-2"
+                        className="btn-cyber btn-cyber-ghost mt-6 shrink-0 w-full py-2.5 text-slate-500 hover:text-white transition-colors uppercase tracking-[0.16em] fs-micro font-bold flex items-center justify-center gap-2"
                     >
                         <span className="keycap">ESC</span>
                         <span>{stripKeyHint(UI.genre_back)}</span>
@@ -2434,7 +2457,7 @@ const App: React.FC = () => {
             {gameState === GameState.STARTER_PERK_SELECTION && (
                  <div className="screens-cut-panel w-full max-w-4xl max-h-[calc(100vh-3rem)] overflow-y-auto bg-[#0b101a]/95 border border-white/[0.07] p-8 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_80px_rgba(0,0,0,0.4)] animate-fade-in-up">
                     <div className="border-b border-white/[0.06] pb-5 mb-6 text-center">
-                        <div className="inline-flex items-center gap-2 px-3 py-1 mb-3 border text-[9px] font-bold tracking-[0.2em] uppercase screens-cut-chip"
+                        <div className="inline-flex items-center gap-2 px-3 py-1 mb-3 border fs-micro font-bold tracking-[0.2em] uppercase screens-cut-chip"
                              style={{ borderColor: `${genrePack.accent}66`, color: genrePack.accent, background: `${genrePack.accent}14` }}>
                             <GenreIcon genre={selectedGenre} className="h-3.5 w-3.5" />
                             <span>{UI.sim_badge}</span>
@@ -2442,7 +2465,7 @@ const App: React.FC = () => {
                             <span>{genrePack.name[language]}</span>
                         </div>
                         <h2 className="font-display text-3xl font-bold text-white mb-2 tracking-tight">{UI.loadout_title}</h2>
-                        <p className="text-slate-400 text-sm">{UI.loadout_subtitle}</p>
+                        <p className="text-slate-400 fs-body">{UI.loadout_subtitle}</p>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         {offeredPerks.map((perk, index) => renderPerkCard(perk, index, true))}
@@ -2456,7 +2479,7 @@ const App: React.FC = () => {
                         <div className="flex justify-between items-start mb-2">
                             <h2 className="font-display text-3xl font-bold text-white">{UI.seq_complete}</h2>
                             <div className="text-right">
-                                <span className="text-[9px] text-slate-500 uppercase tracking-[0.2em] block">{UI.xp_gained}</span>
+                                <span className="fs-micro text-slate-500 uppercase tracking-[0.2em] block">{UI.xp_gained}</span>
                                 <span className="font-display text-2xl font-bold text-emerald-300 tabular-nums">+{levelXpGained} XP</span>
                             </div>
                         </div>
@@ -2481,18 +2504,18 @@ const App: React.FC = () => {
                             <div className={`screens-accuracy-hero screens-accuracy-hero--${focus} mb-3`}>
                                 <div className="flex items-end justify-between gap-4">
                                     <div>
-                                        <div className="text-[9px] uppercase tracking-[0.22em] text-slate-500">{UI.accuracy}</div>
+                                        <div className="fs-micro uppercase tracking-[0.22em] text-slate-500">{UI.accuracy}</div>
                                         <div className="screens-accuracy-value font-display tabular-nums">{accuracy}%</div>
                                     </div>
                                     <div className="text-right">
-                                        <div className="text-[9px] uppercase tracking-[0.22em] text-slate-500">{UI.next_drill}</div>
+                                        <div className="fs-micro uppercase tracking-[0.22em] text-slate-500">{UI.next_drill}</div>
                                         <p className="screens-accuracy-coach">{coach}</p>
                                     </div>
                                 </div>
                                 <div className="screens-accuracy-bar mt-3" aria-hidden="true">
                                     <div className="screens-accuracy-bar-fill" style={{ width: `${Math.max(0, Math.min(100, accuracy))}%` }} />
                                 </div>
-                                <div className="mt-2 text-[10px] text-slate-500 tabular-nums">
+                                <div className="mt-2 fs-micro text-slate-500 tabular-nums">
                                     {lastLevelReport.totalMistakes} {lastLevelReport.totalMistakes === 1 ? UI.mistake_one : UI.mistake_many}
                                 </div>
                             </div>
@@ -2501,11 +2524,11 @@ const App: React.FC = () => {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-8">
                         <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]">
                             <div className="font-display text-3xl font-bold text-white tabular-nums leading-none">{Math.round(lastLevelReport.avgWpm)}</div>
-                            <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.avg_speed} · {UI.wpm}</div>
+                            <div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.avg_speed} · {UI.wpm}</div>
                         </div>
                         <div className={`screens-stat-tile p-4 text-center border ${activePactRef.current.length ? 'border-amber-400/25 bg-amber-400/[0.03]' : 'border-white/[0.07] bg-white/[0.02]'}`}>
                              <div className={`font-display text-3xl font-bold tabular-nums leading-none ${activePactRef.current.length ? 'text-amber-300' : 'text-white'}`}>+{lastLevelReport.creditsEarned}</div>
-                             <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">
+                             <div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">
                                 {UI.credits}
                                 {/* The payout and the reason for it, side by side. */}
                                 {activePactRef.current.length > 0 && (
@@ -2517,35 +2540,35 @@ const App: React.FC = () => {
                         </div>
                         <div className="screens-stat-tile p-4 text-center border border-amber-400/15 bg-amber-400/[0.025]">
                              <div className="font-display text-3xl font-bold text-amber-300 tabular-nums leading-none">{Math.round(lastLevelReport.mission?.heat ?? campaignState.heat)}%</div>
-                             <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.heat}</div>
+                             <div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.heat}</div>
                         </div>
                         <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]">
                              <div className="font-display text-3xl font-bold text-white tabular-nums leading-none">{lastLevelReport.finalHealth}</div>
-                             <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.health}</div>
+                             <div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.health}</div>
                         </div>
                         <div className="screens-stat-tile p-4 text-center border border-emerald-400/15 bg-emerald-400/[0.025]">
                              <div className="font-display text-3xl font-bold text-emerald-300 tabular-nums leading-none">{lastLevelReport.mission?.evidence ?? campaignState.evidence}</div>
-                             <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.evidence}</div>
+                             <div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.evidence}</div>
                         </div>
                         <div className="screens-stat-tile p-4 text-center border border-sky-400/15 bg-sky-400/[0.025]">
                              <div className="font-display text-3xl font-bold text-sky-300 tabular-nums leading-none">{lastLevelReport.mission?.trust ?? campaignState.trust}</div>
-                             <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.trust}</div>
+                             <div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.trust}</div>
                         </div>
                         <div className="screens-stat-tile p-4 text-center border border-violet-400/15 bg-violet-400/[0.025]">
                             <div className="font-display text-3xl font-bold text-violet-300 tabular-nums leading-none">{Math.round(lastLevelReport.consistency ?? 100)}%</div>
-                            <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.consistency}</div>
+                            <div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.consistency}</div>
                         </div>
                     </div>
                     <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                         <div>
-                            <h3 className="font-display text-lg font-bold text-white tracking-[0.04em]">{UI.select_upgrade}</h3>
-                            <p className="mt-1 text-[10px] text-slate-500">{UI.continue_hint}</p>
+                            <h3 className="font-display fs-lead font-bold text-white tracking-[0.04em]">{UI.select_upgrade}</h3>
+                            <p className="mt-1 fs-micro text-slate-500">{UI.continue_hint}</p>
                         </div>
                         <button
                             type="button"
                             onClick={handleBankExit}
                             disabled={!isSectorSummaryReady}
-                            className="btn-cyber btn-cyber-ghost px-5 py-2.5 text-[10px] font-bold tracking-[0.12em] text-slate-300 hover:text-white disabled:cursor-wait disabled:opacity-45"
+                            className="btn-cyber btn-cyber-ghost px-5 py-2.5 fs-micro font-bold tracking-[0.12em] text-slate-300 hover:text-white disabled:cursor-wait disabled:opacity-45"
                         >
                             {UI.bank_exit}
                         </button>
@@ -2559,7 +2582,7 @@ const App: React.FC = () => {
             {gameState === GameState.LOADING && (
                 <div className="flex flex-col items-center justify-center space-y-4">
                     <div className="w-12 h-12 border-4 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin"></div>
-                    <p className="text-emerald-400 animate-pulse tracking-widest text-sm">
+                    <p className="text-emerald-400 animate-pulse tracking-widest fs-body">
                         {currentLevel > 1 ? UI.generating_sector : UI.generating_scenario}
                     </p>
                 </div>
@@ -2596,22 +2619,22 @@ const App: React.FC = () => {
             {gameState === GameState.VICTORY && victoryReport && (
                 <div className="screens-cut-panel w-full max-w-3xl bg-[#0b101a]/95 p-10 border border-emerald-400/35 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_60px_rgba(16,185,129,0.12)] animate-fade-in-up">
                     <div className="text-center border-b border-white/[0.07] pb-6 mb-6">
-                        <div className="screens-cut-chip inline-block px-3 py-1 bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 text-[9px] uppercase tracking-[0.2em] mb-4">
+                        <div className="screens-cut-chip inline-block px-3 py-1 bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 fs-micro uppercase tracking-[0.2em] mb-4">
                             {genrePack.ui.victoryTitle[language]}
                         </div>
                         <h2 className="font-display text-4xl font-bold text-white mb-3 tracking-tight">{victoryReport.endingTitle}</h2>
-                        <p className="text-slate-300 text-lg italic">"{victoryReport.narrativeSummary}"</p>
-                        <p className="text-slate-500 text-sm mt-3">{UI.victory_subtitle}</p>
+                        <p className="text-slate-300 fs-lead italic">"{victoryReport.narrativeSummary}"</p>
+                        <p className="text-slate-500 fs-body mt-3">{UI.victory_subtitle}</p>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6">
-                        <div className="screens-stat-tile p-4 text-center border border-emerald-400/15 bg-emerald-400/[0.025]"><div className="font-display text-3xl font-bold text-emerald-300 tabular-nums leading-none">{victoryReport.mission?.evidence ?? campaignState.evidence}</div><div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.evidence}</div></div>
-                        <div className="screens-stat-tile p-4 text-center border border-amber-400/15 bg-amber-400/[0.025]"><div className="font-display text-3xl font-bold text-amber-300 tabular-nums leading-none">{victoryReport.mission?.heat ?? campaignState.heat}%</div><div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.heat}</div></div>
-                        <div className="screens-stat-tile p-4 text-center border border-sky-400/15 bg-sky-400/[0.025]"><div className="font-display text-3xl font-bold text-sky-300 tabular-nums leading-none">{victoryReport.mission?.trust ?? campaignState.trust}</div><div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.trust}</div></div>
-                        <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]"><div className="font-display text-xl font-bold text-white uppercase leading-tight">{victoryReport.route}</div><div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.route}</div></div>
+                        <div className="screens-stat-tile p-4 text-center border border-emerald-400/15 bg-emerald-400/[0.025]"><div className="font-display text-3xl font-bold text-emerald-300 tabular-nums leading-none">{victoryReport.mission?.evidence ?? campaignState.evidence}</div><div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.evidence}</div></div>
+                        <div className="screens-stat-tile p-4 text-center border border-amber-400/15 bg-amber-400/[0.025]"><div className="font-display text-3xl font-bold text-amber-300 tabular-nums leading-none">{victoryReport.mission?.heat ?? campaignState.heat}%</div><div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.heat}</div></div>
+                        <div className="screens-stat-tile p-4 text-center border border-sky-400/15 bg-sky-400/[0.025]"><div className="font-display text-3xl font-bold text-sky-300 tabular-nums leading-none">{victoryReport.mission?.trust ?? campaignState.trust}</div><div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.trust}</div></div>
+                        <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]"><div className="font-display text-xl font-bold text-white uppercase leading-tight">{victoryReport.route}</div><div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.route}</div></div>
                     </div>
                     <div className="screens-cut-card bg-black/20 border border-white/[0.07] p-4 mb-6">
-                        <div className="text-[9px] text-slate-500 uppercase tracking-[0.2em] mb-3">{UI.operation_dossier}</div>
-                        <div className="space-y-1 text-sm text-slate-400">
+                        <div className="fs-micro text-slate-500 uppercase tracking-[0.2em] mb-3">{UI.operation_dossier}</div>
+                        <div className="space-y-1 fs-body text-slate-400">
                             {(victoryReport.mission?.consequenceLog || campaignState.consequenceLog).slice(0, 4).map((line, index) => (
                                 <div key={index} className="border-l border-emerald-500/30 pl-3">{line}</div>
                             ))}
@@ -2620,16 +2643,16 @@ const App: React.FC = () => {
                     {challengeVerdict && incomingChallenge && (
                         <div className={`screens-cut-card mb-6 flex items-center justify-between gap-4 border p-4 ${challengeVerdict.outcome === 'beaten' ? 'border-emerald-400/35 bg-emerald-400/[0.06]' : 'border-amber-400/35 bg-amber-400/[0.06]'}`}>
                             <div>
-                                <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400">{challengeVerdictLabel}</div>
-                                <div className="mt-1 text-xs text-slate-400">
+                                <div className="fs-micro font-bold uppercase tracking-[0.2em] text-slate-400">{challengeVerdictLabel}</div>
+                                <div className="mt-1 fs-label text-slate-400">
                                     {challengeVerdict.outcome === 'tied'
                                         ? (language === 'ru' ? 'Точно в цель — попробуй ещё раз и выйди вперёд.' : 'Exactly on target — run it again to take the lead.')
                                         : `${Math.abs(challengeVerdict.delta)} ${language === 'ru' ? (challengeVerdict.delta > 0 ? 'очков сверху' : 'очков не хватило') : (challengeVerdict.delta > 0 ? 'points ahead' : 'points short')}`}
                                 </div>
                             </div>
                             <div className="flex gap-5 text-right">
-                                <div><span className="block text-[8px] uppercase tracking-[0.16em] text-slate-500">{UI.challenge_target}</span><strong className="text-xl text-white tabular-nums">{incomingChallenge.targetScore}</strong></div>
-                                <div><span className="block text-[8px] uppercase tracking-[0.16em] text-slate-500">{UI.challenge_you}</span><strong className="text-xl text-emerald-300 tabular-nums">{completedChallengeScore}</strong></div>
+                                <div><span className="block fs-micro uppercase tracking-[0.16em] text-slate-500">{UI.challenge_target}</span><strong className="text-xl text-white tabular-nums">{incomingChallenge.targetScore}</strong></div>
+                                <div><span className="block fs-micro uppercase tracking-[0.16em] text-slate-500">{UI.challenge_you}</span><strong className="text-xl text-emerald-300 tabular-nums">{completedChallengeScore}</strong></div>
                             </div>
                         </div>
                     )}
@@ -2664,9 +2687,9 @@ const App: React.FC = () => {
             {gameState === GameState.GAME_OVER && (
                 <div className="screens-cut-panel screens-death-report bg-[#0b101a]/95 p-6 sm:p-8 border border-rose-500/40 backdrop-blur-xl max-w-3xl w-full shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_60px_rgba(244,63,94,0.12)] animate-fade-in-up">
                     <div className="text-center">
-                        <div className="text-[9px] font-bold uppercase tracking-[0.3em] text-rose-400/70">{UI.typing_debrief}</div>
+                        <div className="fs-micro font-bold uppercase tracking-[0.3em] text-rose-400/70">{UI.typing_debrief}</div>
                         <h2 className="mt-2 font-display text-4xl sm:text-5xl font-bold text-rose-500 tracking-tight">{UI.critical_failure}</h2>
-                        <p className="mt-3 text-sm text-slate-400">{genrePack.ui.connectionSevered[language]}</p>
+                        <p className="mt-3 fs-body text-slate-400">{genrePack.ui.connectionSevered[language]}</p>
                     </div>
 
                     <div className="screens-debrief-grid mt-6" aria-label={UI.typing_debrief}>
@@ -2697,21 +2720,21 @@ const App: React.FC = () => {
                     {challengeVerdict && incomingChallenge && (
                         <div className={`screens-cut-card mt-4 flex items-center justify-between gap-4 border p-4 ${challengeVerdict.outcome === 'beaten' ? 'border-emerald-400/35 bg-emerald-400/[0.06]' : 'border-amber-400/35 bg-amber-400/[0.06]'}`}>
                             <div>
-                                <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-300">{challengeVerdictLabel}</div>
-                                <div className="mt-1 text-xs text-slate-400">
+                                <div className="fs-micro font-bold uppercase tracking-[0.2em] text-slate-300">{challengeVerdictLabel}</div>
+                                <div className="mt-1 fs-label text-slate-400">
                                     {challengeVerdict.outcome === 'tied'
                                         ? (language === 'ru' ? 'Точно в цель — попробуй ещё раз и выйди вперёд.' : 'Exactly on target — run it again to take the lead.')
                                         : `${Math.abs(challengeVerdict.delta)} ${language === 'ru' ? (challengeVerdict.delta > 0 ? 'очков сверху' : 'очков не хватило') : (challengeVerdict.delta > 0 ? 'points ahead' : 'points short')}`}
                                 </div>
                             </div>
                             <div className="flex gap-5 text-right">
-                                <div><span className="block text-[8px] uppercase tracking-[0.16em] text-slate-500">{UI.challenge_target}</span><strong className="text-xl text-white tabular-nums">{incomingChallenge.targetScore}</strong></div>
-                                <div><span className="block text-[8px] uppercase tracking-[0.16em] text-slate-500">{UI.challenge_you}</span><strong className="text-xl text-rose-200 tabular-nums">{completedChallengeScore}</strong></div>
+                                <div><span className="block fs-micro uppercase tracking-[0.16em] text-slate-500">{UI.challenge_target}</span><strong className="text-xl text-white tabular-nums">{incomingChallenge.targetScore}</strong></div>
+                                <div><span className="block fs-micro uppercase tracking-[0.16em] text-slate-500">{UI.challenge_you}</span><strong className="text-xl text-rose-200 tabular-nums">{completedChallengeScore}</strong></div>
                             </div>
                         </div>
                     )}
 
-                    <div className="mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 border-y border-white/[0.06] py-3 text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                    <div className="mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 border-y border-white/[0.06] py-3 fs-micro uppercase tracking-[0.16em] text-slate-500">
                         <span>{UI.reached}: <b className="text-slate-200">{UI.level} {finalStats?.level || 1}</b></span>
                         <span>{UI.score}: <b className="text-slate-200">{finalStats?.score || 0}</b></span>
                         <span>{UI.characters_typed}: <b className="text-slate-200">{finalStats?.characters || 0}</b></span>

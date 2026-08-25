@@ -115,6 +115,9 @@ interface TypingEngineProps {
 }
 
 const TYPE_CUE_MS = 1500;
+/** Notches in the Security Trace gauge. Wider than the sidebar gauges: it is the
+ *  meter the player checks most, so it gets the finer resolution. */
+const TRACE_GAUGE_SEGMENTS = 28;
 /** How long a newly unlocked protocol explains itself beside the caret. */
 const SKILL_INTRO_MS = 3600;
 const SKILL_BRIEFING_STORAGE_KEY = 'narrativeFlowSkillBriefingSeen';
@@ -1443,7 +1446,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                <div className="absolute inset-0 z-[5] pointer-events-none bg-emerald-950/10 backdrop-contrast-125"></div>
                <div className="absolute -top-8 right-0 z-50 pointer-events-none flex items-center gap-3 animate-fade-in-up">
                    <div className="h-px w-12 bg-gradient-to-l from-emerald-400/50 to-transparent"></div>
-                   <div className="font-display text-emerald-400 font-bold text-lg animate-pulse tracking-widest drop-shadow-[0_0_10px_rgba(52,211,153,0.7)]">
+                   <div className="font-display text-emerald-400 font-bold fs-lead animate-pulse tracking-widest drop-shadow-[0_0_10px_rgba(52,211,153,0.7)]">
                        {UI.overclock_active}
                    </div>
                </div>
@@ -1454,28 +1457,28 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
            <div className="engine-decision-overlay absolute inset-0 z-[80] bg-[#070a11]/95 backdrop-blur-md flex flex-col items-center justify-center p-5 md:p-8 animate-fade-in-up">
                <div className="w-full max-w-3xl space-y-8">
                    <div className="text-center border-b border-white/[0.06] pb-6">
-                        <div className="mb-4 text-[10px] font-bold uppercase tracking-[0.22em] text-emerald-400 animate-pulse">{UI.tactical_intervention}</div>
+                        <div className="mb-4 fs-micro font-bold uppercase tracking-[0.22em] text-emerald-400 animate-pulse">{UI.tactical_intervention}</div>
                         <h2 className="font-display text-2xl md:text-3xl font-bold text-white leading-relaxed">"{nextDecision.introText}"</h2>
                    </div>
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                        <button type="button" className="engine-decision-card engine-decision-card--aggressive group relative p-6 bg-white/[0.02] border border-rose-500/35 hover:border-rose-400/75 transition-all cursor-pointer text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-400" onClick={() => handleDecisionSelect(0)}>
                            <h3 className="font-display text-xl font-bold text-rose-400 mb-2 group-hover:text-rose-300">{UI.aggressive}</h3>
-                           <p className="text-slate-300 text-lg">"{nextDecision.options[0].text}"</p>
-                           <div className="mt-4 text-xs text-rose-300/80 font-mono">{nextDecision.options[0].preview || describeImpact(nextDecision.options[0].impact)}</div>
+                           <p className="text-slate-300 fs-lead">"{nextDecision.options[0].text}"</p>
+                           <div className="mt-4 fs-label text-rose-300/80 font-mono">{nextDecision.options[0].preview || describeImpact(nextDecision.options[0].impact)}</div>
                            {renderImpactChips(nextDecision.options[0].impact)}
                            <div className="mt-5 flex items-center gap-2.5 font-mono uppercase tracking-[0.18em]">
-                               <span className="keycap text-lg">1</span>
-                               <span className="text-[12px] text-slate-300 group-hover:text-white transition-colors">{UI.press_1.replace('[1]', '').trim()}</span>
+                               <span className="keycap fs-lead">1</span>
+                               <span className="fs-label text-slate-300 group-hover:text-white transition-colors">{UI.press_1.replace('[1]', '').trim()}</span>
                            </div>
                        </button>
                        <button type="button" className="engine-decision-card engine-decision-card--stealth group relative p-6 bg-white/[0.02] border border-emerald-500/35 hover:border-emerald-400/75 transition-all cursor-pointer text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-400" onClick={() => handleDecisionSelect(1)}>
                            <h3 className="font-display text-xl font-bold text-emerald-400 mb-2 group-hover:text-emerald-300">{UI.stealth}</h3>
-                           <p className="text-slate-300 text-lg">"{nextDecision.options[1].text}"</p>
-                           <div className="mt-4 text-xs text-emerald-300/80 font-mono">{nextDecision.options[1].preview || describeImpact(nextDecision.options[1].impact)}</div>
+                           <p className="text-slate-300 fs-lead">"{nextDecision.options[1].text}"</p>
+                           <div className="mt-4 fs-label text-emerald-300/80 font-mono">{nextDecision.options[1].preview || describeImpact(nextDecision.options[1].impact)}</div>
                            {renderImpactChips(nextDecision.options[1].impact)}
                            <div className="mt-5 flex items-center gap-2.5 font-mono uppercase tracking-[0.18em]">
-                               <span className="keycap text-lg">2</span>
-                               <span className="text-[12px] text-slate-300 group-hover:text-white transition-colors">{UI.press_2.replace('[2]', '').trim()}</span>
+                               <span className="keycap fs-lead">2</span>
+                               <span className="fs-label text-slate-300 group-hover:text-white transition-colors">{UI.press_2.replace('[2]', '').trim()}</span>
                            </div>
                        </button>
                    </div>
@@ -1486,7 +1489,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           <div className="engine-skill-briefing absolute inset-0 z-[85] flex items-center justify-center p-5 md:p-8">
               <div className="engine-skill-briefing-panel w-full max-w-3xl">
                   <div className="text-center">
-                      <div className="text-[9px] font-bold uppercase tracking-[0.24em] text-cyan-300">{UI.skills_title}</div>
+                      <div className="fs-micro font-bold uppercase tracking-[0.24em] text-cyan-300">{UI.skills_title}</div>
                       <h2 className="mt-2 font-display text-2xl md:text-3xl font-bold text-white">{UI.skills_intro}</h2>
                   </div>
                   <div className="engine-tracer-brief mt-5">
@@ -1496,8 +1499,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                           <span className="text-slate-500">░░░░░░░░</span>
                       </div>
                       <div>
-                          <div className="text-[9px] font-bold uppercase tracking-[0.24em] text-rose-300">{UI.tracer_brief_title}</div>
-                          <p className="mt-1 text-xs text-slate-300 leading-relaxed">{UI.tracer_brief_body}</p>
+                          <div className="fs-micro font-bold uppercase tracking-[0.24em] text-rose-300">{UI.tracer_brief_title}</div>
+                          <p className="mt-1 fs-label text-slate-300 leading-relaxed">{UI.tracer_brief_body}</p>
                       </div>
                   </div>
                   <div className="engine-skill-briefing-grid mt-6">
@@ -1507,7 +1510,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                         <div key={skill.name} className="engine-skill-briefing-card">
                             <div className="flex items-center justify-between gap-3">
                                 <span className="keycap">{skill.key}</span>
-                                <span className="text-[9px] uppercase tracking-[0.18em] text-cyan-300">Energy {skill.cost}</span>
+                                <span className="fs-micro uppercase tracking-[0.18em] text-cyan-300">Energy {skill.cost}</span>
                             </div>
                             <strong>{skill.name}</strong>
                             <p>{skill.effect}</p>
@@ -1568,12 +1571,12 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
             <div className="flex flex-wrap items-end gap-5 md:gap-7">
                 <div className="flex items-end gap-6">
                     <div>
-                        <div className="text-[9px] uppercase tracking-[0.22em] text-slate-500">{UI.level}</div>
+                        <div className="fs-micro uppercase tracking-[0.22em] text-slate-500">{UI.level}</div>
                         <div className="font-display mt-1 text-xl font-bold tabular-nums leading-none text-slate-100">{currentLevel}</div>
                     </div>
                     <div>
-                        <div className="text-[9px] uppercase tracking-[0.22em] text-slate-500">{UI.round}</div>
-                        <div className="font-display mt-1 text-xl font-bold tabular-nums leading-none text-slate-100">{round}<span className="ml-1 text-[10px] font-mono text-slate-600">/{SECTOR_ROUNDS}</span></div>
+                        <div className="fs-micro uppercase tracking-[0.22em] text-slate-500">{UI.round}</div>
+                        <div className="font-display mt-1 text-xl font-bold tabular-nums leading-none text-slate-100">{round}<span className="ml-1 fs-micro font-mono text-slate-600">/{SECTOR_ROUNDS}</span></div>
                         {/* The sector escalates on an authored curve; naming the beat
                             is what lets the player feel it coming rather than only
                             noticing the line got longer. */}
@@ -1583,23 +1586,29 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                     </div>
                 </div>
                 <div className="border-l border-white/[0.06] pl-5">
-                    <div className="text-[9px] uppercase tracking-[0.22em] text-slate-500">{UI.credits}</div>
+                    <div className="fs-micro uppercase tracking-[0.22em] text-slate-500">{UI.credits}</div>
                     <div className="font-display mt-1 text-2xl font-bold tabular-nums leading-none text-emerald-400">
                         {Math.floor(credits)}
-                        {isOverclockActive && <span className="ml-2 font-mono text-[9px] uppercase tracking-[0.16em] text-emerald-300 animate-pulse">2x</span>}
+                        {isOverclockActive && <span className="ml-2 font-mono fs-micro uppercase tracking-[0.16em] text-emerald-300 animate-pulse">2x</span>}
                     </div>
                 </div>
             </div>
         </div>
         <div className="flex items-center gap-3 w-full">
-             <span className={`text-[9px] uppercase tracking-[0.18em] whitespace-nowrap w-24 ${tracePercent > 80 ? 'text-rose-500 animate-pulse' : 'text-slate-500'}`}>{UI.security}</span>
-            <div className="engine-meter-track flex-1 h-1.5 bg-white/[0.05] overflow-hidden relative">
-                <div className={`h-full transition-all duration-100 ease-linear ${getTraceColor()}`} style={{ width: `${tracePercent}%` }}></div>
+             <span className={`fs-micro uppercase tracking-[0.18em] whitespace-nowrap w-24 ${tracePercent > 80 ? 'text-rose-500 animate-pulse' : 'text-slate-500'}`}>{UI.security}</span>
+            {/* The same segmented instrument as the mission gauges. This is the
+                meter the whole run is about, and it was the one still drawn as a
+                web progress bar. */}
+            <div className="hud-gauge flex-1" role="img" aria-label={`${UI.security} ${Math.floor(tracePercent)}%`}>
+                {Array.from({ length: TRACE_GAUGE_SEGMENTS }).map((_, index) => {
+                    const lit = index < Math.round((clamp(tracePercent) / 100) * TRACE_GAUGE_SEGMENTS);
+                    return <span key={index} className={`hud-gauge-notch ${lit ? `is-lit ${getTraceColor()}` : ''}`} />;
+                })}
             </div>
-             <span className="w-10 text-right text-[10px] tabular-nums text-slate-400 font-mono">{Math.floor(tracePercent)}%</span>
-            <div className={`flex items-center gap-2 border-l border-white/[0.06] pl-3 ml-1 text-[9px] uppercase tracking-[0.18em] ${mistakesInSegment >= 7 ? 'text-rose-500 animate-pulse' : mistakesInSegment >= 4 ? 'text-amber-400' : 'text-slate-500'}`}>
+             <span className="w-10 text-right fs-micro tabular-nums text-slate-400 font-mono">{Math.floor(tracePercent)}%</span>
+            <div className={`flex items-center gap-2 border-l border-white/[0.06] pl-3 ml-1 fs-micro uppercase tracking-[0.18em] ${mistakesInSegment >= 7 ? 'text-rose-500 animate-pulse' : mistakesInSegment >= 4 ? 'text-amber-400' : 'text-slate-500'}`}>
                 <span>{UI.err}</span>
-                <span className="font-display text-sm tabular-nums tracking-normal text-slate-200">{mistakesInSegment}<span className="font-mono text-[9px] text-slate-600">/10</span></span>
+                <span className="font-display fs-body tabular-nums tracking-normal text-slate-200">{mistakesInSegment}<span className="font-mono fs-micro text-slate-600">/10</span></span>
             </div>
         </div>
       </div>
@@ -1627,15 +1636,15 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                         >
                             {combo}
                         </span>
-                        <span className={`block mt-1 text-[10px] font-bold tracking-[0.18em] ${comboAccent().text}`}>
+                        <span className={`block mt-1 fs-micro font-bold tracking-[0.18em] ${comboAccent().text}`}>
                             COMBO{comboMultiplier > 1 ? ` ·${comboMultiplier}× ${UI.score_word}` : ''}
                         </span>
                         <span className="block my-1.5 h-px bg-white/10"></span>
                     </div>
                 )}
                 <div className="flex items-baseline justify-center gap-1">
-                    <span className="font-display font-bold tabular-nums text-slate-100 text-lg leading-none">{currentWPM}</span>
-                    <span className="text-[9px] uppercase tracking-[0.15em] text-slate-500">{UI.wpm}</span>
+                    <span className="font-display font-bold tabular-nums text-slate-100 fs-lead leading-none">{currentWPM}</span>
+                    <span className="fs-micro uppercase tracking-[0.15em] text-slate-500">{UI.wpm}</span>
                 </div>
             </div>
         </div>
@@ -1653,7 +1662,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
              <div className="w-full h-full flex items-center justify-center bg-slate-900 text-slate-700">
                 <div className="flex flex-col items-center gap-2">
                      <div className="w-8 h-8 border-2 border-slate-700 border-t-slate-400 rounded-full animate-spin"></div>
-                     <span className="text-xs tracking-widest">{UI.init_visual}</span>
+                     <span className="fs-label tracking-widest">{UI.init_visual}</span>
                 </div>
              </div>
         )}
@@ -1678,7 +1687,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
             {deltaPopups.map(p => (
                 <span
                     key={p.id}
-                    className="delta-float absolute top-1/2 font-bold text-sm md:text-base drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]"
+                    className="delta-float absolute top-1/2 font-bold fs-body md:text-base drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]"
                     style={{ left: `${p.left}%`, color: p.color }}
                 >
                     {p.value > 0 ? '+' : ''}{p.value}{p.suffix} {p.label}
@@ -1706,9 +1715,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
             );
         })()}
         <div className="absolute left-4 bottom-4 right-4 z-30 flex flex-wrap items-center gap-2">
-            <span className="engine-chip engine-chip--skill bg-[#0b101a]/90 border border-white/[0.08] px-2.5 py-1 text-[9px] text-slate-300 uppercase tracking-[0.18em]">{skillIcon[activeSegment.skill || 'flow']} {activeSegment.skill || 'flow'}</span>
-            <span className="engine-chip engine-chip--objective bg-[#0b101a]/90 border border-white/[0.08] px-2.5 py-1 text-[9px] text-slate-300 uppercase tracking-[0.18em]">{UI.objective}: <span className="normal-case tracking-normal text-slate-200">{activeSegment.objective}</span></span>
-            {activeSegment.consequenceHint && <span className="engine-chip engine-chip--consequence bg-[#0b101a]/90 border border-white/[0.08] px-2.5 py-1 text-[9px] text-slate-300 uppercase tracking-[0.18em]">{UI.consequence}: <span className="normal-case tracking-normal text-slate-200">{activeSegment.consequenceHint}</span></span>}
+            <span className="engine-chip engine-chip--skill bg-[#0b101a]/90 border border-white/[0.08] px-2.5 py-1 fs-micro text-slate-300 uppercase tracking-[0.18em]">{skillIcon[activeSegment.skill || 'flow']} {activeSegment.skill || 'flow'}</span>
+            <span className="engine-chip engine-chip--objective bg-[#0b101a]/90 border border-white/[0.08] px-2.5 py-1 fs-micro text-slate-300 uppercase tracking-[0.18em]">{UI.objective}: <span className="normal-case tracking-normal text-slate-200">{activeSegment.objective}</span></span>
+            {activeSegment.consequenceHint && <span className="engine-chip engine-chip--consequence bg-[#0b101a]/90 border border-white/[0.08] px-2.5 py-1 fs-micro text-slate-300 uppercase tracking-[0.18em]">{UI.consequence}: <span className="normal-case tracking-normal text-slate-200">{activeSegment.consequenceHint}</span></span>}
         </div>
       </div>
       <div className={getContainerStyles()}>
@@ -1738,7 +1747,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
             ></div>
           )}
         </div>
-        <div ref={textContainerRef} onClick={() => inputRef.current?.focus()} className="engine-type-scroll no-scrollbar absolute inset-0 flex flex-col justify-center overflow-y-auto px-8 md:px-10 py-6 md:py-8 leading-relaxed cursor-text font-mono text-2xl md:text-[28px]">
+        <div ref={textContainerRef} onClick={() => inputRef.current?.focus()} className="engine-type-scroll no-scrollbar absolute inset-0 flex flex-col justify-center overflow-y-auto px-8 md:px-10 py-6 md:py-8 leading-relaxed cursor-text font-mono text-2xl md:fs-title">
         {isOverclockActive && <div className="absolute inset-0 pointer-events-none shadow-[inset_0_0_100px_rgba(52,211,153,0.2)]"></div>}
         {typeCueActive && !isDecisionActive && (
             <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-slate-950/45 backdrop-blur-[1px]">
@@ -1753,9 +1762,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
             of the panel, and once the sector's history has grown past the panel
             the margin collapses and it scrolls normally instead of clipping. */}
         <div className={`whitespace-pre-wrap break-words my-auto pb-10 max-w-4xl mx-auto relative z-10 transition-all duration-300 ${typeCueActive ? 'opacity-0 translate-y-3' : 'opacity-100 translate-y-0'}`}>
-            {activeSegment.type === SegmentType.BREACH && <div className="text-emerald-400 text-[10px] mb-4 font-bold uppercase tracking-[0.2em] border-b border-emerald-400/30 pb-2">{UI.breach_init}</div>}
-            {activeSegment.type === SegmentType.DIALOG && <div className="text-sky-400 text-[10px] mb-4 font-bold uppercase tracking-[0.2em] border-b border-sky-400/30 pb-2">{UI.dialog_init}</div>}
-            {activeSegment.type === SegmentType.SIGNAL && <div className="text-amber-400 text-[10px] mb-4 font-bold uppercase tracking-[0.2em] border-b border-amber-400/30 pb-2">{UI.signal_init}</div>}
+            {activeSegment.type === SegmentType.BREACH && <div className="text-emerald-400 fs-micro mb-4 font-bold uppercase tracking-[0.2em] border-b border-emerald-400/30 pb-2">{UI.breach_init}</div>}
+            {activeSegment.type === SegmentType.DIALOG && <div className="text-sky-400 fs-micro mb-4 font-bold uppercase tracking-[0.2em] border-b border-sky-400/30 pb-2">{UI.dialog_init}</div>}
+            {activeSegment.type === SegmentType.SIGNAL && <div className="text-amber-400 fs-micro mb-4 font-bold uppercase tracking-[0.2em] border-b border-amber-400/30 pb-2">{UI.signal_init}</div>}
             {history.map((seg, i) => (
                 <span key={i} className={`mr-2 transition-colors duration-500 ${seg.performance === 'good' ? 'text-emerald-400' : seg.performance === 'average' ? 'text-amber-400' : 'text-rose-400'}`}>
                     {seg.text}

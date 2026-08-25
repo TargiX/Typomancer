@@ -141,7 +141,7 @@
 }
 
 .screens-debrief-primary strong {
-  font-size: 3.25rem;
+  font-size: var(--fs-hero);
   color: #fff;
 }
 
@@ -154,13 +154,13 @@
 
 .screens-debrief-primary span {
   margin-top: 8px;
-  font-size: 0.58rem;
+  font-size: var(--fs-micro);
   color: #fb7185;
 }
 
 .screens-debrief-primary small {
   margin-top: 5px;
-  font-size: 0.52rem;
+  font-size: var(--fs-micro);
   color: #64748b;
 }
 
@@ -175,12 +175,12 @@
 }
 
 .screens-debrief-metric strong {
-  font-size: 2rem;
+  font-size: var(--fs-display);
   color: #e2e8f0;
 }
 
 .screens-debrief-metric span {
-  font-size: 0.52rem;
+  font-size: var(--fs-micro);
   color: #64748b;
 }
 
@@ -202,7 +202,7 @@
 
 .screens-next-drill span {
   display: block;
-  font-size: 0.52rem;
+  font-size: var(--fs-micro);
   font-weight: 700;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -211,7 +211,7 @@
 
 .screens-next-drill p {
   margin-top: 5px;
-  font-size: 0.76rem;
+  font-size: var(--fs-body);
   line-height: 1.45;
   color: #cbd5e1;
 }
@@ -255,7 +255,7 @@
 .operator-record-section-label > span,
 .operator-record-target > span,
 .operator-record-calibration > span {
-  font-size: 0.56rem;
+  font-size: var(--fs-micro);
   font-weight: 700;
   letter-spacing: 0.24em;
   text-transform: uppercase;
@@ -277,7 +277,7 @@
 .operator-record-header p {
   max-width: 620px;
   margin-top: 12px;
-  font-size: 0.78rem;
+  font-size: var(--fs-body);
   line-height: 1.55;
   color: #94a3b8;
 }
@@ -302,13 +302,13 @@
 
 .calibration-readout strong {
   font-family: 'Rajdhani', sans-serif;
-  font-size: 1.6rem;
+  font-size: var(--fs-title);
   line-height: 1;
   color: #e0f2fe;
 }
 
 .calibration-readout span {
-  font-size: 0.48rem;
+  font-size: var(--fs-micro);
   letter-spacing: 0.14em;
   color: #64748b;
 }
@@ -361,7 +361,7 @@
   position: absolute;
   right: 0;
   bottom: 0;
-  font-size: 0.52rem;
+  font-size: var(--fs-micro);
   font-weight: 700;
   letter-spacing: 0.22em;
   color: rgba(56, 189, 248, 0.55);
@@ -396,7 +396,7 @@
 
 .calibration-footer p {
   max-width: 450px;
-  font-size: 0.62rem;
+  font-size: var(--fs-micro);
   line-height: 1.5;
   color: #475569;
 }
@@ -404,7 +404,7 @@
 .calibration-footer button {
   flex: 0 0 auto;
   padding: 10px 14px;
-  font-size: 0.58rem;
+  font-size: var(--fs-micro);
   font-weight: 700;
   letter-spacing: 0.14em;
   color: #64748b;
@@ -436,14 +436,14 @@
 
 .operator-record-calibration strong {
   font-family: 'Rajdhani', sans-serif;
-  font-size: 1.25rem;
+  font-size: var(--fs-title);
   text-transform: uppercase;
   color: #e0f2fe;
 }
 
 .operator-record-calibration button {
   border-bottom: 1px solid rgba(56, 189, 248, 0.34);
-  font-size: 0.52rem;
+  font-size: var(--fs-micro);
   letter-spacing: 0.15em;
   color: #64748b;
 }
@@ -471,14 +471,14 @@
 
 .operator-record-stats strong {
   font-family: 'Rajdhani', sans-serif;
-  font-size: 1.8rem;
+  font-size: var(--fs-display);
   line-height: 1;
   color: #f8fafc;
 }
 
 .operator-record-stats span {
   overflow: hidden;
-  font-size: 0.48rem;
+  font-size: var(--fs-micro);
   letter-spacing: 0.14em;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -504,7 +504,7 @@
 }
 
 .operator-record-section-label b {
-  font-size: 0.55rem;
+  font-size: var(--fs-micro);
   letter-spacing: 0.14em;
   color: #94a3b8;
 }
@@ -541,7 +541,7 @@
 
 .operator-record-empty {
   padding: 28px 0 24px;
-  font-size: 0.7rem;
+  font-size: var(--fs-label);
   line-height: 1.5;
   color: #64748b;
 }
@@ -558,14 +558,14 @@
 
 .operator-record-target p {
   margin-top: 5px;
-  font-size: 0.78rem;
+  font-size: var(--fs-body);
   color: #cbd5e1;
 }
 
 .operator-record-target small {
   display: block;
   margin-top: 4px;
-  font-size: 0.58rem;
+  font-size: var(--fs-micro);
   color: #64748b;
 }
 
@@ -587,14 +587,14 @@
 .operator-record-training-grid > div > small {
   display: block;
   margin-bottom: 7px;
-  font-size: 0.5rem;
+  font-size: var(--fs-micro);
   font-weight: 700;
   letter-spacing: 0.16em;
   color: #a78bfa;
 }
 
 .operator-record-training-grid p {
-  font-size: 0.64rem;
+  font-size: var(--fs-micro);
   line-height: 1.45;
   color: #64748b;
 }
@@ -611,20 +611,20 @@
   border: 1px solid rgba(167, 139, 250, 0.2);
   padding: 5px 8px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.68rem;
+  font-size: var(--fs-label);
   color: #ddd6fe;
   background: rgba(124, 58, 237, 0.08);
 }
 
 .operator-record-patterns > b small {
   margin-left: 3px;
-  font-size: 0.46rem;
+  font-size: var(--fs-micro);
   color: #fb7185;
 }
 
 .operator-record-training-grid > button {
   padding: 10px 13px;
-  font-size: 0.55rem;
+  font-size: var(--fs-micro);
   font-weight: 800;
   letter-spacing: 0.09em;
   white-space: nowrap;
@@ -660,7 +660,7 @@
 
 .operator-record-run time,
 .operator-record-run div span {
-  font-size: 0.52rem;
+  font-size: var(--fs-micro);
   text-transform: uppercase;
   color: #64748b;
 }
@@ -678,13 +678,13 @@
 }
 
 .operator-record-run div strong {
-  font-size: 0.68rem;
+  font-size: var(--fs-label);
   color: #cbd5e1;
 }
 
 .operator-record-run > b {
   font-family: 'Rajdhani', sans-serif;
-  font-size: 1.15rem;
+  font-size: var(--fs-lead);
   text-align: right;
   color: #e2e8f0;
 }
@@ -692,7 +692,7 @@
 .operator-record-run > b small {
   margin-left: 2px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.43rem;
+  font-size: var(--fs-micro);
   color: #64748b;
 }
 
@@ -707,7 +707,7 @@
   align-items: center;
   gap: 10px;
   padding: 11px 18px;
-  font-size: 0.62rem;
+  font-size: var(--fs-micro);
   font-weight: 700;
   letter-spacing: 0.12em;
   color: #04120b;
@@ -1305,7 +1305,7 @@
 .screens-accuracy-hero--mastery { border-left-color: rgba(52, 211, 153, 0.9); }
 
 .screens-accuracy-value {
-  font-size: 3.4rem;
+  font-size: var(--fs-hero);
   font-weight: 800;
   line-height: 1;
   color: #fff;
@@ -1319,7 +1319,7 @@
 .screens-accuracy-coach {
   margin-top: 3px;
   max-width: 30ch;
-  font-size: 0.72rem;
+  font-size: var(--fs-label);
   line-height: 1.45;
   color: #cbd5e1;
 }
@@ -1355,14 +1355,14 @@
 }
 
 .screens-pact-title {
-  font-size: 0.62rem;
+  font-size: var(--fs-micro);
   font-weight: 800;
   letter-spacing: 0.22em;
   color: #fdba74;
 }
 
 .screens-pact-reward {
-  font-size: 0.6rem;
+  font-size: var(--fs-micro);
   font-weight: 800;
   letter-spacing: 0.14em;
   font-variant-numeric: tabular-nums;
@@ -1375,7 +1375,7 @@
 
 .screens-pact-hint {
   margin-top: 4px;
-  font-size: 0.64rem;
+  font-size: var(--fs-micro);
   line-height: 1.45;
   color: rgba(148, 163, 184, 0.85);
 }
@@ -1412,7 +1412,7 @@
 
 .screens-pact-clause-name {
   grid-area: name;
-  font-size: 0.58rem;
+  font-size: var(--fs-micro);
   font-weight: 800;
   letter-spacing: 0.16em;
   color: rgba(148, 163, 184, 0.9);
@@ -1424,14 +1424,14 @@
 
 .screens-pact-clause-desc {
   grid-area: desc;
-  font-size: 0.58rem;
+  font-size: var(--fs-micro);
   line-height: 1.4;
   color: rgba(148, 163, 184, 0.6);
 }
 
 .screens-pact-clause-reward {
   grid-area: reward;
-  font-size: 0.62rem;
+  font-size: var(--fs-micro);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   color: rgba(148, 163, 184, 0.5);
@@ -1447,10 +1447,36 @@
   margin-left: 7px;
   padding: 1px 5px;
   border: 1px solid rgba(251, 146, 60, 0.45);
-  font-size: 0.48rem;
+  font-size: var(--fs-micro);
   font-weight: 800;
   letter-spacing: 0.12em;
   font-variant-numeric: tabular-nums;
   color: #fdba74;
   vertical-align: middle;
+}
+
+/* HUD GAUGE — a segmented instrument rather than a rounded progress bar.
+   A filled rounded bar is what a web page shows while it loads something. */
+.hud-gauge {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.hud-gauge-notch {
+  flex: 1;
+  height: 7px;
+  background: rgba(255, 255, 255, 0.07);
+  transform: skewX(-18deg);
+  transition: background-color 320ms ease, box-shadow 320ms ease;
+}
+
+.hud-gauge-notch.is-lit {
+  background: currentColor;
+}
+
+.screens-pact-toggle {
+  margin-left: 8px;
+  font-size: var(--fs-label);
+  color: rgba(148, 163, 184, 0.7);
 }

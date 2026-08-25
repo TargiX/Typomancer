@@ -214,8 +214,11 @@ test('the Pact raises the bar and pays for it', async ({ page }) => {
   const clauses = page.locator('.screens-pact-clause');
   const reward = page.locator('.screens-pact-reward');
 
-  // Nothing is taken on by default: the Pact is entirely opt-in.
+  // Collapsed by default: five clauses expanded is a wall of text on the first
+  // screen, and the multiplier alone says whether anything is taken on.
   await expect(reward).toContainText('x1.00');
+  await expect(clauses).toHaveCount(0);
+  await page.getByRole('button', { expanded: false }).filter({ hasText: 'THE PACT' }).click();
   await expect(clauses.locator('.is-active')).toHaveCount(0);
 
   const count = await clauses.count();
@@ -230,10 +233,12 @@ test('the Pact raises the bar and pays for it', async ({ page }) => {
   await clauses.first().click();
   await expect(reward).not.toContainText('x2.25');
 
-  // And the choice survives a reload, because it is a standing commitment.
+  // And the choice survives a reload, because it is a standing commitment —
+  // even though the panel itself reopens collapsed.
   const before = await reward.innerText();
   await page.reload();
   await expect(page.locator('.screens-pact-reward')).toHaveText(before);
+  await expect(page.locator('.screens-pact-clause')).toHaveCount(0);
 });
 
 test('a Pact clause changes the run it was taken for', async ({ page }) => {

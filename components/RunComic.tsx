@@ -447,11 +447,11 @@ const RunComic: React.FC<RunComicProps> = ({
           {status === 'rendering' && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/60 pointer-events-none">
               <div className="w-10 h-10 border-4 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin"></div>
-              <span className="text-emerald-400 text-sm tracking-widest animate-pulse">{ui.building}</span>
+              <span className="text-emerald-400 fs-body tracking-widest animate-pulse">{ui.building}</span>
             </div>
           )}
           {status === 'error' && (
-            <div className="absolute inset-0 flex items-center justify-center bg-slate-950/70 text-rose-300 text-sm px-6 text-center">
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-950/70 text-rose-300 fs-body px-6 text-center">
               {ui.error}
             </div>
           )}
