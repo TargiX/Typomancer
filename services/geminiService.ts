@@ -15,6 +15,7 @@ import type {
 import { getGenrePack, type LocalBranchTemplate } from "./genreConfig.ts";
 import { SECTOR_ROUNDS } from "./gameRules.ts";
 import { getRecentConsequences } from "./missionLog.ts";
+import { isProseSegmentType, repairProseLine } from "./proseRepair.ts";
 
 type Schema = Record<string, unknown>;
 
@@ -126,9 +127,24 @@ const sanitizeSegment = (segment: StorySegment | undefined, fallbackSkill: Typin
   }
   const type = segment.type || SegmentType.NARRATIVE;
   const defaultSkill: TypingSkill = type === SegmentType.BREACH ? 'symbols' : type === SegmentType.SIGNAL ? 'numbers' : type === SegmentType.DIALOG ? 'punctuation' : fallbackSkill;
+  // The player reproduces this text keystroke by keystroke, so prose is repaired
+  // before it can become something they are asked to type. Drills are exact by
+  // definition and pass through untouched.
+  const text = isProseSegmentType(type)
+    ? repairProseLine(segment.text)
+    : segment.text.trim().replace(/\s+/g, ' ');
+  if (!text) {
+    return {
+      text: "Signal interference corrupts the feed; stabilize the link before moving.",
+      mood: segment.mood || StoryMood.TENSE,
+      type: SegmentType.NARRATIVE,
+      skill: fallbackSkill,
+      objective: "Recover signal"
+    };
+  }
   return {
     ...segment,
-    text: segment.text.trim().replace(/\s+/g, ' '),
+    text,
     type,
     skill: segment.skill || defaultSkill,
     objective: segment.objective || getDefaultObjective(type, segment.skill || defaultSkill),
@@ -417,7 +433,10 @@ export const generateLevelSummary = async (
 
   try {
     const response = await ai.models.generateContent({ model, contents: prompt, config: { temperature: 1.0 } });
-    return response.text?.trim() || localSummary(genre, level, stats, language);
+    const summary = response.text?.trim();
+    // Read rather than typed, but it headlines the debrief screen, so it gets the
+    // same mechanical repair as anything else the player is shown.
+    return summary ? repairProseLine(summary) : localSummary(genre, level, stats, language);
   } catch (e) {
     return localSummary(genre, level, stats, language);
   }
@@ -466,7 +485,7 @@ export const generateNextSegments = async (
     ? ` TYPING FOCUS: this player fumbles these letter pairs — ${trainingFocus.join(', ')}. Prefer ordinary words that happen to contain them. This is a soft preference and must never bend a sentence, invent an odd word, or repeat one: if a beat has no natural home for them, ignore it entirely.`
     : '';
 
-  const prompt = `SETTING: ${pack.storyGenre}. WORLD RULES (follow strictly, never drift into another genre): ${pack.worldRules} HERO: ${pack.heroName}.${focusRule} CURRENT STATUS: Level ${level} | Round ${round}/${SECTOR_ROUNDS}. RECENT CONTEXT: "...${recentHistory}" LAST EVENT: "${lastSentence}" MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, route=${mission?.route ?? 'balanced'}, recent consequences (oldest to newest)=${getRecentConsequences(mission?.consequenceLog || [], 3).join(' | ')}. TASK: Generate the next story segment options. CORE LOOP: the player TYPES the sentence you write and the branch reflects their typing — so the main content is readable story prose, NOT puzzles. INSTRUCTION: ${narrativeInstruction} ${typeRule} RULES: 1. No repeated events. 2. NARRATIVE/DIALOG: 8-18 words, ordinary sentence case (do NOT write in all-caps). 3. If (and only if) a BREACH/SIGNAL drill is allowed here: 2-6 short tokens whose content matches the WORLD RULES for this world (never terminal/hex code unless the world is cyberpunk). 4. goodPath rewards clean play with control/evidence/trust. mediumPath shows messy survival. badPath shows concrete consequences that can echo later. 5. Include objective, skill, and a short consequenceHint. 6. Every sentence must stay strictly inside the SETTING's world and era — respect the FORBIDDEN vocabulary. 7. RECENT CONSEQUENCES are beats the player already lived, tagged CLEAN, MESSY or BLOWN by how they typed them. If the newest is MESSY or BLOWN, this segment must show its aftermath concretely — a guard who is now looking, a door that no longer opens — instead of resetting the scene. If it is CLEAN, let the player feel the advantage they earned. 8. OUTPUT LANGUAGE FOR NARRATIVE/DIALOG: ${language === 'ru' ? 'Russian' : 'English'}. Keep BREACH/SIGNAL tokens in English. Return JSON only.`;
+  const prompt = `SETTING: ${pack.storyGenre}. WORLD RULES (follow strictly, never drift into another genre): ${pack.worldRules} HERO: ${pack.heroName}.${focusRule} CURRENT STATUS: Level ${level} | Round ${round}/${SECTOR_ROUNDS}. RECENT CONTEXT: "...${recentHistory}" LAST EVENT: "${lastSentence}" MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, route=${mission?.route ?? 'balanced'}, recent consequences (oldest to newest)=${getRecentConsequences(mission?.consequenceLog || [], 3).join(' | ')}. TASK: Generate the next story segment options. CORE LOOP: the player TYPES the sentence you write and the branch reflects their typing — so the main content is readable story prose, NOT puzzles. INSTRUCTION: ${narrativeInstruction} ${typeRule} RULES: 1. No repeated events. 2. NARRATIVE/DIALOG: 8-18 words, and a complete grammatical sentence — it must begin with a capital letter and end with . ? or !. Ordinary sentence case; never all-caps, never a bare fragment, never open with a lowercase pronoun. The player types this text character by character, so an ungrammatical line is a defect they are forced to copy. 3. If (and only if) a BREACH/SIGNAL drill is allowed here: 2-6 short tokens whose content matches the WORLD RULES for this world (never terminal/hex code unless the world is cyberpunk). 4. goodPath rewards clean play with control/evidence/trust. mediumPath shows messy survival. badPath shows concrete consequences that can echo later. 5. Include objective, skill, and a short consequenceHint. 6. Every sentence must stay strictly inside the SETTING's world and era — respect the FORBIDDEN vocabulary. 7. RECENT CONSEQUENCES are beats the player already lived, tagged CLEAN, MESSY or BLOWN by how they typed them. If the newest is MESSY or BLOWN, this segment must show its aftermath concretely — a guard who is now looking, a door that no longer opens — instead of resetting the scene. If it is CLEAN, let the player feel the advantage they earned. 8. OUTPUT LANGUAGE FOR NARRATIVE/DIALOG: ${language === 'ru' ? 'Russian' : 'English'}. Keep BREACH/SIGNAL tokens in English. Return JSON only.`;
 
   try {
     const apiCall = ai.models.generateContent({

@@ -37,6 +37,14 @@ const typeActiveLine = async (page: Page) => {
   // next. Give that 50 ms transition time to release before sending characters.
   await page.waitForTimeout(75);
   await input.pressSequentially(text, { delay: 5 });
+
+  // The player reproduces this line keystroke by keystroke, so a malformed one is
+  // a defect they are forced to copy. Drill lines are exact by definition.
+  const isDrill = /^>>|\/\//.test(text);
+  if (!isDrill) {
+    expect(text, `line should open with a capital: ${text}`).not.toMatch(/^\p{Ll}/u);
+    expect(text, `line should end with terminal punctuation: ${text}`).toMatch(/[.!?…]["'»”’)\]]?$/);
+  }
   return text;
 };
 
