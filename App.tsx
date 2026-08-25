@@ -10,6 +10,7 @@ import { RunCheckpoint, clearRunCheckpoint, loadRunCheckpoint, saveRunCheckpoint
 import {
   createBalancedCalibration,
   getAdaptiveDifficulty,
+  getEffectiveBaseline,
   getLocalDateKey,
   loadPlayerProgress,
   recordRun,
@@ -264,21 +265,26 @@ const TRANSLATIONS = {
 // --- TIERED PERK DEFINITIONS (mechanics only; display names come from genre skins) ---
 const PERK_DEFINITIONS = [
     {
+        // Was: forgive N mistakes outright. Now a mistake keeps your streak alive
+        // but bills you the Energy you would have spent on a protocol — a trade,
+        // not a free pass.
         groupId: 'neural_buffer' as PerkGroupId,
         type: 'defense',
         tiers: [
-            { grace: 1 },
-            { grace: 2 },
-            { grace: 3 }
+            { shields: 1, cost: 30 },
+            { shields: 2, cost: 25 },
+            { shields: 3, cost: 20 }
         ]
     },
     {
+        // Was: a flat trace slowdown you kept whatever you did. Now the stealth
+        // has to be held with a clean streak.
         groupId: 'ghost_protocol' as PerkGroupId,
         type: 'stealth',
         tiers: [
-            { mult: 0.8 },
-            { mult: 0.65 },
-            { mult: 0.5 }
+            { streakMult: 0.85, threshold: 25 },
+            { streakMult: 0.75, threshold: 20 },
+            { streakMult: 0.65, threshold: 15 }
         ]
     },
     {
@@ -291,21 +297,25 @@ const PERK_DEFINITIONS = [
         ]
     },
     {
+        // Was: a bigger health pool, which is just room to fail more. Now health
+        // comes back for lines typed perfectly.
         groupId: 'titanium_firewall' as PerkGroupId,
         type: 'defense',
         tiers: [
-            { maxHp: 35 },
-            { maxHp: 50 },
-            { maxHp: 75 }
+            { perfectHeal: 2 },
+            { perfectHeal: 3 },
+            { perfectHeal: 5 }
         ]
     },
     {
+        // Was: a chance the line typed itself. In a typing game that is not a
+        // perk, it is an opt-out. Now a long clean streak shoves the tracer back.
         groupId: 'critical_override' as PerkGroupId,
         type: 'utility',
         tiers: [
-            { chance: 0.05 },
-            { chance: 0.12 },
-            { chance: 0.20 }
+            { interval: 50, characters: 14 },
+            { interval: 35, characters: 18 },
+            { interval: 25, characters: 22 }
         ]
     },
     {
@@ -342,7 +352,6 @@ const DEFAULT_MODIFIERS: GameModifiers = {
     mistakeGraceCount: 0,
     healthRegenWpmThreshold: 0,
     healthRegenAmount: 0,
-    criticalHackChance: 0,
     maxHealth: 20,
     maxOverclock: 50,
     creditMultiplier: 1.0,
@@ -350,7 +359,14 @@ const DEFAULT_MODIFIERS: GameModifiers = {
     focusMistakeForgiveness: 2,
     errorChargeGain: 0,
     breachRewardMultiplier: 1,
-    evidenceMultiplier: 1
+    evidenceMultiplier: 1,
+    streakPurgeInterval: 0,
+    streakPurgeCharacters: 0,
+    streakTraceMultiplier: 1,
+    streakTraceThreshold: 0,
+    perfectLineHealth: 0,
+    comboShields: 0,
+    comboShieldCost: 0
 };
 
 const DEFAULT_MISSION_STATE: MissionState = {
@@ -719,8 +735,12 @@ const App: React.FC = () => {
     [typingTraining]
   );
 
+  // The pace the game measures the player at, tracking real runs rather than the
+  // one calibration prompt they typed on their first day.
+  const effectiveBaseline = useMemo(() => getEffectiveBaseline(playerProgress), [playerProgress]);
+
   const adaptiveDifficulty = useMemo(
-    () => getAdaptiveDifficulty(playerProgress.calibration),
+    () => getAdaptiveDifficulty(playerProgress.calibration, playerProgress),
     [playerProgress.calibration]
   );
 
@@ -1057,14 +1077,23 @@ const App: React.FC = () => {
           maxTier: def.tiers.length,
           apply: (mods) => {
               const newMods = { ...mods };
-              if (def.groupId === 'neural_buffer') newMods.mistakeGraceCount = Math.max(newMods.mistakeGraceCount, tierData.grace);
-              if (def.groupId === 'ghost_protocol') newMods.traceSpeedMultiplier *= tierData.mult;
+              if (def.groupId === 'neural_buffer') {
+                  newMods.comboShields = Math.max(newMods.comboShields, tierData.shields);
+                  newMods.comboShieldCost = tierData.cost;
+              }
+              if (def.groupId === 'ghost_protocol') {
+                  newMods.streakTraceMultiplier = Math.min(newMods.streakTraceMultiplier, tierData.streakMult);
+                  newMods.streakTraceThreshold = tierData.threshold;
+              }
               if (def.groupId === 'adrenaline_spike') {
                   newMods.healthRegenWpmThreshold = tierData.thresh;
                   newMods.healthRegenAmount = tierData.regen;
               }
-              if (def.groupId === 'titanium_firewall') newMods.maxHealth = Math.max(newMods.maxHealth, tierData.maxHp);
-              if (def.groupId === 'critical_override') newMods.criticalHackChance = tierData.chance;
+              if (def.groupId === 'titanium_firewall') newMods.perfectLineHealth = Math.max(newMods.perfectLineHealth, tierData.perfectHeal);
+              if (def.groupId === 'critical_override') {
+                  newMods.streakPurgeInterval = tierData.interval;
+                  newMods.streakPurgeCharacters = tierData.characters;
+              }
               if (def.groupId === 'focus_lattice') { newMods.focusDurationMs += tierData.duration; newMods.focusMistakeForgiveness += tierData.forgiveness; }
               if (def.groupId === 'error_siphon') newMods.errorChargeGain = Math.max(newMods.errorChargeGain, tierData.charge);
               if (def.groupId === 'evidence_lens') newMods.evidenceMultiplier += tierData.evidence;
@@ -2444,7 +2473,7 @@ const App: React.FC = () => {
                     genre={selectedGenre}
                     strictCase={!!userProfile.strictCase}
                     deterministicStory={isDailyRun}
-                    baselineWpm={playerProgress.calibration?.wpm}
+                    baselineWpm={effectiveBaseline.wpm}
                     trainingFocus={trainingFocusTokens}
                     onTypingObservation={(observation) => runTrainingObservationsRef.current.push(observation)}
                 />

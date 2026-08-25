@@ -189,7 +189,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const [debris, setDebris] = useState<Debris[]>([]);
   const [sparks, setSparks] = useState<Spark[]>([]);
   const [showFlash, setShowFlash] = useState(false);
-  const [isCriticalHack, setIsCriticalHack] = useState(false); 
   const [overclockCharge, setOverclockCharge] = useState(0);
   const [isOverclockActive, setIsOverclockActive] = useState(false);
   const overclockTimerRef = useRef<number | null>(null);
@@ -226,6 +225,11 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const tracerCaughtAtRef = useRef<number | null>(null);
   /** Read by the chase loop each frame so a streak slows the tracer as it builds. */
   const comboTierRef = useRef(0);
+  /** Combo shields spent this round, and whether one is currently absorbing a break. */
+  const comboShieldsUsedRef = useRef(0);
+  const keepComboRef = useRef(false);
+  /** Live combo for the animation frame, which cannot read state directly. */
+  const comboRef = useRef(0);
   const [missionState, setMissionState] = useState<MissionState>(() => normalizeMissionState(missionSeed));
   const missionRef = useRef<MissionState>(normalizeMissionState(missionSeed));
   const timerRef = useRef<number | null>(null);
@@ -481,7 +485,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
             return;
         }
         if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
-        if (isWaitingForAi || transitionLockRef.current || isCriticalHack) return;
+        if (isWaitingForAi || transitionLockRef.current) return;
 
         if (e.key === 'Backspace') {
             e.preventDefault();
@@ -505,7 +509,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     inputValue,
     activeSegment,
     isWaitingForAi,
-    isCriticalHack,
     mistakesInSegment,
     health,
     showSkillBriefing
@@ -641,11 +644,16 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       setTracerBurnFront(Math.floor(getTracerStartIndex()));
       segmentFirstKeyAtRef.current = null;
       tracerCaughtAtRef.current = null;
+      comboShieldsUsedRef.current = 0;
+      keepComboRef.current = false;
   }, [activeSegment]);
 
   // Combo survives across segments, so the streak advantage must follow it rather
   // than silently reset at every line break.
-  useEffect(() => { comboTierRef.current = comboTier(combo); }, [combo]);
+  useEffect(() => {
+      comboTierRef.current = comboTier(combo);
+      comboRef.current = combo;
+  }, [combo]);
 
   const handleTracerCatch = () => {
       tracerCaughtAtRef.current = Date.now();
@@ -669,7 +677,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           || isDecisionActive
           || typeCueActive
           || isOverclockActive
-          || isCriticalHack
           || showSkillBriefing
           || gameOverTriggeredRef.current;
       if (frozen) return;
@@ -697,8 +704,12 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
               return;
           }
           // Accuracy is the weapon: an unbroken streak slows the chase, and one
-          // typo hands the whole advantage back at once.
-          const streakSpeed = charsPerSecond * getTracerSpeedScale(comboTierRef.current);
+          // typo hands the whole advantage back at once. Ghost Protocol stacks on
+          // top, but only while the streak it demands is actually held.
+          const stealth = (modifiers.streakTraceThreshold > 0 && comboRef.current >= modifiers.streakTraceThreshold)
+            ? modifiers.streakTraceMultiplier
+            : 1;
+          const streakSpeed = charsPerSecond * getTracerSpeedScale(comboTierRef.current) * stealth;
           tracerRef.current = advanceTracer(tracerRef.current, delta, streakSpeed, activeSegment.text.length);
           const front = Math.floor(tracerRef.current);
           setTracerBurnFront(prev => (prev === front ? prev : front));
@@ -715,7 +726,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   }, [
       activeSegment,
       baselineWpm,
-      isCriticalHack,
       isDecisionActive,
       isOverclockActive,
       isWaitingForAi,
@@ -754,33 +764,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     bufferNext();
     return () => { isMounted = false; };
   }, [activeSegment, history, currentLevel, round, prevLevelSummary, language, genre, deterministicStory]);
-
-  useEffect(() => {
-      if (inputValue.length === 0 && !transitionLockRef.current && round <= SECTOR_ROUNDS && !isCriticalHack && !isDecisionActive && !typeCueActive) {
-          if (!deterministicStory && Math.random() < modifiers.criticalHackChance) {
-             performCriticalHack(); 
-          }
-      }
-  }, [activeSegment, round, isDecisionActive, typeCueActive]);
-
-  const performCriticalHack = () => {
-      setIsCriticalHack(true);
-      let i = 0;
-      const target = activeSegment.text;
-      const interval = setInterval(() => {
-          i += 3;
-          if (i >= target.length) {
-              i = target.length;
-              clearInterval(interval);
-              setInputValue(target);
-              setTimeout(() => {
-                  setIsCriticalHack(false);
-              }, 500);
-          } else {
-              setInputValue(target.substring(0, i));
-          }
-      }, 30);
-  };
 
   const describeImpact = (impact?: DecisionImpact): string => {
       if (!impact) return '';
@@ -978,7 +961,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
 
 
   const applyInputValue = (val: string) => {
-    if (isCriticalHack || isDecisionActive) return;
+    if (isDecisionActive) return;
     if (typeCueActive) {
       setTypeCueActive(false);
       setStartTime(Date.now());
@@ -1017,6 +1000,18 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
              setInputValue(val);
              return;
          }
+         // A combo shield keeps the streak alive but charges the Energy you would
+         // otherwise spend on a protocol. The mistake still counts.
+         if (
+             modifiers.comboShields > 0
+             && comboShieldsUsedRef.current < modifiers.comboShields
+             && overclockCharge >= modifiers.comboShieldCost
+         ) {
+             comboShieldsUsedRef.current += 1;
+             setOverclockCharge(c => Math.max(0, c - modifiers.comboShieldCost));
+             keepComboRef.current = true;
+             triggerShieldEffect();
+         }
          const forgivenessBudget = modifiers.mistakeGraceCount + (isOverclockActive ? modifiers.focusMistakeForgiveness : 0);
          if (forgivenMistakesRef.current < forgivenessBudget) {
              forgivenMistakesRef.current += 1;
@@ -1024,10 +1019,14 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
              triggerShieldEffect();
          } else {
              const newMistakes = mistakesInSegment + 1;
-             comboTierRef.current = 0;
              audioEngine.keyError();
              setMistakesInSegment(newMistakes);
-             setCombo(0);
+             if (keepComboRef.current) {
+                 keepComboRef.current = false;
+             } else {
+                 comboTierRef.current = 0;
+                 setCombo(0);
+             }
              setOverclockCharge(c => Math.min(modifiers.maxOverclock, Math.max(0, c - 5 + modifiers.errorChargeGain)));
              const newHealth = Math.max(0, health - 1);
              setHealth(newHealth);
@@ -1039,6 +1038,15 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
          }
        } else {
            audioEngine.keyHit(comboTier(combo));
+           const streak = combo + 1;
+           if (modifiers.streakPurgeInterval > 0 && streak % modifiers.streakPurgeInterval === 0) {
+               // Accuracy paying out as pressure relief, rather than a perk that
+               // types the line for you.
+               tracerRef.current = knockBackTracer(tracerRef.current, modifiers.streakPurgeCharacters);
+               setTracerBurnFront(Math.floor(tracerRef.current));
+               audioEngine.purge();
+               spawnDelta(UI.security, -modifiers.streakPurgeCharacters, '#f472b6');
+           }
            const nextTier = comboTier(combo + 1);
            if (nextTier > comboTierRef.current) {
                // Crossing a tier pushes the tracer back a visible distance. The
@@ -1239,7 +1247,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     setCredits(current => current + segmentCredits);
 
     let healthChange = 0;
-    if (totalErrors === 0) healthChange += 1;
+    if (totalErrors === 0) healthChange += 1 + modifiers.perfectLineHealth;
     if (modifiers.healthRegenWpmThreshold > 0 && wpm > modifiers.healthRegenWpmThreshold) {
       healthChange += modifiers.healthRegenAmount;
     }
@@ -1340,8 +1348,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       else if (index === burnFront) className = "tracer-head";
 
       if (isCursor) {
-        className = isCriticalHack ? "text-white bg-rose-500 animate-ping" :
-                    isOverclockActive ? "text-white bg-emerald-400 animate-pulse shadow-[0_0_15px_rgba(52,211,153,0.8)]" :
+        className = isOverclockActive ? "text-white bg-emerald-400 animate-pulse shadow-[0_0_15px_rgba(52,211,153,0.8)]" :
                     "text-white bg-slate-700 animate-pulse";
       }
       return (
@@ -1544,11 +1551,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                     </button>
                   );
               })}
-          </div>
-      )}
-      {isCriticalHack && (
-          <div className="absolute top-[20%] left-1/2 -translate-x-1/2 z-[70] pointer-events-none">
-              <div className="engine-critical-alert bg-rose-500 text-[#16070b] font-bold px-4 py-1 shadow-[0_0_20px_rgba(244,63,94,0.55)] animate-bounce">{UI.critical_override}</div>
           </div>
       )}
       <div className="engine-hud flex flex-col font-mono px-4 py-3 bg-white/[0.02] border border-white/[0.06] mb-2 gap-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
@@ -1762,7 +1764,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         </div>
       </div>
 
-      <input ref={inputRef} type="text" value={inputValue} onChange={handleInput} onPaste={(event) => event.preventDefault()} onDrop={(event) => event.preventDefault()} aria-label={language === 'ru' ? 'Поле тренировки печати' : 'Typing practice input'} className="fixed opacity-0 top-0 left-0 w-px h-px overflow-hidden -z-10 pointer-events-none" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} autoFocus disabled={isWaitingForAi || isCriticalHack || isDecisionActive || showSkillBriefing} />
+      <input ref={inputRef} type="text" value={inputValue} onChange={handleInput} onPaste={(event) => event.preventDefault()} onDrop={(event) => event.preventDefault()} aria-label={language === 'ru' ? 'Поле тренировки печати' : 'Typing practice input'} className="fixed opacity-0 top-0 left-0 w-px h-px overflow-hidden -z-10 pointer-events-none" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} autoFocus disabled={isWaitingForAi || isDecisionActive || showSkillBriefing} />
     </div>
   );
 };

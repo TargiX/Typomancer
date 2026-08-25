@@ -16,7 +16,8 @@ A consequence-driven RPG typing game. You play as Agent Nox, a field hacker tryi
 - **Accuracy is the weapon:** an unbroken clean streak slows the tracer and shoves it backwards at every combo tier. One typo hands the whole advantage back at once. Speed alone already outruns the trace, so this is the pressure that trains accuracy rather than haste.
 - **Focus Mode:** charge it by typing correctly, then press `TAB` to pause trace pressure, soften mistakes, and double typing rewards for a short burst.
 - **Typing variety:** narrative flow, terminal breach commands, signal/number drills, and dialogue/punctuation drills.
-- **Adaptive first run:** a short keystroke calibration tunes trace pressure and mistake grace to the player's pace.
+- **Difficulty follows your hands:** a short keystroke calibration sets the opening pace, and from there the game measures you on your real runs. The tracer chases at a fraction of your *current* speed, so getting faster makes the game faster with you instead of quietly retiring it.
+- **Perks change how you play, never how much you may fail:** a clean streak buys stealth and shoves the trace back; a perfect line heals; a mistake can keep your streak alive if you pay Energy for it. No perk lowers what your fingers are asked to do.
 - **Operator Record:** the last 20 runs, WPM trend, accuracy, streak, and next training target stay locally on the device.
 - **The campaign is the drill:** weak keys and letter pairs are learned locally from aggregate timing/error counts, then seeded into the story the generator writes for you — so you practise what you actually fumble without leaving the mission. They also power standalone drills.
 
