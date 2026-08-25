@@ -23,6 +23,7 @@ A consequence-driven RPG typing game. You play as Agent Nox, a field hacker tryi
   Only the letter pairs themselves (`th`, `br`, …) are sent, and only to the story generator, as a soft preference it is told to ignore when a sentence has no natural home for them. Typed text is never stored and never sent anywhere.
 - **Player challenges:** Daily Sector results can be shared as a same-sector score target.
 - **Perk market expanded:** new run perks and permanent hardware upgrades support Focus Mode, evidence gain, breach rewards, and error recovery.
+- **Comfort is priced, not free:** the chase has a floor it can never be shopped below, and permanent trace easing pays 25% fewer credits when fully invested. A calm build is a trade rather than a strictly better one — which matters in a game where the pressure is the training.
 - **Local campaign fallback:** the game works without a Gemini key. If AI is unavailable, it uses handcrafted cyberpunk branches and procedural SVG scene art.
 
 ## Controls

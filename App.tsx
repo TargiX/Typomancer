@@ -5,6 +5,7 @@ import { GENRE_ORDER, getGenrePack } from './services/genreConfig';
 import { getGenreSkin, PerkGroupId, UpgradeId } from './services/genreSkin';
 import { DAILY_MAX_ATTEMPTS, DailyBrief, getDailyBrief, getDailyState, pickDailyItems, recordDailyAttempt } from './services/dailyMode';
 import { CAMPAIGN_SECTORS, getStealthLevel, getTypingAccuracy, getTypingFocus, summarizeSector } from './services/gameRules';
+import { clampTraceSpeed, getComfortCreditMultiplier } from './services/riskReward';
 import { RunCheckpoint, clearRunCheckpoint, loadRunCheckpoint, saveRunCheckpoint } from './services/runCheckpoint';
 import {
   createBalancedCalibration,
@@ -942,10 +943,17 @@ const App: React.FC = () => {
       mods.evidenceMultiplier += (u.patternScanner * META_UPGRADES.patternScanner.effectPerLevel);
       mods.traceSpeedMultiplier *= adaptiveDifficulty.traceSpeedMultiplier;
       if (!userProfile.strictCase) mods.mistakeGraceCount += adaptiveDifficulty.mistakeGraceCount;
-      mods.traceSpeedMultiplier = Math.max(0.1, mods.traceSpeedMultiplier);
+      // Permanent trace easing is bought, so it is priced: the calm build keeps
+      // the game quieter for good and earns a quarter less for it. The difficulty
+      // preset is exempt — it is fitted to a measured pace, not purchased.
+      mods.creditMultiplier *= getComfortCreditMultiplier(u.signalDampener, META_UPGRADES.signalDampener.maxLevel);
       activePerks.forEach(perk => {
           mods = perk.apply(mods);
       });
+      // Clamped last. The old clamp sat before perk application, so a Ghost
+      // Protocol tier multiplied straight through it and the floor bounded
+      // nothing: a maxed player faced a tracer at a fifth of its intended pace.
+      mods.traceSpeedMultiplier = clampTraceSpeed(mods.traceSpeedMultiplier);
       setCurrentModifiers(mods);
   }, [activePerks, adaptiveDifficulty, userProfile.strictCase, userProfile.upgrades]);
 

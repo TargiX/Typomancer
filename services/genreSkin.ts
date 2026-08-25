@@ -170,7 +170,7 @@ const CYBERPUNK: GenreSkin = {
     },
     signalDampener: {
       name: enRu('Signal Dampener', 'Глушитель Сигнала'),
-      desc: enRu('Slows down Security Trace accumulation.', 'Замедляет накопление уровня угрозы.')
+      desc: enRu('Slows Security Trace. Comfort costs income: fully invested, runs pay 25% fewer credits.', 'Замедляет трассировку. Комфорт стоит дохода: при полной прокачке забеги приносят на 25% меньше кредитов.')
     },
     bufferExpansion: {
       name: enRu('Buffer Expansion', 'Расширение Буфера'),
@@ -330,7 +330,7 @@ const SPACE_HORROR: GenreSkin = {
     },
     signalDampener: {
       name: enRu('Soft-Foot Pads', 'Мягкие Подошвы'),
-      desc: enRu('Slows Proximity Alarm buildup.', 'Замедляет рост сенсора приближения.')
+      desc: enRu('Slows the Proximity Alarm. Comfort costs income: fully invested, runs pay 25% fewer credits.', 'Замедляет сенсор приближения. Комфорт стоит дохода: при полной прокачке забеги приносят на 25% меньше кредитов.')
     },
     bufferExpansion: {
       name: enRu('Pressure Reserve', 'Запас Давления'),
@@ -490,7 +490,7 @@ const NOIR: GenreSkin = {
     },
     signalDampener: {
       name: enRu('Soft Hat', 'Мягкая Шляпа'),
-      desc: enRu('Slows Tail Pressure buildup.', 'Замедляет рост давления хвоста.')
+      desc: enRu('Slows Tail Pressure. Comfort costs income: fully invested, runs pay 25% fewer credits.', 'Замедляет давление хвоста. Комфорт стоит дохода: при полной прокачке забеги приносят на 25% меньше кредитов.')
     },
     bufferExpansion: {
       name: enRu('Notebook Depth', 'Глубина Блокнота'),
@@ -650,7 +650,7 @@ const DARK_FABLE: GenreSkin = {
     },
     signalDampener: {
       name: enRu('Quiet Bell', 'Тихий Колокольчик'),
-      desc: enRu("Slows the Forest's Ear.", 'Замедляет Слух леса.')
+      desc: enRu("Slows the Forest's Ear. Comfort costs income: fully invested, runs pay 25% fewer credits.", 'Замедляет Слух леса. Комфорт стоит дохода: при полной прокачке забеги приносят на 25% меньше кредитов.')
     },
     bufferExpansion: {
       name: enRu('Name Well', 'Колодец Имен'),
