@@ -624,3 +624,23 @@ button.engine-cursor-skill:disabled {
 @media (prefers-reduced-motion: reduce) {
   .engine-caret { animation: none; box-shadow: 0 0 10px rgba(103, 232, 249, 0.5); }
 }
+
+/* MISSION RAIL — the run's world state, on the HUD instead of in a side column. */
+.engine-mission-rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  align-items: center;
+}
+
+.engine-mission-meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 168px;
+}
+
+.engine-mission-meter .hud-gauge {
+  flex: 1;
+  min-width: 60px;
+}

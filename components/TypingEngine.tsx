@@ -118,6 +118,8 @@ const TYPE_CUE_MS = 1500;
 /** Notches in the Security Trace gauge. Wider than the sidebar gauges: it is the
  *  meter the player checks most, so it gets the finer resolution. */
 const TRACE_GAUGE_SEGMENTS = 28;
+/** Compact gauges for the three mission meters on the HUD rail. */
+const MISSION_GAUGE_SEGMENTS = 10;
 /** How long a newly unlocked protocol explains itself beside the caret. */
 const SKILL_INTRO_MS = 3600;
 const SKILL_BRIEFING_STORAGE_KEY = 'narrativeFlowSkillBriefingSeen';
@@ -1437,8 +1439,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     return "rgba(7,10,17,0.2)";
   };
 
+  // No centred 1024px column here: with the shell gone, capping the deck puts it
+  // back into a page. A HUD fills the frame; the line keeps its own measure.
   return (
-    <div ref={containerRef} className="w-full max-w-5xl mx-auto flex flex-col gap-0 h-full min-h-0 relative">
+    <div ref={containerRef} className="w-full max-w-[1600px] mx-auto flex flex-col gap-0 h-full min-h-0 relative">
       {showFlash && <div className="absolute inset-0 z-[60] pointer-events-none flash-overlay"></div>}
       
       {isOverclockActive && (
@@ -1592,6 +1596,32 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                         {isOverclockActive && <span className="ml-2 font-mono fs-micro uppercase tracking-[0.16em] text-emerald-300 animate-pulse">2x</span>}
                     </div>
                 </div>
+            </div>
+            {/* Mission state belongs on the HUD beside the rest of the run, not in a
+                document column down the side of the screen. */}
+            <div className="engine-mission-rail">
+                {[
+                    { key: 'heat', label: UI.heat, value: missionState.heat, color: '#fbbf24', suffix: '%' },
+                    { key: 'trust', label: UI.trust, value: missionState.trust, color: '#38bdf8', suffix: '' },
+                    { key: 'evidence', label: UI.evidence, value: missionState.evidence, color: '#34d399', suffix: '' }
+                ].map((meter) => (
+                    <div key={meter.key} className="engine-mission-meter">
+                        <span className="fs-micro uppercase tracking-[0.18em] text-slate-500">{meter.label}</span>
+                        <div className="hud-gauge" role="img" aria-label={`${meter.label} ${Math.round(meter.value)}${meter.suffix}`}>
+                            {Array.from({ length: MISSION_GAUGE_SEGMENTS }).map((_, index) => {
+                                const lit = index < Math.round((clamp(meter.value) / 100) * MISSION_GAUGE_SEGMENTS);
+                                return (
+                                    <span
+                                        key={index}
+                                        className={`hud-gauge-notch ${lit ? 'is-lit' : ''}`}
+                                        style={lit ? { backgroundColor: meter.color, boxShadow: `0 0 6px ${meter.color}66` } : undefined}
+                                    />
+                                );
+                            })}
+                        </div>
+                        <span className="fs-label tabular-nums text-slate-300">{Math.round(meter.value)}{meter.suffix}</span>
+                    </div>
+                ))}
             </div>
         </div>
         <div className="flex items-center gap-3 w-full">
@@ -1761,7 +1791,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         {/* my-auto rather than centring the parent: a short line sits in the middle
             of the panel, and once the sector's history has grown past the panel
             the margin collapses and it scrolls normally instead of clipping. */}
-        <div className={`whitespace-pre-wrap break-words my-auto pb-10 max-w-4xl mx-auto relative z-10 transition-all duration-300 ${typeCueActive ? 'opacity-0 translate-y-3' : 'opacity-100 translate-y-0'}`}>
+        <div className={`whitespace-pre-wrap break-words my-auto pb-10 max-w-5xl mx-auto relative z-10 transition-all duration-300 ${typeCueActive ? 'opacity-0 translate-y-3' : 'opacity-100 translate-y-0'}`}>
             {activeSegment.type === SegmentType.BREACH && <div className="text-emerald-400 fs-micro mb-4 font-bold uppercase tracking-[0.2em] border-b border-emerald-400/30 pb-2">{UI.breach_init}</div>}
             {activeSegment.type === SegmentType.DIALOG && <div className="text-sky-400 fs-micro mb-4 font-bold uppercase tracking-[0.2em] border-b border-sky-400/30 pb-2">{UI.dialog_init}</div>}
             {activeSegment.type === SegmentType.SIGNAL && <div className="text-amber-400 fs-micro mb-4 font-bold uppercase tracking-[0.2em] border-b border-amber-400/30 pb-2">{UI.signal_init}</div>}

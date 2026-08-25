@@ -249,8 +249,10 @@ test('a Pact clause changes the run it was taken for', async ({ page }) => {
   });
   await startCampaign(page);
 
-  // Hot Start opens the sector already hunted, against a default of 18%.
-  await expect(page.getByText('HEAT').locator('..')).toContainText('45%');
+  // Hot Start opens the sector already hunted, against a default of 18%. Heat
+  // reads from the HUD mission rail now: the shell column is gone during a run.
+  const heatMeter = page.locator('.engine-mission-meter').filter({ hasText: 'HEAT' });
+  await expect(heatMeter).toContainText('45%');
 });
 
 test('banking a completed sector adds it to Operator Record', async ({ page }) => {

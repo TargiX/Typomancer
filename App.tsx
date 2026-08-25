@@ -761,6 +761,12 @@ const App: React.FC = () => {
   const hubSkin = getGenreSkin('cyberpunk');
   /** World behind the glass — endings/sim readout only. */
   const worldSkin = getGenreSkin(selectedGenre);
+  /**
+   * The typing screen only. Menus and debriefs keep the shell column — a sidebar
+   * is fine on a menu; it is the game itself that should not look like a page.
+   */
+  const isTyping = gameState === GameState.PLAYING;
+
   const inSimulation =
     gameState === GameState.PLAYING ||
     gameState === GameState.LOADING ||
@@ -2016,7 +2022,7 @@ const App: React.FC = () => {
       )}
       
       {/* Sidebar — operator console */}
-      <aside className={`relative z-10 w-full md:w-1/3 lg:w-1/4 flex-col h-[30vh] md:h-screen bg-gradient-to-b from-[#0b101a] to-[#070a11] border-r border-white/[0.06] ${inSimulation ? 'hidden md:flex' : 'flex'}`}>
+      <aside className={`relative z-10 w-full md:w-1/3 lg:w-1/4 flex-col h-[30vh] md:h-screen bg-gradient-to-b from-[#0b101a] to-[#070a11] border-r border-white/[0.06] ${isTyping ? 'hidden' : inSimulation ? 'hidden md:flex' : 'flex'}`}>
         <div className="tex-grid absolute inset-0 opacity-40 pointer-events-none"></div>
         <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent pointer-events-none"></div>
 
@@ -2180,7 +2186,7 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      <div className={`relative z-10 w-full md:w-2/3 lg:w-3/4 flex flex-col md:h-screen overflow-hidden ${inSimulation ? 'h-[100dvh]' : ''}`}>
+      <div className={`relative z-10 flex flex-col md:h-screen overflow-hidden ${isTyping ? 'w-full' : 'w-full md:w-2/3 lg:w-3/4'} ${inSimulation ? 'h-[100dvh]' : ''}`}>
         <div className="absolute inset-0 opacity-5 pointer-events-none"
              style={{ backgroundImage: 'linear-gradient(#334155 1px, transparent 1px), linear-gradient(90deg, #334155 1px, transparent 1px)', backgroundSize: '40px 40px' }}>
         </div>
