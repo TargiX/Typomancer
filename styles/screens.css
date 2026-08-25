@@ -1440,3 +1440,17 @@
 .screens-pact-clause.is-active .screens-pact-clause-reward {
   color: #6ee7b7;
 }
+
+/* A Pact-taken run should be legible as one at a glance in the record. */
+.operator-record-pact {
+  display: inline-block;
+  margin-left: 7px;
+  padding: 1px 5px;
+  border: 1px solid rgba(251, 146, 60, 0.45);
+  font-size: 0.48rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  font-variant-numeric: tabular-nums;
+  color: #fdba74;
+  vertical-align: middle;
+}

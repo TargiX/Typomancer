@@ -1,5 +1,6 @@
 import type { StoryGenreId } from '../types.ts';
 import type { TypingFocus } from './gameRules.ts';
+import { normalizePact, type PactClauseId } from './pact.ts';
 
 export const PLAYER_PROGRESS_STORAGE_KEY = 'typomancerPlayerProgress';
 export const PLAYER_PROGRESS_VERSION = 1;
@@ -38,6 +39,12 @@ export interface RunRecord {
   characters: number;
   durationSeconds: number;
   focus: TypingFocus;
+  /**
+   * Clauses the player took on for this run. Recorded so a hard-won run reads as
+   * one afterwards: without it, a full-Pact clear and a default clear are the
+   * same row.
+   */
+  pact: PactClauseId[];
 }
 
 export interface PlayerProgress {
@@ -215,7 +222,8 @@ const normalizeRun = (value: unknown): RunRecord | null => {
     mistakes: Math.max(0, Math.round(finite(run.mistakes))),
     characters: Math.max(0, Math.round(finite(run.characters))),
     durationSeconds: Math.max(0, Math.round(finite(run.durationSeconds))),
-    focus: run.focus
+    focus: run.focus,
+    pact: normalizePact(run.pact)
   };
 };
 

@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { getPactRewardMultiplier } from '../services/pact';
 
 import type { Language, StoryGenreId } from '../types';
 import { getAdaptiveDifficulty, summarizeProgress, type PlayerProgress, type RunRecord } from '../services/playerProgress';
@@ -30,6 +31,7 @@ const COPY = {
     defeat: 'SEVERED',
     banked: 'BANKED',
     daily: 'DAILY',
+    pact: 'PACT',
     level: 'LVL',
     target: 'NEXT TRANSMISSION',
     targets: {
@@ -71,6 +73,7 @@ const COPY = {
     defeat: 'ОБРЫВ',
     banked: 'СОХРАНЕНО',
     daily: 'ДНЕВНОЙ',
+    pact: 'ПАКТ',
     level: 'УР',
     target: 'СЛЕДУЮЩАЯ ПЕРЕДАЧА',
     targets: {
@@ -212,7 +215,16 @@ const OperatorRecord: React.FC<OperatorRecordProps> = ({ language, progress, tra
               <article key={run.id} className={`operator-record-run is-${run.outcome}`}>
                 <time dateTime={run.endedAt}>{new Intl.DateTimeFormat(language, { month: 'short', day: 'numeric' }).format(new Date(run.endedAt))}</time>
                 <div>
-                  <strong>{GENRES[run.genre][language]}</strong>
+                  <strong>
+                    {GENRES[run.genre][language]}
+                    {/* A full-Pact clear and a default clear should not read as
+                        the same row. */}
+                    {run.pact.length > 0 && (
+                      <span className="operator-record-pact" title={run.pact.join(', ')}>
+                        {ui.pact} x{getPactRewardMultiplier(run.pact).toFixed(2)}
+                      </span>
+                    )}
+                  </strong>
                   <span>{run.daily ? `${ui.daily} · ` : ''}{ui.level} {run.level} · {run.outcome === 'victory' ? ui.victory : run.outcome === 'banked' ? ui.banked : ui.defeat}</span>
                 </div>
                 <b>{run.wpm} <small>WPM</small></b>

@@ -811,6 +811,12 @@ const App: React.FC = () => {
   );
 
   const activePact = useMemo(() => normalizePact(userProfile.pact), [userProfile.pact]);
+  /**
+   * The Pact the current run is being played under. Held in a ref and frozen at
+   * launch: toggling a clause mid-run must not rewrite what the finished run is
+   * recorded as having demanded.
+   */
+  const activePactRef = useRef<PactClauseId[]>([]);
   const openingMission = useMemo((): MissionState => (
       isPactClauseActive(activePact, 'hot_start')
           ? { ...DEFAULT_MISSION_STATE, heat: HOT_START_HEAT }
@@ -994,7 +1000,8 @@ const App: React.FC = () => {
       mistakes: stats.mistakes,
       characters: stats.characters,
       durationSeconds,
-      focus
+      focus,
+      pact: activePactRef.current
     })));
     const completedObservations = snapshotTypingObservations(runTrainingObservationsRef.current);
     runTrainingObservationsRef.current = [];
@@ -1241,6 +1248,7 @@ const App: React.FC = () => {
   const prepareSession = (dailySeed?: string) => {
       runRecordedRef.current = false;
       runStartedAtRef.current = Date.now();
+      activePactRef.current = activePact;
       setStoryLog([]);
       setTotalScore(0);
       totalScoreRef.current = 0;
@@ -1315,6 +1323,7 @@ const App: React.FC = () => {
       setStoryLog([]);
       runRecordedRef.current = false;
       runStartedAtRef.current = Date.now();
+      activePactRef.current = activePact;
       runTrainingObservationsRef.current = [];
       setFinalStats(null);
       setVictoryReport(null);
@@ -1703,7 +1712,8 @@ const App: React.FC = () => {
           mistakes,
           characters,
           durationSeconds,
-          focus
+          focus,
+          pact: activePactRef.current
       })));
 
       const completedObservations = snapshotTypingObservations(runTrainingObservationsRef.current);
@@ -1827,6 +1837,8 @@ const App: React.FC = () => {
 
   const buildComicData = () => {
     const isVictory = gameState === GameState.VICTORY;
+    // The Pact the run was played under, not whatever the menu shows now.
+    const runPact = activePactRef.current;
     const mission = (isVictory ? victoryReport?.mission : finalStats?.mission) || campaignState;
     const campaignTitle = genrePack.ui.mainTitle[language];
     const defeatScore = Math.max(totalScore, finalStats?.score || 0);
@@ -1848,6 +1860,7 @@ const App: React.FC = () => {
           { label: UI.wpm, value: String(Math.round(victoryReport.avgWpm)) },
           { label: UI.evidence, value: String(mission.evidence) },
           { label: UI.heat, value: `${Math.round(mission.heat)}%` },
+          ...(runPact.length ? [{ label: UI.pact_title, value: `x${getPactRewardMultiplier(runPact).toFixed(2)}` }] : []),
           { label: UI.score, value: String(totalScore) }
         ]
       };
@@ -1866,6 +1879,7 @@ const App: React.FC = () => {
         { label: UI.level, value: String(finalStats?.level || 1) },
         { label: UI.evidence, value: String(mission.evidence) },
         { label: UI.heat, value: `${Math.round(mission.heat)}%` },
+        ...(runPact.length ? [{ label: UI.pact_title, value: `x${getPactRewardMultiplier(runPact).toFixed(2)}` }] : []),
         { label: UI.score, value: String(defeatScore) }
       ]
     };
@@ -2502,9 +2516,17 @@ const App: React.FC = () => {
                             <div className="font-display text-3xl font-bold text-white tabular-nums leading-none">{Math.round(lastLevelReport.avgWpm)}</div>
                             <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.avg_speed} · {UI.wpm}</div>
                         </div>
-                        <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]">
-                             <div className="font-display text-3xl font-bold text-white tabular-nums leading-none">+{lastLevelReport.creditsEarned}</div>
-                             <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.credits}</div>
+                        <div className={`screens-stat-tile p-4 text-center border ${activePactRef.current.length ? 'border-amber-400/25 bg-amber-400/[0.03]' : 'border-white/[0.07] bg-white/[0.02]'}`}>
+                             <div className={`font-display text-3xl font-bold tabular-nums leading-none ${activePactRef.current.length ? 'text-amber-300' : 'text-white'}`}>+{lastLevelReport.creditsEarned}</div>
+                             <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">
+                                {UI.credits}
+                                {/* The payout and the reason for it, side by side. */}
+                                {activePactRef.current.length > 0 && (
+                                    <span className="ml-1 text-amber-300/90">
+                                        {UI.pact_title} x{getPactRewardMultiplier(activePactRef.current).toFixed(2)}
+                                    </span>
+                                )}
+                             </div>
                         </div>
                         <div className="screens-stat-tile p-4 text-center border border-amber-400/15 bg-amber-400/[0.025]">
                              <div className="font-display text-3xl font-bold text-amber-300 tabular-nums leading-none">{Math.round(lastLevelReport.mission?.heat ?? campaignState.heat)}%</div>

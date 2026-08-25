@@ -71,7 +71,8 @@ test('player journey connects calibration, Daily play, debrief, targeted practic
     mistakes: debrief.totalMistakes,
     characters: 448,
     durationSeconds: 330,
-    focus
+    focus,
+    pact: ['hunted']
   });
   assert.equal(progress.runs[0].daily, true);
 

@@ -195,6 +195,12 @@ test('a Pact clause changes the run it was taken for', async ({ page }) => {
 });
 
 test('banking a completed sector adds it to Operator Record', async ({ page }) => {
+  // Run it under a Pact so the record has something to distinguish it by.
+  await page.addInitScript(() => {
+    const raw = localStorage.getItem('narrativeFlowProfile');
+    const profile = raw ? JSON.parse(raw) : {};
+    localStorage.setItem('narrativeFlowProfile', JSON.stringify({ ...profile, pact: ['hot_start', 'hunted'] }));
+  });
   await startCampaign(page);
   const activeLine = page.locator('.engine-type-scroll span.relative.inline-block');
 
@@ -234,6 +240,13 @@ test('banking a completed sector adds it to Operator Record', async ({ page }) =
   await page.getByRole('button', { name: /OPERATOR RECORD/ }).click();
 
   await expect(page.locator('.operator-record-run')).toContainText('BANKED');
+  // A Pact run must read as one afterwards, or taking the hard road leaves no trace.
+  await expect(page.locator('.operator-record-run .operator-record-pact')).toContainText('x1.50');
+
+  const storedPact = await page.evaluate(
+    () => JSON.parse(localStorage.getItem('typomancerPlayerProgress') || '{}').runs?.[0]?.pact
+  );
+  expect(storedPact).toEqual(['hot_start', 'hunted']);
   await expect(page.locator('.operator-record-run')).toContainText('LVL 1');
 });
 

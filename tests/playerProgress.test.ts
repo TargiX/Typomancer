@@ -32,6 +32,7 @@ const makeRun = (overrides: Partial<RunRecord> = {}): RunRecord => ({
   characters: 400,
   durationSeconds: 300,
   focus: 'speed',
+  pact: [],
   ...overrides
 });
 
@@ -122,7 +123,8 @@ const runAt = (id: string, wpm: number, accuracy = 97): RunRecord => ({
   mistakes: 3,
   characters: 800,
   durationSeconds: 300,
-  focus: 'mastery'
+  focus: 'mastery',
+  pact: []
 });
 
 const progressWith = (calibrationWpm: number, runs: RunRecord[]): PlayerProgress => ({
