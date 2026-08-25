@@ -155,6 +155,45 @@ test('a clean line is never told what it missed', async ({ page }) => {
   await expect(reveal.locator('.engine-fork-missed-text')).toHaveCount(0);
 });
 
+test('the Pact raises the bar and pays for it', async ({ page }) => {
+  await page.goto('/');
+  const clauses = page.locator('.screens-pact-clause');
+  const reward = page.locator('.screens-pact-reward');
+
+  // Nothing is taken on by default: the Pact is entirely opt-in.
+  await expect(reward).toContainText('x1.00');
+  await expect(clauses.locator('.is-active')).toHaveCount(0);
+
+  const count = await clauses.count();
+  for (let i = 0; i < count; i += 1) await clauses.nth(i).click();
+
+  // Every clause pays, so a full Pact more than doubles the run.
+  await expect(reward).toContainText('x2.25');
+  const multiplier = Number((await reward.innerText()).match(/x([\d.]+)/)![1]);
+  expect(multiplier).toBeGreaterThan(2);
+
+  // Taking one back lowers the payout rather than sticking.
+  await clauses.first().click();
+  await expect(reward).not.toContainText('x2.25');
+
+  // And the choice survives a reload, because it is a standing commitment.
+  const before = await reward.innerText();
+  await page.reload();
+  await expect(page.locator('.screens-pact-reward')).toHaveText(before);
+});
+
+test('a Pact clause changes the run it was taken for', async ({ page }) => {
+  await page.addInitScript(() => {
+    const raw = localStorage.getItem('narrativeFlowProfile');
+    const profile = raw ? JSON.parse(raw) : {};
+    localStorage.setItem('narrativeFlowProfile', JSON.stringify({ ...profile, pact: ['hot_start'] }));
+  });
+  await startCampaign(page);
+
+  // Hot Start opens the sector already hunted, against a default of 18%.
+  await expect(page.getByText('HEAT').locator('..')).toContainText('45%');
+});
+
 test('banking a completed sector adds it to Operator Record', async ({ page }) => {
   await startCampaign(page);
   const activeLine = page.locator('.engine-type-scroll span.relative.inline-block');

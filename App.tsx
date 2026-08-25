@@ -1,11 +1,23 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback} from 'react';
 import { GameState, StorySegment, GameStats, StoryLogItem, UserProfile, Perk, GameModifiers, LevelReport, UserUpgrades, StoryMood, SegmentType, Language, MissionState, ComicFrame, StoryGenreId } from './types';
 import { generateStoryStart, generateCharacterProfile, generateLevelSummary, generateNextLevelStart } from './services/geminiService';
 import { GENRE_ORDER, getGenrePack } from './services/genreConfig';
 import { getGenreSkin, PerkGroupId, UpgradeId } from './services/genreSkin';
 import { DAILY_MAX_ATTEMPTS, DailyBrief, getDailyBrief, getDailyState, pickDailyItems, recordDailyAttempt } from './services/dailyMode';
-import { CAMPAIGN_SECTORS, getStealthLevel, getTypingAccuracy, getTypingFocus, summarizeSector } from './services/gameRules';
+import { CAMPAIGN_SECTORS, DEFAULT_BRANCH_THRESHOLDS, getStealthLevel, getTypingAccuracy, getTypingFocus, summarizeSector } from './services/gameRules';
 import { clampTraceSpeed, getComfortCreditMultiplier } from './services/riskReward';
+import {
+  EXACTING_AVERAGE_ACCURACY,
+  EXACTING_GOOD_ACCURACY,
+  HOT_START_HEAT,
+  HUNTED_TRACE_MULTIPLIER,
+  PACT_CLAUSES,
+  getPactRewardMultiplier,
+  isPactClauseActive,
+  normalizePact,
+  togglePactClause,
+  type PactClauseId
+} from './services/pact';
 import { RunCheckpoint, clearRunCheckpoint, loadRunCheckpoint, saveRunCheckpoint } from './services/runCheckpoint';
 import {
   createBalancedCalibration,
@@ -112,6 +124,19 @@ const TRANSLATIONS = {
         signal_lost: "SIGNAL LOST",
         mistake_one: "uncorrected mistake this sector",
         mistake_many: "uncorrected mistakes this sector",
+        pact_title: "THE PACT",
+        pact_reward: "REWARDS",
+        pact_hint: "Ask for a harder run and it pays for itself. Nothing here is required.",
+        pact_hot_start: "HOT START",
+        pact_hot_start_desc: "Every sector opens already hunted.",
+        pact_no_grace: "NO GRACE",
+        pact_no_grace_desc: "No typo is forgiven, whatever your difficulty preset.",
+        pact_exacting: "EXACTING",
+        pact_exacting_desc: "The clean branch demands near-perfect accuracy.",
+        pact_strict_case: "PERFECTIONIST",
+        pact_strict_case_desc: "Case-sensitive typing.",
+        pact_hunted: "HUNTED",
+        pact_hunted_desc: "The trace runs 35% faster all run.",
         focus_accuracy: "Slow down slightly and keep accuracy above 96%.",
         focus_consistency: "Hold one rhythm instead of sprinting between pauses.",
         focus_speed: "Accuracy is stable. Push your average speed by 5 WPM.",
@@ -220,6 +245,19 @@ const TRANSLATIONS = {
         signal_lost: "СИГНАЛ ПОТЕРЯН",
         mistake_one: "неисправленная ошибка за сектор",
         mistake_many: "неисправленных ошибок за сектор",
+        pact_title: "ПАКТ",
+        pact_reward: "К НАГРАДАМ",
+        pact_hint: "Попроси забег потруднее — он окупит себя. Ничего из этого не обязательно.",
+        pact_hot_start: "ГОРЯЧИЙ СТАРТ",
+        pact_hot_start_desc: "Каждый сектор начинается, когда тебя уже ищут.",
+        pact_no_grace: "БЕЗ ПОБЛАЖЕК",
+        pact_no_grace_desc: "Ни одна опечатка не прощается, какой бы ни был пресет.",
+        pact_exacting: "ТРЕБОВАТЕЛЬНОСТЬ",
+        pact_exacting_desc: "Чистая ветка требует почти безупречной точности.",
+        pact_strict_case: "ПЕРФЕКЦИОНИСТ",
+        pact_strict_case_desc: "Регистр имеет значение.",
+        pact_hunted: "ОХОТА",
+        pact_hunted_desc: "След бежит на 35% быстрее весь забег.",
         focus_accuracy: "Чуть сбавь темп и удерживай точность выше 96%.",
         focus_consistency: "Держи один ритм вместо рывков между паузами.",
         focus_speed: "Точность стабильна. Подними среднюю скорость на 5 СЛ/М.",
@@ -369,6 +407,42 @@ const DEFAULT_MODIFIERS: GameModifiers = {
     comboShieldCost: 0
 };
 
+/**
+ * Reads the stored profile synchronously, the way every other saved slice of this
+ * app is read. It used to load in an effect, which left a render in which state
+ * was still the default while the save effect was already running — see the note
+ * on the save effect.
+ */
+const loadStoredProfile = (): { profile: UserProfile; language?: Language; lastGenre?: StoryGenreId } => {
+    try {
+        const saved = localStorage.getItem('narrativeFlowProfile');
+        if (!saved) return { profile: DEFAULT_PROFILE };
+        const parsed = JSON.parse(saved);
+        const totalXp = Number.isFinite(parsed.totalXp) ? Math.max(0, parsed.totalXp) : 0;
+        // Perfectionist predates the Pact and was the same idea with one clause,
+        // so an existing player keeps it as the clause it always was.
+        const pact = parsed.pact === undefined && parsed.strictCase
+            ? (['strict_case'] as PactClauseId[])
+            : normalizePact(parsed.pact);
+        return {
+            profile: {
+                ...DEFAULT_PROFILE,
+                ...parsed,
+                totalXp,
+                stealthLevel: getStealthLevel(totalXp),
+                upgrades: { ...DEFAULT_PROFILE.upgrades, ...parsed.upgrades },
+                pact,
+                strictCase: pact.includes('strict_case')
+            },
+            language: parsed.language,
+            lastGenre: GENRE_ORDER.includes(parsed.lastGenre) ? parsed.lastGenre : undefined
+        };
+    } catch (e) {
+        console.error("Profile load fail", e);
+        return { profile: DEFAULT_PROFILE };
+    }
+};
+
 const DEFAULT_MISSION_STATE: MissionState = {
     heat: 18,
     trust: 44,
@@ -392,11 +466,11 @@ const DEFAULT_PROFILE: UserProfile = {
         patternScanner: 0
     },
     language: 'en',
-    strictCase: false
+    strictCase: false,
+    pact: []
 };
 
 // Perfectionist (strict-case) mode grants +30% XP as the "ultimate accuracy" reward.
-const STRICT_CASE_XP_MULTIPLIER = 1.3;
 
 const META_UPGRADES: Record<UpgradeId, { baseCost: number; effectPerLevel: number; maxLevel: number }> = {
     synapticWeave: { baseCost: 100, effectPerLevel: 2, maxLevel: 10 },
@@ -623,9 +697,10 @@ const App: React.FC = () => {
   const [currentLevel, setCurrentLevel] = useState(1);
   const [currentHealth, setCurrentHealth] = useState(20);
   const [musicActive, setMusicActive] = useState(() => audioEngine.isEnabled());
-  const [language, setLanguage] = useState<Language>('en'); // Global Language State
+  const [storedBoot] = useState(loadStoredProfile);
+  const [language, setLanguage] = useState<Language>(storedBoot.language ?? 'en'); // Global Language State
   
-  const [userProfile, setUserProfile] = useState<UserProfile>(DEFAULT_PROFILE);
+  const [userProfile, setUserProfile] = useState<UserProfile>(storedBoot.profile);
   const [activePerks, setActivePerks] = useState<Perk[]>([]);
   const [currentModifiers, setCurrentModifiers] = useState<GameModifiers>(DEFAULT_MODIFIERS);
   const [offeredPerks, setOfferedPerks] = useState<Perk[]>([]);
@@ -639,7 +714,7 @@ const App: React.FC = () => {
   const [comicFrames, setComicFrames] = useState<ComicFrame[]>([]);
   const [showComic, setShowComic] = useState(false);
   const [deathSequenceActive, setDeathSequenceActive] = useState(false);
-  const [selectedGenre, setSelectedGenre] = useState<StoryGenreId>('cyberpunk');
+  const [selectedGenre, setSelectedGenre] = useState<StoryGenreId>(storedBoot.lastGenre ?? 'cyberpunk');
   const [dailyState, setDailyState] = useState(() => getDailyState(dailyBrief.dailyId));
   const [isDailyRun, setIsDailyRun] = useState(false);
   const [currentDailyId, setCurrentDailyId] = useState<string | null>(null);
@@ -649,7 +724,7 @@ const App: React.FC = () => {
   const [typingTraining, setTypingTraining] = useState(() => loadTypingTraining());
   const [incomingChallenge] = useState(() => parseChallenge(typeof location !== 'undefined' ? location.search : ''));
   const [challengeShareStatus, setChallengeShareStatus] = useState(false);
-  const runGenreRef = useRef<StoryGenreId>('cyberpunk');
+  const runGenreRef = useRef<StoryGenreId>(storedBoot.lastGenre ?? 'cyberpunk');
   const isDailyRunRef = useRef(false);
   const currentDailyIdRef = useRef<string | null>(null);
   const activeDailyBriefRef = useRef<DailyBrief>(dailyBrief);
@@ -735,6 +810,26 @@ const App: React.FC = () => {
     [typingTraining]
   );
 
+  const activePact = useMemo(() => normalizePact(userProfile.pact), [userProfile.pact]);
+  const openingMission = useMemo((): MissionState => (
+      isPactClauseActive(activePact, 'hot_start')
+          ? { ...DEFAULT_MISSION_STATE, heat: HOT_START_HEAT }
+          : DEFAULT_MISSION_STATE
+  ), [activePact]);
+  const pactRewardMultiplier = useMemo(() => getPactRewardMultiplier(activePact), [activePact]);
+  const branchThresholds = useMemo(() => (
+      isPactClauseActive(activePact, 'exacting')
+          ? { good: EXACTING_GOOD_ACCURACY, average: EXACTING_AVERAGE_ACCURACY, forgiven: 0 }
+          : DEFAULT_BRANCH_THRESHOLDS
+  ), [activePact]);
+
+  const handleTogglePactClause = useCallback((id: PactClauseId) => {
+      setUserProfile(prev => {
+          const pact = togglePactClause(normalizePact(prev.pact), id);
+          return { ...prev, pact, strictCase: pact.includes('strict_case') };
+      });
+  }, []);
+
   // The pace the game measures the player at, tracking real runs rather than the
   // one calibration prompt they typed on their first day.
   const effectiveBaseline = useMemo(() => getEffectiveBaseline(playerProgress), [playerProgress]);
@@ -766,28 +861,13 @@ const App: React.FC = () => {
   }, [incomingChallenge]);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('narrativeFlowProfile');
-      if (saved) {
-            const parsed = JSON.parse(saved);
-            const totalXp = Number.isFinite(parsed.totalXp) ? Math.max(0, parsed.totalXp) : 0;
-            setUserProfile({ 
-                ...DEFAULT_PROFILE, 
-                ...parsed, 
-                totalXp,
-                stealthLevel: getStealthLevel(totalXp),
-                upgrades: { ...DEFAULT_PROFILE.upgrades, ...parsed.upgrades }
-            });
-            if (parsed.language) setLanguage(parsed.language);
-            if (parsed.lastGenre && GENRE_ORDER.includes(parsed.lastGenre)) {
-                setSelectedGenre(parsed.lastGenre);
-                runGenreRef.current = parsed.lastGenre;
-            }
-      }
-    } catch (e) { console.error("Profile load fail", e); }
-  }, []);
-
-  useEffect(() => {
+    // The profile is read synchronously into state, so by the time this runs it
+    // is always the real one. It used to load in an effect, and this save fired
+    // in the same commit while state was still the default — clobbering the
+    // stored profile. Production self-healed on the next render; under
+    // StrictMode's double invoke the second load read the clobbered copy and the
+    // whole profile was gone, so dev and tests could not be trusted with
+    // anything persisted.
     const profileToSave = { ...userProfile, language, lastGenre: selectedGenre };
     try {
       localStorage.setItem('narrativeFlowProfile', JSON.stringify(profileToSave));
@@ -962,7 +1042,11 @@ const App: React.FC = () => {
       mods.breachRewardMultiplier += (u.patternScanner * META_UPGRADES.patternScanner.effectPerLevel);
       mods.evidenceMultiplier += (u.patternScanner * META_UPGRADES.patternScanner.effectPerLevel);
       mods.traceSpeedMultiplier *= adaptiveDifficulty.traceSpeedMultiplier;
-      if (!userProfile.strictCase) mods.mistakeGraceCount += adaptiveDifficulty.mistakeGraceCount;
+      if (!userProfile.strictCase && !isPactClauseActive(activePact, 'no_grace')) {
+          mods.mistakeGraceCount += adaptiveDifficulty.mistakeGraceCount;
+      }
+      if (isPactClauseActive(activePact, 'no_grace')) mods.mistakeGraceCount = 0;
+      if (isPactClauseActive(activePact, 'hunted')) mods.traceSpeedMultiplier *= HUNTED_TRACE_MULTIPLIER;
       // Permanent trace easing is bought, so it is priced: the calm build keeps
       // the game quieter for good and earns a quarter less for it. The difficulty
       // preset is exempt — it is fitted to a measured pace, not purchased.
@@ -975,7 +1059,7 @@ const App: React.FC = () => {
       // nothing: a maxed player faced a tracer at a fifth of its intended pace.
       mods.traceSpeedMultiplier = clampTraceSpeed(mods.traceSpeedMultiplier);
       setCurrentModifiers(mods);
-  }, [activePerks, adaptiveDifficulty, userProfile.strictCase, userProfile.upgrades]);
+  }, [activePerks, activePact, adaptiveDifficulty, userProfile.strictCase, userProfile.upgrades]);
 
   useEffect(() => {
     return () => {
@@ -1059,7 +1143,7 @@ const App: React.FC = () => {
   };
 
   const handleToggleStrictCase = () => {
-      setUserProfile(prev => ({ ...prev, strictCase: !prev.strictCase }));
+      handleTogglePactClause('strict_case');
   };
 
   const generatePerkObject = (def: typeof PERK_DEFINITIONS[number], tierIndex: number, _genreOverride?: StoryGenreId): Perk => {
@@ -1169,7 +1253,7 @@ const App: React.FC = () => {
           window.clearTimeout(deathSequenceTimerRef.current);
           deathSequenceTimerRef.current = null;
       }
-      setCampaignState(DEFAULT_MISSION_STATE);
+      setCampaignState(openingMission);
       setNarrativeContext("");
       setCharacterDesc("");
       setActivePerks([]); 
@@ -1464,10 +1548,11 @@ const App: React.FC = () => {
       ];
       const sectorSummary = summarizeSector(allRounds);
       const { avgWpm, totalMistakes, score: levelScore, accuracy, consistency } = sectorSummary;
-      const strictBonus = userProfile.strictCase ? STRICT_CASE_XP_MULTIPLIER : 1;
-      const xp = Math.floor(levelScore * (1 + (finalRoundStats.level * 0.1)) * strictBonus);
+      // One multiplier for both currencies: the Pact is the whole reason to take
+      // a harder run, so it has to pay on every axis the player is tracking.
+      const xp = Math.floor(levelScore * (1 + (finalRoundStats.level * 0.1)) * pactRewardMultiplier);
       setLevelXpGained(xp);
-      const creditsEarned = finalRoundStats.credits || 0;
+      const creditsEarned = Math.floor((finalRoundStats.credits || 0) * pactRewardMultiplier);
       const mission = finalMission || finalRoundStats.mission || campaignState;
       setCampaignState(mission);
       setUserProfile(prev => {
@@ -2175,21 +2260,40 @@ const App: React.FC = () => {
                         </button>
                     </div>
 
-                    <button
-                        type="button"
-                        onClick={handleToggleStrictCase}
-                        aria-pressed={!!userProfile.strictCase}
-                        className="mx-auto flex items-center gap-3 rounded-lg border bg-white/[0.02] px-4 py-2 transition-colors"
-                        style={{ borderColor: userProfile.strictCase ? 'rgba(251,191,36,0.4)' : 'rgba(255,255,255,0.1)' }}
-                    >
-                        <span className={`relative h-4 w-7 rounded-full transition-colors ${userProfile.strictCase ? 'bg-amber-400/80' : 'bg-white/15'}`}>
-                            <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all duration-200 ${userProfile.strictCase ? 'left-3.5' : 'left-0.5'}`}></span>
-                        </span>
-                        <span className="text-left">
-                            <span className={`block text-[11px] font-bold uppercase tracking-[0.16em] ${userProfile.strictCase ? 'text-amber-300' : 'text-slate-400'}`}>{UI.perfectionist}</span>
-                            <span className="block text-[9px] text-slate-500 tracking-wide">{UI.perfectionist_desc}</span>
-                        </span>
-                    </button>
+                    {/* THE PACT — the only progression that raises the bar instead of
+                        lowering it. Perfectionist used to sit here alone; it is now
+                        one clause among five. */}
+                    <div className="screens-pact mx-auto">
+                        <div className="flex items-baseline justify-between gap-3">
+                            <span className="screens-pact-title">{UI.pact_title}</span>
+                            <span className={`screens-pact-reward ${pactRewardMultiplier > 1 ? 'is-active' : ''}`}>
+                                x{pactRewardMultiplier.toFixed(2)} {UI.pact_reward}
+                            </span>
+                        </div>
+                        <p className="screens-pact-hint">{UI.pact_hint}</p>
+                        <div className="screens-pact-clauses">
+                            {PACT_CLAUSES.map((clause) => {
+                                const active = isPactClauseActive(activePact, clause.id);
+                                return (
+                                    <button
+                                        key={clause.id}
+                                        type="button"
+                                        onClick={() => handleTogglePactClause(clause.id)}
+                                        aria-pressed={active}
+                                        className={`screens-pact-clause ${active ? 'is-active' : ''}`}
+                                    >
+                                        <span className="screens-pact-clause-name">
+                                            {UI[`pact_${clause.id}` as keyof typeof UI]}
+                                        </span>
+                                        <span className="screens-pact-clause-desc">
+                                            {UI[`pact_${clause.id}_desc` as keyof typeof UI]}
+                                        </span>
+                                        <span className="screens-pact-clause-reward">+{Math.round(clause.reward * 100)}%</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
 
                     <p className="text-[11px] leading-relaxed text-slate-500 max-w-sm mx-auto">
                         <span className="text-emerald-400/80">◆</span> {UI.accuracy_hook}
@@ -2475,6 +2579,7 @@ const App: React.FC = () => {
                     deterministicStory={isDailyRun}
                     baselineWpm={effectiveBaseline.wpm}
                     trainingFocus={trainingFocusTokens}
+                    branchThresholds={branchThresholds}
                     onTypingObservation={(observation) => runTrainingObservationsRef.current.push(observation)}
                 />
             )}

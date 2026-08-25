@@ -70,16 +70,33 @@ export const GOOD_BRANCH_ACCURACY = 98.5;
 export const AVERAGE_BRANCH_ACCURACY = 96;
 export const FORGIVEN_ERRORS_PER_LINE = 1;
 
-export const getBranchPerformance = (mistakes: number, characters: number): BranchPerformance => {
+export interface BranchThresholds {
+  good: number;
+  average: number;
+  /** Errors that never cost the good branch. The Exacting clause spends this. */
+  forgiven: number;
+}
+
+export const DEFAULT_BRANCH_THRESHOLDS: BranchThresholds = {
+  good: GOOD_BRANCH_ACCURACY,
+  average: AVERAGE_BRANCH_ACCURACY,
+  forgiven: FORGIVEN_ERRORS_PER_LINE
+};
+
+export const getBranchPerformance = (
+  mistakes: number,
+  characters: number,
+  thresholds: BranchThresholds = DEFAULT_BRANCH_THRESHOLDS
+): BranchPerformance => {
   const errors = Math.max(0, mistakes);
-  if (errors <= FORGIVEN_ERRORS_PER_LINE) return 'good';
+  if (errors <= thresholds.forgiven) return 'good';
   // Accuracy is undefined without a line to measure against, and getTypingAccuracy
   // reports a perfect 100 for it — which would turn any error count into a clean
   // branch. Past the flat allowance, the errors are real and the excuse is not.
   if (characters <= 0) return 'bad';
   const accuracy = getTypingAccuracy(errors, characters);
-  if (accuracy >= GOOD_BRANCH_ACCURACY) return 'good';
-  if (accuracy >= AVERAGE_BRANCH_ACCURACY) return 'average';
+  if (accuracy >= thresholds.good) return 'good';
+  if (accuracy >= thresholds.average) return 'average';
   return 'bad';
 };
 

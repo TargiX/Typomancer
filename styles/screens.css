@@ -1342,3 +1342,101 @@
 .screens-accuracy-hero--consistency .screens-accuracy-bar-fill { background: #a78bfa; }
 .screens-accuracy-hero--speed .screens-accuracy-bar-fill { background: #38bdf8; }
 .screens-accuracy-hero--mastery .screens-accuracy-bar-fill { background: #34d399; }
+
+/* THE PACT — opt-in difficulty, the one progression axis that raises the bar. */
+.screens-pact {
+  width: 100%;
+  max-width: 34rem;
+  padding: 14px 16px;
+  border: 1px solid rgba(251, 146, 60, 0.22);
+  background: rgba(251, 146, 60, 0.03);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  text-align: left;
+}
+
+.screens-pact-title {
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  color: #fdba74;
+}
+
+.screens-pact-reward {
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  font-variant-numeric: tabular-nums;
+  color: rgba(148, 163, 184, 0.7);
+}
+
+.screens-pact-reward.is-active {
+  color: #6ee7b7;
+}
+
+.screens-pact-hint {
+  margin-top: 4px;
+  font-size: 0.64rem;
+  line-height: 1.45;
+  color: rgba(148, 163, 184, 0.85);
+}
+
+.screens-pact-clauses {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.screens-pact-clause {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "name reward" "desc reward";
+  align-items: center;
+  gap: 0 10px;
+  padding: 6px 9px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(255, 255, 255, 0.015);
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.screens-pact-clause:hover,
+.screens-pact-clause:focus-visible {
+  border-color: rgba(251, 146, 60, 0.4);
+  outline: none;
+}
+
+.screens-pact-clause.is-active {
+  border-color: rgba(251, 146, 60, 0.55);
+  background: rgba(251, 146, 60, 0.07);
+}
+
+.screens-pact-clause-name {
+  grid-area: name;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: rgba(148, 163, 184, 0.9);
+}
+
+.screens-pact-clause.is-active .screens-pact-clause-name {
+  color: #fdba74;
+}
+
+.screens-pact-clause-desc {
+  grid-area: desc;
+  font-size: 0.58rem;
+  line-height: 1.4;
+  color: rgba(148, 163, 184, 0.6);
+}
+
+.screens-pact-clause-reward {
+  grid-area: reward;
+  font-size: 0.62rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: rgba(148, 163, 184, 0.5);
+}
+
+.screens-pact-clause.is-active .screens-pact-clause-reward {
+  color: #6ee7b7;
+}

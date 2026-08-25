@@ -1,3 +1,5 @@
+import type { PactClauseId } from './services/pact.ts';
+
 export type Language = 'en' | 'ru';
 
 export enum GameState {
@@ -208,4 +210,6 @@ export interface UserProfile {
   upgrades: UserUpgrades;
   language?: Language;
   strictCase?: boolean;
+  /** Difficulty the player asked for, in exchange for a bigger payout. */
+  pact?: PactClauseId[];
 }

@@ -27,13 +27,15 @@ import {
   DECISION_ROUND,
   SECTOR_ROUNDS,
   calculateSegmentCredits,
+  DEFAULT_BRANCH_THRESHOLDS,
   calculateSegmentScore,
   getBranchPerformance,
   getComboMultiplier,
   getCursorSkillStack,
   getReadyActiveSkills,
   getTypingAccuracy,
-  isLowHealth
+  isLowHealth,
+  type BranchThresholds
 } from '../services/gameRules';
 import { FORK_REVEAL_MS, buildForkReveal, describeFork, type ForkReveal } from '../services/forkReveal';
 import { appendConsequence, describeDecisionBeat, describeSegmentBeat } from '../services/missionLog';
@@ -108,6 +110,8 @@ interface TypingEngineProps {
   baselineWpm?: number;
   /** Letter pairs this player fumbles, seeded into the generated prose. */
   trainingFocus?: string[];
+  /** Accuracy demanded for each branch; the Exacting Pact clause tightens these. */
+  branchThresholds?: BranchThresholds;
 }
 
 const TYPE_CUE_MS = 1500;
@@ -176,7 +180,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     deterministicStory = false,
     onTypingObservation,
     baselineWpm,
-    trainingFocus
+    trainingFocus,
+    branchThresholds = DEFAULT_BRANCH_THRESHOLDS
 }) => {
   const [history, setHistory] = useState<StorySegment[]>([]);
   const [activeSegment, setActiveSegment] = useState<StorySegment>(initialSegment);
@@ -1253,7 +1258,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     }
     if (healthChange > 0) setHealth(h => Math.min(modifiers.maxHealth, h + healthChange));
 
-    const performanceType = getBranchPerformance(totalErrors, activeSegment.text.length);
+    const performanceType = getBranchPerformance(totalErrors, activeSegment.text.length, branchThresholds);
     const nextSeg: StorySegment = performanceType === 'good'
         ? branch.goodPath
         : performanceType === 'average'
@@ -1287,7 +1292,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       const { totalErrors } = getErrorReport();
       // The closing line is judged by the same rule as every other line; it used
       // to run its own thresholds and could disagree with the rest of the sector.
-      const performanceType = getBranchPerformance(totalErrors, activeSegment.text.length);
+      const performanceType = getBranchPerformance(totalErrors, activeSegment.text.length, branchThresholds);
       const score = calculateSegmentScore({
         errors: totalErrors,
         type: activeSegment.type,
