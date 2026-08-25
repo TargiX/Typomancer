@@ -64,6 +64,7 @@ const TRANSLATIONS = {
         audio_active: "AUDIO ACTIVE",
         audio_muted: "AUDIO MUTED",
         empty_log: "Mission log is empty.\nAwaiting system initialization...",
+        mission_log: "MISSION LOG",
         speed: "SPEED",
         system_online: "SYSTEM ONLINE",
         main_title: "Operation Black Ledger",
@@ -185,6 +186,7 @@ const TRANSLATIONS = {
         audio_active: "ЗВУК ВКЛ",
         audio_muted: "ЗВУК ВЫКЛ",
         empty_log: "Журнал миссии пуст.\nОжидание инициализации системы...",
+        mission_log: "ЖУРНАЛ МИССИИ",
         speed: "СКОРОСТЬ",
         system_online: "СИСТЕМА В СЕТИ",
         main_title: "Операция Черный Реестр",
@@ -702,6 +704,7 @@ const App: React.FC = () => {
   const [musicActive, setMusicActive] = useState(() => audioEngine.isEnabled());
   const [storedBoot] = useState(loadStoredProfile);
   const [pactOpen, setPactOpen] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
   const [language, setLanguage] = useState<Language>(storedBoot.language ?? 'en'); // Global Language State
   
   const [userProfile, setUserProfile] = useState<UserProfile>(storedBoot.profile);
@@ -2021,172 +2024,43 @@ const App: React.FC = () => {
         </div>
       )}
       
-      {/* Sidebar — operator console */}
-      <aside className={`relative z-10 w-full md:w-1/3 lg:w-1/4 flex-col h-[30vh] md:h-screen bg-gradient-to-b from-[#0b101a] to-[#070a11] border-r border-white/[0.06] ${isTyping ? 'hidden' : inSimulation ? 'hidden md:flex' : 'flex'}`}>
-        <div className="tex-grid absolute inset-0 opacity-40 pointer-events-none"></div>
-        <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent pointer-events-none"></div>
-
-        {/* Header + status */}
-        <div className="relative z-10 px-5 pt-5 pb-4 space-y-4">
-          {/* Wordmark */}
+      {/* Status strip — what the shell column was actually for, minus the parts
+          other screens already show. No document column: the wordmark repeats the
+          title on screen, the mission meters live on the run HUD and in the
+          debrief tiles, and the log moved into the debrief where reading a feed
+          makes sense. */}
+      {!isTyping && (
+        <div className="hud-strip">
           <div className="flex items-center gap-3">
-            <div className="relative h-9 w-9 flex items-center justify-center rounded-md bg-emerald-400/10 border border-emerald-400/25 shadow-[0_0_22px_rgba(52,211,153,0.18)]">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="text-emerald-400">
-                <path d="M2 13h4l2.5-7 4 15 2.5-8H22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
-            <div className="min-w-0">
-              <h1 className="font-display fs-lead font-bold tracking-[0.12em] text-white leading-none truncate">{UI.game_title}</h1>
-              <p className="mt-1.5 fs-micro uppercase tracking-[0.22em] text-slate-500 truncate">
-                {inSimulation ? genrePack.ui.mainTitle[language] : UI.subtitle}
-              </p>
-            </div>
+            <span className="fs-micro uppercase tracking-[0.22em] text-slate-500">{UI.wallet}</span>
+            <span className="font-display fs-lead font-bold tabular-nums leading-none text-white">
+              {Math.floor(userProfile.credits || 0)}<span className="fs-body text-emerald-400 ml-1">{UI.currency_suffix}</span>
+            </span>
           </div>
-
-          {inSimulation && (
-            <div
-              className="inline-flex items-center gap-2 self-start px-2.5 py-1 rounded-full border fs-micro font-bold tracking-widest uppercase"
-              style={{ borderColor: `${genrePack.accent}66`, color: genrePack.accent, background: `${genrePack.accent}14` }}
-              title={language === 'ru' ? 'Активная симуляция за стеклом пульта' : 'Active simulation behind the operator glass'}
-            >
-              <GenreIcon genre={selectedGenre} className="h-3.5 w-3.5" />
-              <span>{UI.sim_badge}</span>
-              <span className="opacity-70">//</span>
-              <span>{genrePack.name[language]}</span>
-            </div>
-          )}
-
-          {/* Status panel */}
-          <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] space-y-4">
-            <div className="flex items-end justify-between">
-              <div>
-                <div className="fs-micro uppercase tracking-[0.22em] text-slate-500">{UI.wallet}</div>
-                <div className="font-display mt-1 text-2xl font-bold tabular-nums text-white leading-none">
-                  {Math.floor(userProfile.credits || 0)}<span className="fs-body text-emerald-400 ml-1 align-baseline">{UI.currency_suffix}</span>
-                </div>
-              </div>
-              {gameState === GameState.PLAYING && (
-                <div className="text-right">
-                  <div className="fs-micro uppercase tracking-[0.22em] text-slate-500">{UI.score}</div>
-                  <div className="font-display mt-1 fs-lead font-bold tabular-nums text-emerald-400 leading-none">{totalScore}</div>
-                </div>
-              )}
-            </div>
-
-            <div className="h-px bg-white/[0.06]"></div>
-
-            <div className="space-y-2.5">
-              {[
-                { key: 'heat', label: UI.heat, val: campaignState.heat, color: '#fbbf24', suffix: '%' },
-                { key: 'trust', label: UI.trust, val: campaignState.trust, color: '#38bdf8', suffix: '' },
-                { key: 'evidence', label: UI.evidence, val: campaignState.evidence, color: '#34d399', suffix: '' }
-              ].map(m => (
-                <div key={m.key} className="flex items-center gap-3">
-                  <span className="w-[68px] shrink-0 fs-micro uppercase tracking-[0.16em] text-slate-500">{m.label}</span>
-                  {/* Notches rather than a rounded progress bar: a filled rounded
-                      bar is what a web page shows while it loads something, a
-                      segmented gauge reads as an instrument — and the value
-                      becomes countable at a glance. */}
-                  <div className="hud-gauge flex-1" role="img" aria-label={`${m.label} ${Math.round(m.val)}${m.suffix}`}>
-                    {Array.from({ length: HUD_GAUGE_SEGMENTS }).map((_, index) => {
-                      const lit = index < Math.round((Math.min(100, Math.max(0, m.val)) / 100) * HUD_GAUGE_SEGMENTS);
-                      return (
-                        <span
-                          key={index}
-                          className={`hud-gauge-notch ${lit ? 'is-lit' : ''}`}
-                          style={lit ? { backgroundColor: m.color, boxShadow: `0 0 6px ${m.color}66` } : undefined}
-                        />
-                      );
-                    })}
-                  </div>
-                  <span className="w-9 text-right fs-label tabular-nums text-slate-300">{Math.round(m.val)}{m.suffix}</span>
-                </div>
-              ))}
-            </div>
+          <div className="flex flex-1 flex-wrap items-center gap-1.5">
+            {activePerks.map((p, i) => (
+              <span key={i} title={p.description} className={`fs-micro px-2 py-0.5 border cursor-help tracking-wide ${
+                p.tier === 3 ? 'border-amber-400/40 text-amber-300 bg-amber-400/10' :
+                p.tier === 2 ? 'border-violet-400/40 text-violet-300 bg-violet-400/10' :
+                'border-white/10 text-slate-300 bg-white/[0.03]'
+              }`}>
+                {p.name}
+              </span>
+            ))}
           </div>
-
-          {activePerks.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {activePerks.map((p, i) => (
-                <span key={i} title={p.description} className={`fs-micro px-2 py-0.5 rounded-full border cursor-help tracking-wide ${
-                  p.tier === 3 ? 'border-amber-400/40 text-amber-300 bg-amber-400/10' :
-                  p.tier === 2 ? 'border-violet-400/40 text-violet-300 bg-violet-400/10' :
-                  'border-white/10 text-slate-300 bg-white/[0.03]'
-                }`}>
-                  {p.name}
-                </span>
-              ))}
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <button onClick={handleToggleMusic} className="hud-strip-button">
+              {musicActive ? stripLeadingGlyph(UI.audio_active) : UI.audio_muted}
+            </button>
+            <button onClick={handleToggleLanguage} className="hud-strip-button">
+              {language === 'en' ? 'RU' : 'EN'}
+            </button>
+          </div>
         </div>
+      )}
 
-        {/* Mission log */}
-        <div className="relative z-10 flex-1 min-h-0 overflow-y-auto px-5 pb-4">
-          <div className="fs-micro uppercase tracking-[0.22em] text-slate-600 mb-3 sticky top-0 bg-gradient-to-b from-[#0b101a] to-transparent pb-1">{language === 'ru' ? 'Журнал миссии' : 'Mission Log'}</div>
-          {storyLog.length === 0 ? (
-            <div className="text-slate-600 fs-label italic text-center mt-8 whitespace-pre-wrap">{UI.empty_log}</div>
-          ) : (
-            <div className="relative space-y-5 pl-1">
-              <div className="absolute left-[11px] top-1 bottom-1 w-px bg-white/[0.07]"></div>
-              {storyLog.map((log, idx) => (
-                <div key={idx} className="relative flex items-start gap-3 animate-fade-in-up">
-                  {log.performance !== 'neutral' ? (
-                    <div className={`relative flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center fs-micro font-bold tabular-nums z-10 bg-[#0b101a] ring-1 ${
-                      log.performance === 'good' ? 'ring-emerald-500/60 text-emerald-400' :
-                      log.performance === 'average' ? 'ring-amber-500/60 text-amber-400' :
-                      'ring-rose-500/60 text-rose-400'
-                    }`}>
-                      {log.score}
-                    </div>
-                  ) : (
-                    <div className="flex-shrink-0 w-6 h-6 rounded-full ring-1 ring-white/10 bg-[#0b101a] z-10 flex items-center justify-center">
-                      <span className="block w-1.5 h-1.5 bg-emerald-400/70 rounded-full"></span>
-                    </div>
-                  )}
-                  <div className={`fs-body leading-relaxed py-0.5 ${
-                    log.performance === 'neutral' ? 'text-emerald-300/70 italic' :
-                    log.performance === 'bad' ? 'text-rose-200/90' : 'text-slate-300'
-                  }`}>
-                    {log.text}
-                    {log.wpm > 0 && (
-                      <span className="block fs-micro text-slate-600 mt-1 tracking-wide">{UI.speed}: <span className="tabular-nums">{log.wpm}</span> {UI.wpm}</span>
-                    )}
-                    {log.meta && (
-                      <span className="block fs-micro text-emerald-500/60 mt-1">{log.meta}</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          <div ref={logEndRef} />
-        </div>
 
-        {/* Footer controls */}
-        <div className="relative z-10 px-5 py-3 border-t border-white/[0.06] flex items-center gap-2">
-          <button
-            onClick={handleToggleMusic}
-            className={`flex-1 h-8 fs-micro font-bold uppercase tracking-[0.16em] rounded-lg border transition-all flex items-center justify-center gap-2 ${musicActive ? 'border-emerald-400/40 text-emerald-300 bg-emerald-400/10' : 'border-white/10 text-slate-500 bg-white/[0.02] hover:text-slate-300'}`}
-          >
-            <span>{musicActive ? stripLeadingGlyph(UI.audio_active) : UI.audio_muted}</span>
-            {musicActive && (
-              <div className="flex items-end gap-0.5 h-3">
-                <div className="w-0.5 bg-emerald-400 animate-[pulse_0.4s_infinite]"></div>
-                <div className="w-0.5 bg-emerald-400 animate-[pulse_0.6s_infinite]"></div>
-                <div className="w-0.5 bg-emerald-400 animate-[pulse_0.3s_infinite]"></div>
-              </div>
-            )}
-          </button>
-          <button
-            onClick={handleToggleLanguage}
-            className="h-8 px-3 fs-micro font-bold rounded-lg border border-white/10 bg-white/[0.02] text-slate-400 hover:text-white transition-colors"
-          >
-            {language === 'en' ? 'RU' : 'EN'}
-          </button>
-        </div>
-      </aside>
-
-      <div className={`relative z-10 flex flex-col md:h-screen overflow-hidden ${isTyping ? 'w-full' : 'w-full md:w-2/3 lg:w-3/4'} ${inSimulation ? 'h-[100dvh]' : ''}`}>
+      <div className={`relative z-10 flex w-full flex-col md:h-screen overflow-hidden ${isTyping ? '' : 'pt-10'} ${inSimulation ? 'h-[100dvh]' : ''}`}>
         <div className="absolute inset-0 opacity-5 pointer-events-none"
              style={{ backgroundImage: 'linear-gradient(#334155 1px, transparent 1px), linear-gradient(90deg, #334155 1px, transparent 1px)', backgroundSize: '40px 40px' }}>
         </div>
@@ -2565,6 +2439,37 @@ const App: React.FC = () => {
                             <div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.consistency}</div>
                         </div>
                     </div>
+                    {/* The mission log used to live in the shell column, where it was
+                        a feed nobody reads while typing. Between sectors it is the
+                        right thing to look at, so it lands here instead. */}
+                    {storyLog.length > 0 && (
+                        <div className="screens-cut-card border border-white/[0.06] bg-black/20 p-4 mb-6">
+                            <button
+                                type="button"
+                                onClick={() => setLogOpen(open => !open)}
+                                aria-expanded={logOpen}
+                                className="flex w-full items-center justify-between gap-3 text-left"
+                            >
+                                <span className="fs-micro uppercase tracking-[0.2em] text-slate-500">{UI.mission_log}</span>
+                                <span className="fs-label text-slate-400">{logOpen ? '−' : `+${storyLog.length}`}</span>
+                            </button>
+                            {logOpen && (
+                                <div className="mt-3 max-h-56 space-y-2 overflow-y-auto no-scrollbar">
+                                    {storyLog.slice().reverse().map((log, idx) => (
+                                        <div key={idx} className="border-l border-emerald-500/25 pl-3">
+                                            <p className="fs-label text-slate-300">{log.text}</p>
+                                            {log.wpm > 0 && (
+                                                <span className="fs-micro text-slate-600">
+                                                    {UI.speed}: <span className="tabular-nums">{log.wpm}</span> {UI.wpm}
+                                                    {log.meta ? ` · ${log.meta}` : ''}
+                                                </span>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
                     <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                         <div>
                             <h3 className="font-display fs-lead font-bold text-white tracking-[0.04em]">{UI.select_upgrade}</h3>

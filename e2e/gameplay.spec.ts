@@ -59,8 +59,10 @@ test('bulk insertion cannot complete a typing line', async ({ page }) => {
 
   await input.fill(text);
 
+  // Nothing was accepted and nothing was paid for: the line is untouched and the
+  // run has earned nothing. Credits read from the HUD; the shell column is gone.
   await expect(input).toHaveValue('');
-  await expect(page.getByText('SCORE').locator('..')).toContainText('0');
+  await expect(page.getByText('CREDITS').locator('..')).toContainText('0');
 });
 
 test('the caret only offers skills the player can cast, and unlocks stack upward', async ({ page }) => {
