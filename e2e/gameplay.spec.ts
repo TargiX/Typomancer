@@ -82,6 +82,31 @@ test('contextual skills stack above a stable Focus anchor', async ({ page }) => 
   expect(geometry.focusBottom).toBe(geometry.stackBottom);
 });
 
+test('the tracer eats the line behind a stalled player and PURGE throws it back', async ({ page }) => {
+  await startCampaign(page);
+  const input = page.getByRole('textbox', { name: 'Typing practice input' });
+  const activeText = await page.locator('.engine-type-scroll span.relative.inline-block').innerText();
+  const burned = page.locator('.tracer-burned');
+
+  // Opening a line and reading it is free: the chase has not armed yet.
+  await expect(burned).toHaveCount(0);
+
+  // Build a lead, then stop dead. TRACER_GRACE_MS is 3s from the first keystroke.
+  await input.pressSequentially(activeText.slice(0, 40), { delay: 5 });
+  await expect(burned).toHaveCount(0);
+
+  // The burn front now marches into the lead we just built.
+  await expect
+    .poll(async () => burned.count(), { timeout: 20_000, message: 'tracer should consume the line behind a stalled caret' })
+    .toBeGreaterThan(4);
+
+  const beforePurge = await burned.count();
+  await page.keyboard.press('ArrowDown');
+  await expect
+    .poll(async () => burned.count(), { timeout: 5_000, message: 'PURGE should throw the burn front back' })
+    .toBeLessThan(beforePurge);
+});
+
 test('banking a completed sector adds it to Operator Record', async ({ page }) => {
   await startCampaign(page);
   const activeLine = page.locator('.engine-type-scroll span.relative.inline-block');

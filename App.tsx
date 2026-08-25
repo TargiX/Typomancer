@@ -2399,6 +2399,7 @@ const App: React.FC = () => {
                     genre={selectedGenre}
                     strictCase={!!userProfile.strictCase}
                     deterministicStory={isDailyRun}
+                    baselineWpm={playerProgress.calibration?.wpm}
                     onTypingObservation={(observation) => runTrainingObservationsRef.current.push(observation)}
                 />
             )}

@@ -9,6 +9,7 @@ A consequence-driven RPG typing game. You play as Agent Nox, a field hacker tryi
 - **Full four-sector campaign loop** with a real win state and multiple endings.
 - **Consequences beyond the current sentence:** typing performance and tactical choices now change Heat, Trust, Evidence, Corruption, Signal, and Route.
 - **Strategic decisions:** each mid-level decision has visible tradeoffs. Loud routes gain more evidence and credits but raise Heat; stealth routes lower Heat and build Trust.
+- **The Tracer:** the Security Trace runs along the line you are typing. A burn front eats the text behind your cursor at a pace set by your own calibration, so the gap between the front and your caret is your safety margin, drawn where you are already looking. Keep typing and it never reaches you; stall and it does. `PURGE` throws it back.
 - **Focus Mode:** charge it by typing correctly, then press `TAB` to pause trace pressure, soften mistakes, and double typing rewards for a short burst.
 - **Typing variety:** narrative flow, terminal breach commands, signal/number drills, and dialogue/punctuation drills.
 - **Adaptive first run:** a short keystroke calibration tunes trace pressure and mistake grace to the player's pace.
@@ -22,7 +23,7 @@ A consequence-driven RPG typing game. You play as Agent Nox, a field hacker tryi
 
 - `1`, `2`, `3`: choose perks/upgrades/options where shown.
 - `TAB`: activate Focus Mode when the Focus meter is full.
-- `↑` / `↓`: activate Firewall or Purge when they appear beside the typing caret.
+- `↑` / `↓`: activate Firewall or Purge when they appear beside the typing caret. Purge also throws the tracer back down the line.
 - `4`: open Operator Record from the main menu.
 - `ESC`: return from the Black Market.
 - `SPACE` / `ENTER`: return to the menu after a win/loss.

@@ -547,6 +547,20 @@ class NeuralAudioEngine {
       this.noiseBurst(ctx, bus, now, { duration: 0.34, gain: 0.08, type: 'lowpass', frequency: 2600 });
   }
 
+  /**
+   * The tracer reached your caret. Deliberately the ugliest sound in the game:
+   * a falling detuned pair under a noise sweep.
+   */
+  public tracerCatch() {
+      const ch = this.sfxBus();
+      if (!ch) return;
+      const { ctx, bus, now } = ch;
+      this.keyStep = 0;
+      this.blip(ctx, bus, now, { freq: 220, endFreq: 55, duration: 0.55, gain: 0.26, type: 'sawtooth', cutoff: 1200 });
+      this.blip(ctx, bus, now, { freq: 233, endFreq: 58, duration: 0.55, gain: 0.2, type: 'square', cutoff: 900 });
+      this.noiseBurst(ctx, bus, now, { duration: 0.4, gain: 0.16, type: 'bandpass', frequency: 900, Q: 1.5 });
+  }
+
   /** End-of-segment stinger, pitched by how the line went. */
   public segmentClear(performance: 'good' | 'average' | 'bad') {
       const ch = this.sfxBus();

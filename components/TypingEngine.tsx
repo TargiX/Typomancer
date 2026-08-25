@@ -9,6 +9,19 @@ import {
 } from '../services/geminiService';
 import { audioEngine, type ComboTier } from '../services/audioEngine';
 import {
+  TRACER_CATCH_KNOCKBACK,
+  TRACER_CATCH_TRACE_PENALTY,
+  TRACER_PURGE_KNOCKBACK,
+  advanceTracer,
+  getTracerCharsPerSecond,
+  getTracerStartIndex,
+  getTracerThreat,
+  isTracerArmed,
+  isTracerCaught,
+  isTracerStunned,
+  knockBackTracer
+} from '../services/tracer';
+import {
   DECISION_ROUND,
   SECTOR_ROUNDS,
   calculateSegmentCredits,
@@ -84,6 +97,8 @@ interface TypingEngineProps {
   strictCase?: boolean;
   deterministicStory?: boolean;
   onTypingObservation?: (observation: TypingObservation) => void;
+  /** Calibrated words per minute; sets the pace the tracer chases you at. */
+  baselineWpm?: number;
 }
 
 const TYPE_CUE_MS = 1500;
@@ -152,7 +167,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     genre,
     strictCase = false,
     deterministicStory = false,
-    onTypingObservation
+    onTypingObservation,
+    baselineWpm
 }) => {
   const [history, setHistory] = useState<StorySegment[]>([]);
   const [activeSegment, setActiveSegment] = useState<StorySegment>(initialSegment);
@@ -187,6 +203,16 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const [round, setRound] = useState(1);
   const [totalWPM, setTotalWPM] = useState(0);
   const [tracePercent, setTracePercent] = useState(0);
+  // The tracer's exact position lives in a ref and is integrated every frame; only
+  // the whole-character burn front reaches React, so a 60fps chase re-renders the
+  // line about twice a second instead of sixty times.
+  const tracerRef = useRef<number>(getTracerStartIndex());
+  const [tracerBurnFront, setTracerBurnFront] = useState<number>(Math.floor(getTracerStartIndex()));
+  const inputLengthRef = useRef(0);
+  const healthRef = useRef(currentRoundHealth);
+  /** Timestamp of the first keystroke of the current segment; null until it lands. */
+  const segmentFirstKeyAtRef = useRef<number | null>(null);
+  const tracerCaughtAtRef = useRef<number | null>(null);
   const [missionState, setMissionState] = useState<MissionState>(() => normalizeMissionState(missionSeed));
   const missionRef = useRef<MissionState>(normalizeMissionState(missionSeed));
   const timerRef = useRef<number | null>(null);
@@ -269,6 +295,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           skill_purge: "PURGE TRACE — instantly cut Security Trace by 25% (costs Energy)",
           skills_title: "ACTIVE PROTOCOLS",
           skills_intro: "Clean typing charges Energy. Spend it without leaving the typing line.",
+          tracer_brief_title: "THE TRACE IS ON THE LINE",
+          tracer_brief_body: "A burn front eats the line behind you. Keep typing and it never reaches your cursor — stall and it does. PURGE throws it back.",
           skill_focus_short: "Pause trace · soften mistakes · 2x rewards",
           skill_firewall_short: "Shield the next 3 mistakes",
           skill_purge_short: "Cut Security Trace by 25%",
@@ -318,6 +346,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           skill_purge: "СБРОС ТРАССЫ — мгновенно −25% к трассировке (тратит Energy)",
           skills_title: "АКТИВНЫЕ ПРОТОКОЛЫ",
           skills_intro: "Точная печать заряжает Energy. Трать её, не отрывая взгляд от строки.",
+          tracer_brief_title: "ТРАССА ИДЁТ ПО СТРОКЕ",
+          tracer_brief_body: "След выжигает строку за твоей спиной. Пока печатаешь — он не догонит; замрёшь — догонит. СБРОС отбрасывает его назад.",
           skill_focus_short: "Пауза трассы · мягче ошибки · x2 награды",
           skill_firewall_short: "Щит на следующие 3 ошибки",
           skill_purge_short: "Снизить трассировку на 25%",
@@ -489,6 +519,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       audioEngine.purge();
       setOverclockCharge(c => Math.max(0, c - cost));
       setTracePercent(p => clamp(p - 25));
+      tracerRef.current = knockBackTracer(tracerRef.current, TRACER_PURGE_KNOCKBACK);
+      setTracerBurnFront(Math.floor(tracerRef.current));
       inputRef.current?.focus();
   };
 
@@ -564,6 +596,97 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [isWaitingForAi, transitionLockRef.current, stealthLevel, modifiers.traceSpeedMultiplier, inputValue.length, startTime, isOverclockActive, isDecisionActive, activeSegment.pressure, typeCueActive]); 
+
+  // Refs the animation frame reads. Reading state inside the loop would pin it to
+  // whatever the closure captured on the frame it was created.
+  useEffect(() => { inputLengthRef.current = inputValue.length; }, [inputValue]);
+  useEffect(() => { healthRef.current = health; }, [health]);
+
+  // Every segment reopens the chase with the player ahead by a fixed run of
+  // characters, so the tracer is a threat you can see approaching rather than
+  // something already on top of you when the line appears.
+  useEffect(() => {
+      tracerRef.current = getTracerStartIndex();
+      setTracerBurnFront(Math.floor(getTracerStartIndex()));
+      segmentFirstKeyAtRef.current = null;
+      tracerCaughtAtRef.current = null;
+  }, [activeSegment]);
+
+  const handleTracerCatch = () => {
+      tracerCaughtAtRef.current = Date.now();
+      tracerRef.current = knockBackTracer(tracerRef.current, TRACER_CATCH_KNOCKBACK);
+      setTracerBurnFront(Math.floor(tracerRef.current));
+      setCombo(0);
+      audioEngine.tracerCatch();
+      setTracePercent(p => clamp(p + TRACER_CATCH_TRACE_PENALTY));
+      const nextHealth = Math.max(0, healthRef.current - 1);
+      healthRef.current = nextHealth;
+      setHealth(nextHealth);
+      triggerImpact(Math.max(4, mistakesInSegment));
+      if (nextHealth <= 0) triggerGameOver(0);
+  };
+
+  // The chase itself. Paused by exactly the things that pause the trace bar, plus
+  // Focus Mode — the two are one threat read two ways and must never disagree.
+  useEffect(() => {
+      const frozen = isWaitingForAi
+          || transitionLockRef.current
+          || isDecisionActive
+          || typeCueActive
+          || isOverclockActive
+          || isCriticalHack
+          || showSkillBriefing
+          || gameOverTriggeredRef.current;
+      if (frozen) return;
+
+      const charsPerSecond = getTracerCharsPerSecond({
+          baselineWpm: baselineWpm ?? 0,
+          traceSpeedMultiplier: modifiers.traceSpeedMultiplier,
+          stealthLevel,
+          heat: missionRef.current.heat,
+          corruption: missionRef.current.corruption,
+          trust: missionRef.current.trust,
+          segmentPressure: activeSegment.pressure || 0
+      });
+
+      let frame = 0;
+      let last = performance.now();
+      const step = (now: number) => {
+          const delta = now - last;
+          last = now;
+          const firstKeyAt = segmentFirstKeyAtRef.current;
+          const caughtAt = tracerCaughtAtRef.current;
+          const armed = isTracerArmed(firstKeyAt === null ? null : Date.now() - firstKeyAt);
+          const stunned = isTracerStunned(caughtAt === null ? null : Date.now() - caughtAt);
+          if (!armed || stunned) {
+              frame = requestAnimationFrame(step);
+              return;
+          }
+          tracerRef.current = advanceTracer(tracerRef.current, delta, charsPerSecond, activeSegment.text.length);
+          const front = Math.floor(tracerRef.current);
+          setTracerBurnFront(prev => (prev === front ? prev : front));
+          // A finished line is out of the tracer's reach: the caret only sits at the
+          // end because the player already won the race down it.
+          const lineComplete = inputLengthRef.current >= activeSegment.text.length;
+          if (!lineComplete && isTracerCaught(tracerRef.current, inputLengthRef.current)) {
+              handleTracerCatch();
+          }
+          frame = requestAnimationFrame(step);
+      };
+      frame = requestAnimationFrame(step);
+      return () => cancelAnimationFrame(frame);
+  }, [
+      activeSegment,
+      baselineWpm,
+      isCriticalHack,
+      isDecisionActive,
+      isOverclockActive,
+      isWaitingForAi,
+      modifiers.traceSpeedMultiplier,
+      showSkillBriefing,
+      stealthLevel,
+      typeCueActive
+  ]);
 
   useEffect(() => {
     let isMounted = true;
@@ -815,7 +938,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     // multi-character insertion instead of awarding a whole line for one event.
     if (val.length > inputValue.length + 1) return;
     if (val.length === inputValue.length + 1 && !val.startsWith(inputValue)) return;
-    if (inputValue.length === 0 && val.length > 0) setStartTime(Date.now());
+    if (inputValue.length === 0 && val.length > 0) {
+      setStartTime(Date.now());
+      if (segmentFirstKeyAtRef.current === null) segmentFirstKeyAtRef.current = Date.now();
+    }
     const charIndex = val.length - 1;
 
     if (charIndex >= 0 && val.length > inputValue.length) {
@@ -1130,6 +1256,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   };
 
   const renderActive = () => {
+    const burnFront = tracerBurnFront;
     return activeSegment.text.split('').map((char, index) => {
       // Focus mode = clarity: the UPCOMING text turns bright and crisp (easier to read
       // ahead), instead of dimming. Typed chars stay saturated so progress is obvious.
@@ -1145,7 +1272,15 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
              className = "text-white bg-rose-600";
           }
         }
-      } else if (isCursor) {
+      }
+
+      // The tracer eats the line from behind. Burned characters replace their
+      // own styling so the damage reads at a glance, but the caret always wins:
+      // losing sight of where you are would be the one unfair outcome.
+      if (index < burnFront) className = "tracer-burned";
+      else if (index === burnFront) className = "tracer-head";
+
+      if (isCursor) {
         className = isCriticalHack ? "text-white bg-rose-500 animate-ping" :
                     isOverclockActive ? "text-white bg-emerald-400 animate-pulse shadow-[0_0_15px_rgba(52,211,153,0.8)]" :
                     "text-white bg-slate-700 animate-pulse";
@@ -1165,6 +1300,12 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
 
     // Trace effect logic
     if (tracePercent > 80) base += " shadow-[inset_0_0_50px_rgba(244,63,94,0.2)]";
+
+    // The tracer closing on the caret escalates the whole panel, so the warning
+    // is available in peripheral vision without looking away from the line.
+    const threat = getTracerThreat(tracerBurnFront, inputValue.length);
+    if (!isOverclockActive && threat === 'critical') base += " tracer-panel-critical";
+    else if (!isOverclockActive && threat === 'closing') base += " tracer-panel-closing";
 
     let borderColor = "border-slate-800";
     if (isOverclockActive) {
@@ -1264,6 +1405,17 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                   <div className="text-center">
                       <div className="text-[9px] font-bold uppercase tracking-[0.24em] text-cyan-300">{UI.skills_title}</div>
                       <h2 className="mt-2 font-display text-2xl md:text-3xl font-bold text-white">{UI.skills_intro}</h2>
+                  </div>
+                  <div className="engine-tracer-brief mt-5">
+                      <div className="engine-tracer-brief-strip" aria-hidden="true">
+                          <span className="tracer-burned">████</span>
+                          <span className="tracer-head">▓</span>
+                          <span className="text-slate-500">░░░░░░░░</span>
+                      </div>
+                      <div>
+                          <div className="text-[9px] font-bold uppercase tracking-[0.24em] text-rose-300">{UI.tracer_brief_title}</div>
+                          <p className="mt-1 text-xs text-slate-300 leading-relaxed">{UI.tracer_brief_body}</p>
+                      </div>
                   </div>
                   <div className="engine-skill-briefing-grid mt-6">
                       {[

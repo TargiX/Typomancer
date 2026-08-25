@@ -1,0 +1,66 @@
+- generic [ref=f1e3]:
+  - complementary [ref=f1e4]:
+    - generic [ref=f1e5]:
+      - generic [ref=f1e10]:
+        - heading "NARRATIVE FLOW" [level=1] [ref=f1e11]
+        - paragraph [ref=f1e12]: Consequence-Driven RPG Typer
+      - generic [ref=f1e13]:
+        - generic [ref=f1e15]:
+          - generic [ref=f1e16]: WALLET
+          - generic [ref=f1e17]: 0CR
+        - generic [ref=f1e19]:
+          - generic [ref=f1e20]:
+            - generic [ref=f1e21]: Heat
+            - generic [ref=f1e24]: 18%
+          - generic [ref=f1e25]:
+            - generic [ref=f1e26]: Trust
+            - generic [ref=f1e29]: "44"
+          - generic [ref=f1e30]:
+            - generic [ref=f1e31]: Evidence
+            - generic [ref=f1e33]: "0"
+          - generic [ref=f1e34]:
+            - generic [ref=f1e35]: Corruption
+            - generic [ref=f1e37]: "0"
+    - generic [ref=f1e38]:
+      - generic [ref=f1e39]: Mission Log
+      - generic [ref=f1e40]: Mission log is empty. Awaiting system initialization...
+    - generic [ref=f1e41]:
+      - button "AUDIO ACTIVE" [ref=f1e42] [cursor=pointer]
+      - button "RU" [ref=f1e45] [cursor=pointer]
+  - generic [ref=f1e48]:
+    - generic [ref=f1e49]:
+      - generic [ref=f1e50]:
+        - generic [ref=f1e56]: SYSTEM ONLINE
+        - generic [ref=f1e60]: 4ms
+      - heading "Operation Black Ledger" [level=2] [ref=f1e61]
+      - paragraph [ref=f1e62]: Type to move, decide to bend the city, survive to publish the proof.Every typo changes heat, trust, evidence, and the ending.
+      - generic [ref=f1e63]:
+        - generic [ref=f1e64]:
+          - generic [ref=f1e65]: ◆
+          - generic [ref=f1e66]: Finish one sector in 5–7 minutes, then bank the result or continue through four.
+        - generic [ref=f1e67]:
+          - generic [ref=f1e68]: ◆
+          - generic [ref=f1e69]: "TAB activates Focus Mode when charged: trace pauses, mistakes hurt less, rewards double."
+    - generic [ref=f1e70]:
+      - button "1 INITIALIZE LINK" [ref=f1e71] [cursor=pointer]:
+        - generic [ref=f1e72]: "1"
+        - generic [ref=f1e73]: INITIALIZE LINK
+      - paragraph [ref=f1e74]: A complete sector takes about 5–7 minutes. Continue only when you want a longer training run.
+      - button "3 DAILY SECTOR Noir Detective · 3/3 LEFT" [ref=f1e75] [cursor=pointer]:
+        - generic [ref=f1e76]: "3"
+        - generic [ref=f1e78]:
+          - generic [ref=f1e79]: DAILY SECTOR
+          - generic [ref=f1e80]: Noir Detective · 3/3 LEFT
+      - button "2 THE BLACK MARKET" [ref=f1e81] [cursor=pointer]:
+        - generic [ref=f1e82]: "2"
+        - generic [ref=f1e83]: THE BLACK MARKET
+      - button "4 OPERATOR RECORD" [ref=f1e84] [cursor=pointer]:
+        - generic [ref=f1e85]: "4"
+        - generic [ref=f1e86]: OPERATOR RECORD
+    - button "PERFECTIONIST · +30% XP Case-sensitive typing. Typos are never forgiven." [ref=f1e87] [cursor=pointer]:
+      - generic [ref=f1e90]:
+        - generic [ref=f1e91]: PERFECTIONIST · +30% XP
+        - generic [ref=f1e92]: Case-sensitive typing. Typos are never forgiven.
+    - paragraph [ref=f1e93]: ◆ Most typing games shrug off mistakes. Here every typo bends your story — the ultimate accuracy trainer.
+    - generic [ref=f1e94]: Works with Gemini, but has a full local campaign fallback
+    - generic [ref=f1e95]: Anonymous play metrics only. Typed text never leaves this device for analytics.
