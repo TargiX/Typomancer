@@ -28,6 +28,7 @@ import {
   SECTOR_ROUNDS,
   calculateSegmentCredits,
   calculateSegmentScore,
+  getBranchPerformance,
   getComboMultiplier,
   getCursorSkillStack,
   getReadyActiveSkills,
@@ -1205,18 +1206,12 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     }
     if (healthChange > 0) setHealth(h => Math.min(modifiers.maxHealth, h + healthChange));
 
-    let nextSeg: StorySegment;
-    let performanceType: 'good' | 'average' | 'bad';
-    if (totalErrors <= 1) {
-        nextSeg = branch.goodPath;
-        performanceType = 'good';
-    } else if (totalErrors <= 4) {
-        nextSeg = branch.mediumPath;
-        performanceType = 'average';
-    } else {
-        nextSeg = branch.badPath;
-        performanceType = 'bad';
-    }
+    const performanceType = getBranchPerformance(totalErrors, activeSegment.text.length);
+    const nextSeg: StorySegment = performanceType === 'good'
+        ? branch.goodPath
+        : performanceType === 'average'
+            ? branch.mediumPath
+            : branch.badPath;
 
     const outcome = applySegmentOutcome(performanceType, totalErrors, wpm, activeSegment);
     audioEngine.segmentClear(performanceType);
@@ -1243,9 +1238,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       const durationSec = (Date.now() - startTime) / 1000;
       const wpm = Math.round((activeSegment.text.length / 5) / (durationSec / 60 || 0.01));
       const { totalErrors } = getErrorReport();
-      let performanceType: 'good' | 'average' | 'bad' = 'average';
-      if (totalErrors <= 1) performanceType = 'good';
-      else if (totalErrors >= 5) performanceType = 'bad';
+      // The closing line is judged by the same rule as every other line; it used
+      // to run its own thresholds and could disagree with the rest of the sector.
+      const performanceType = getBranchPerformance(totalErrors, activeSegment.text.length);
       const score = calculateSegmentScore({
         errors: totalErrors,
         type: activeSegment.type,

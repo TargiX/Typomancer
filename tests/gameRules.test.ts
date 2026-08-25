@@ -6,6 +6,7 @@ import {
   SECTOR_ROUNDS,
   calculateSegmentCredits,
   calculateSegmentScore,
+  getBranchPerformance,
   getComboMultiplier,
   getCursorSkillStack,
   getReadyActiveSkills,
@@ -132,4 +133,37 @@ test('XP produces real stealth progression', () => {
   assert.equal(getStealthLevel(499), 0);
   assert.equal(getStealthLevel(500), 1);
   assert.equal(getStealthLevel(2_500), 5);
+});
+
+test('one typo never costs the good branch, on any line length', () => {
+  // A flat allowance on top of the proportional bands, so a short line does not
+  // become a coin flip.
+  assert.equal(getBranchPerformance(0, 40), 'good');
+  assert.equal(getBranchPerformance(1, 40), 'good');
+  assert.equal(getBranchPerformance(1, 200), 'good');
+});
+
+test('branch thresholds are proportional, so a short line is not a free pass', () => {
+  // Same error rate, different lengths, same verdict.
+  assert.equal(getBranchPerformance(2, 45), getBranchPerformance(4, 90));
+  assert.equal(getBranchPerformance(4, 45), getBranchPerformance(8, 90));
+});
+
+test('the bad branch is reachable on a typical line', () => {
+  // The old absolute rule needed 5 typos in ~95 characters, which is 95%
+  // accuracy — most players never saw the third branch at all.
+  assert.equal(getBranchPerformance(2, 95), 'average');
+  assert.equal(getBranchPerformance(3, 95), 'average');
+  assert.equal(getBranchPerformance(4, 95), 'bad');
+});
+
+test('a clean line is good and a wrecked line is bad regardless of length', () => {
+  assert.equal(getBranchPerformance(0, 8), 'good');
+  assert.equal(getBranchPerformance(30, 95), 'bad');
+});
+
+test('branch verdict tolerates degenerate input rather than throwing', () => {
+  assert.equal(getBranchPerformance(-5, 95), 'good');
+  assert.equal(getBranchPerformance(0, 0), 'good');
+  assert.equal(getBranchPerformance(9, 0), 'bad');
 });

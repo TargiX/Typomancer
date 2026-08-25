@@ -108,6 +108,8 @@ const TRANSLATIONS = {
         typing_debrief: "Typing debrief",
         next_drill: "Next run target",
         signal_lost: "SIGNAL LOST",
+        mistake_one: "uncorrected mistake this sector",
+        mistake_many: "uncorrected mistakes this sector",
         focus_accuracy: "Slow down slightly and keep accuracy above 96%.",
         focus_consistency: "Hold one rhythm instead of sprinting between pauses.",
         focus_speed: "Accuracy is stable. Push your average speed by 5 WPM.",
@@ -214,6 +216,8 @@ const TRANSLATIONS = {
         typing_debrief: "Разбор печати",
         next_drill: "Цель следующего забега",
         signal_lost: "СИГНАЛ ПОТЕРЯН",
+        mistake_one: "неисправленная ошибка за сектор",
+        mistake_many: "неисправленных ошибок за сектор",
         focus_accuracy: "Чуть сбавь темп и удерживай точность выше 96%.",
         focus_consistency: "Держи один ритм вместо рывков между паузами.",
         focus_speed: "Точность стабильна. Подними среднюю скорость на 5 СЛ/М.",
@@ -2318,6 +2322,40 @@ const App: React.FC = () => {
                             "{lastLevelReport.narrativeSummary}"
                         </p>
                     </div>
+                    {/* Accuracy leads the debrief. This is an accuracy trainer, and the
+                        screen used to open with a speed number, which taught the
+                        opposite of what the game rewards. */}
+                    {(() => {
+                        const accuracy = Math.round(lastLevelReport.accuracy ?? 100);
+                        const focus = getTypingFocus({
+                            avgWpm: lastLevelReport.avgWpm,
+                            accuracy: lastLevelReport.accuracy ?? 100,
+                            consistency: lastLevelReport.consistency ?? 100,
+                            totalMistakes: lastLevelReport.totalMistakes,
+                            score: 0
+                        });
+                        const coach = { accuracy: UI.focus_accuracy, consistency: UI.focus_consistency, speed: UI.focus_speed, mastery: UI.focus_mastery }[focus];
+                        return (
+                            <div className={`screens-accuracy-hero screens-accuracy-hero--${focus} mb-3`}>
+                                <div className="flex items-end justify-between gap-4">
+                                    <div>
+                                        <div className="text-[9px] uppercase tracking-[0.22em] text-slate-500">{UI.accuracy}</div>
+                                        <div className="screens-accuracy-value font-display tabular-nums">{accuracy}%</div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="text-[9px] uppercase tracking-[0.22em] text-slate-500">{UI.next_drill}</div>
+                                        <p className="screens-accuracy-coach">{coach}</p>
+                                    </div>
+                                </div>
+                                <div className="screens-accuracy-bar mt-3" aria-hidden="true">
+                                    <div className="screens-accuracy-bar-fill" style={{ width: `${Math.max(0, Math.min(100, accuracy))}%` }} />
+                                </div>
+                                <div className="mt-2 text-[10px] text-slate-500 tabular-nums">
+                                    {lastLevelReport.totalMistakes} {lastLevelReport.totalMistakes === 1 ? UI.mistake_one : UI.mistake_many}
+                                </div>
+                            </div>
+                        );
+                    })()}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-8">
                         <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]">
                             <div className="font-display text-3xl font-bold text-white tabular-nums leading-none">{Math.round(lastLevelReport.avgWpm)}</div>
@@ -2342,10 +2380,6 @@ const App: React.FC = () => {
                         <div className="screens-stat-tile p-4 text-center border border-sky-400/15 bg-sky-400/[0.025]">
                              <div className="font-display text-3xl font-bold text-sky-300 tabular-nums leading-none">{lastLevelReport.mission?.trust ?? campaignState.trust}</div>
                              <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.trust}</div>
-                        </div>
-                        <div className="screens-stat-tile p-4 text-center border border-emerald-400/15 bg-emerald-400/[0.025]">
-                            <div className="font-display text-3xl font-bold text-emerald-300 tabular-nums leading-none">{Math.round(lastLevelReport.accuracy ?? 100)}%</div>
-                            <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.accuracy}</div>
                         </div>
                         <div className="screens-stat-tile p-4 text-center border border-violet-400/15 bg-violet-400/[0.025]">
                             <div className="font-display text-3xl font-bold text-violet-300 tabular-nums leading-none">{Math.round(lastLevelReport.consistency ?? 100)}%</div>

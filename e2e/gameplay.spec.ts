@@ -162,6 +162,18 @@ test('banking a completed sector adds it to Operator Record', async ({ page }) =
   }
 
   await expect(page.getByRole('heading', { name: 'SEQUENCE COMPLETE' })).toBeVisible();
+
+  // Accuracy leads the debrief; speed is one tile among the rest. This is an
+  // accuracy trainer, and the screen used to open with a speed number.
+  const hero = page.locator('.screens-accuracy-hero');
+  await expect(hero).toBeVisible();
+  await expect(hero.locator('.screens-accuracy-value')).toContainText('%');
+  const heroBox = await hero.boundingBox();
+  const speedTile = page.locator('.screens-stat-tile').first();
+  const speedBox = await speedTile.boundingBox();
+  expect(heroBox!.y).toBeLessThan(speedBox!.y);
+  expect(heroBox!.height).toBeGreaterThan(speedBox!.height * 0.9);
+
   await page.getByRole('button', { name: 'SAVE & EXIT' }).click();
   await expect(page.getByRole('button', { name: /RESUME OPERATION · Sector 2/ })).toBeVisible();
   await page.getByRole('button', { name: /OPERATOR RECORD/ }).click();

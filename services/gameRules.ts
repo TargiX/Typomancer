@@ -50,6 +50,39 @@ export const getTypingFocus = ({ avgWpm, accuracy, consistency }: SectorSummary)
   return 'mastery';
 };
 
+export type BranchPerformance = 'good' | 'average' | 'bad';
+
+/**
+ * Which of the three written continuations the player earned.
+ *
+ * This used to be an absolute error count — 1 for good, 4 for average — which
+ * gave an eight-word line and a twenty-word line the same budget, and put the
+ * "bad" branch out of practical reach: 5 typos in a hundred characters is 95%
+ * accuracy, so most players ping-ponged between two of the three branches and
+ * the third was written for nobody.
+ *
+ * It is now proportional, which tightens short lines and makes the bad branch
+ * reachable, with a flat allowance so a single typo never costs the good branch
+ * on any length. The bands sit in the 96-100% range because that is where the
+ * skill this game trains actually lives.
+ */
+export const GOOD_BRANCH_ACCURACY = 98.5;
+export const AVERAGE_BRANCH_ACCURACY = 96;
+export const FORGIVEN_ERRORS_PER_LINE = 1;
+
+export const getBranchPerformance = (mistakes: number, characters: number): BranchPerformance => {
+  const errors = Math.max(0, mistakes);
+  if (errors <= FORGIVEN_ERRORS_PER_LINE) return 'good';
+  // Accuracy is undefined without a line to measure against, and getTypingAccuracy
+  // reports a perfect 100 for it — which would turn any error count into a clean
+  // branch. Past the flat allowance, the errors are real and the excuse is not.
+  if (characters <= 0) return 'bad';
+  const accuracy = getTypingAccuracy(errors, characters);
+  if (accuracy >= GOOD_BRANCH_ACCURACY) return 'good';
+  if (accuracy >= AVERAGE_BRANCH_ACCURACY) return 'average';
+  return 'bad';
+};
+
 export const getTypingAccuracy = (mistakes: number, characters: number): number => (
   characters > 0 ? clamp(100 - ((Math.max(0, mistakes) / characters) * 100)) : 100
 );

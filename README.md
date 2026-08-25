@@ -8,7 +8,8 @@ A consequence-driven RPG typing game. You play as Agent Nox, a field hacker tryi
 
 - **Full four-sector campaign loop** with a real win state and multiple endings.
 - **Consequences beyond the current sentence:** typing performance and tactical choices change Heat (how hunted you are), Trust (who is still with you), Evidence (your proof, and the win condition), and Route.
-- **You can see the fork:** lose the clean branch and the game quotes the line accurate typing would have earned you instead.
+- **You can see the fork:** lose the clean branch and the game quotes the line accurate typing would have earned you instead. Which branch you get is judged on accuracy against the length of the line, not a flat typo count, so a short line is not a free pass and the worst branch is actually reachable.
+- **The debrief leads with accuracy**, not speed, and names the one thing to work on next.
 - **Strategic decisions:** each mid-level decision has visible tradeoffs. Loud routes gain more evidence and credits but raise Heat; stealth routes lower Heat and build Trust.
 - **The Tracer:** the Security Trace runs along the line you are typing. A burn front eats the text behind your cursor at a pace set by your own calibration, so the gap between the front and your caret is your safety margin, drawn where you are already looking. Keep typing and it never reaches you; stall and it does. `PURGE` throws it back.
 - **Accuracy is the weapon:** an unbroken clean streak slows the tracer and shoves it backwards at every combo tier. One typo hands the whole advantage back at once. Speed alone already outruns the trace, so this is the pressure that trains accuracy rather than haste.
