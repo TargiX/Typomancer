@@ -4,7 +4,12 @@ import { normalizePact, type PactClauseId } from './pact.ts';
 
 export const PLAYER_PROGRESS_STORAGE_KEY = 'typomancerPlayerProgress';
 export const PLAYER_PROGRESS_VERSION = 1;
-export const MAX_RUN_HISTORY = 20;
+/**
+ * Twenty runs is a fortnight of daily play, which is too short a memory for a
+ * game whose real reward is watching yourself improve. Sixty costs a few
+ * kilobytes of local storage and covers a couple of months.
+ */
+export const MAX_RUN_HISTORY = 60;
 
 export type DifficultyPreset = 'guided' | 'balanced' | 'intense';
 

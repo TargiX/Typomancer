@@ -1,8 +1,11 @@
 import React, { useMemo } from 'react';
+import OperatorTelemetry from './OperatorTelemetry';
 import { getPactRewardMultiplier } from '../services/pact';
 
 import type { Language, StoryGenreId } from '../types';
-import { getAdaptiveDifficulty, summarizeProgress, type PlayerProgress, type RunRecord } from '../services/playerProgress';
+import { getAdaptiveDifficulty, summarizeProgress, type PlayerProgress, type RunRecord,
+  MAX_RUN_HISTORY
+} from '../services/playerProgress';
 import { getBenchmarkDelta, getWeakPatterns, type TypingTrainingProfile } from '../services/typingTraining';
 
 interface OperatorRecordProps {
@@ -18,7 +21,7 @@ const COPY = {
   en: {
     eyebrow: 'LOCAL FLIGHT RECORDER',
     title: 'Operator Record',
-    subtitle: 'Your last 20 operations stay on this device.',
+    subtitle: `Your last ${MAX_RUN_HISTORY} operations stay on this device.`,
     runs: 'RUNS',
     best: 'PEAK WPM',
     average: 'RECENT AVG',
@@ -60,7 +63,7 @@ const COPY = {
   ru: {
     eyebrow: 'ЛОКАЛЬНЫЙ ЧЁРНЫЙ ЯЩИК',
     title: 'Досье оператора',
-    subtitle: 'Последние 20 операций остаются на этом устройстве.',
+    subtitle: `Последние ${MAX_RUN_HISTORY} операций остаются на этом устройстве.`,
     runs: 'ЗАБЕГИ',
     best: 'ПИК СЛ/М',
     average: 'СРЕДНЯЯ',
@@ -145,6 +148,8 @@ const OperatorRecord: React.FC<OperatorRecordProps> = ({ language, progress, tra
           <button type="button" onClick={onRecalibrate}>{ui.recalibrate}</button>
         </div>
       </header>
+
+      <OperatorTelemetry language={language} progress={progress} training={training} />
 
       <div className="operator-record-stats">
         <div><strong>{summary.totalRuns}</strong><span>{ui.runs}</span></div>

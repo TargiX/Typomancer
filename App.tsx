@@ -6,6 +6,7 @@ import { getGenreSkin, PerkGroupId, UpgradeId } from './services/genreSkin';
 import { DAILY_MAX_ATTEMPTS, DailyBrief, getDailyBrief, getDailyState, pickDailyItems, recordDailyAttempt } from './services/dailyMode';
 import { CAMPAIGN_SECTORS, DEFAULT_BRANCH_THRESHOLDS, getStealthLevel, getTypingAccuracy, getTypingFocus, summarizeSector } from './services/gameRules';
 import { clampTraceSpeed, getComfortCreditMultiplier } from './services/riskReward';
+import { getSkillHeadline } from './services/progressAnalytics';
 import {
   EXACTING_AVERAGE_ACCURACY,
   EXACTING_GOOD_ACCURACY,
@@ -25,6 +26,7 @@ import {
   getEffectiveBaseline,
   getLocalDateKey,
   loadPlayerProgress,
+  summarizeProgress,
   recordRun,
   savePlayerProgress,
   setCalibration,
@@ -125,6 +127,12 @@ const TRANSLATIONS = {
         signal_lost: "SIGNAL LOST",
         mistake_one: "uncorrected mistake this sector",
         mistake_many: "uncorrected mistakes this sector",
+        return_faster: "FASTER THAN WHEN YOU STARTED",
+        return_slower: "SLOWER THAN WHEN YOU STARTED",
+        return_holding: "HOLDING YOUR PACE",
+        return_early: "STILL MEASURING YOUR PACE",
+        return_sessions: "sessions",
+        return_streak: "day streak",
         pact_title: "THE PACT",
         pact_reward: "REWARDS",
         pact_hint: "Ask for a harder run and it pays for itself. Nothing here is required.",
@@ -247,6 +255,12 @@ const TRANSLATIONS = {
         signal_lost: "СИГНАЛ ПОТЕРЯН",
         mistake_one: "неисправленная ошибка за сектор",
         mistake_many: "неисправленных ошибок за сектор",
+        return_faster: "БЫСТРЕЕ, ЧЕМ В НАЧАЛЕ",
+        return_slower: "МЕДЛЕННЕЕ, ЧЕМ В НАЧАЛЕ",
+        return_holding: "ТЕМП ДЕРЖИТСЯ",
+        return_early: "ЕЩЁ ЗАМЕРЯЮ ТВОЙ ТЕМП",
+        return_sessions: "сессий",
+        return_streak: "дней подряд",
         pact_title: "ПАКТ",
         pact_reward: "К НАГРАДАМ",
         pact_hint: "Попроси забег потруднее — он окупит себя. Ничего из этого не обязательно.",
@@ -822,6 +836,9 @@ const App: React.FC = () => {
     () => getTrainingFocusTokens(typingTraining),
     [typingTraining]
   );
+
+  const skillHeadline = useMemo(() => getSkillHeadline(playerProgress), [playerProgress]);
+  const progressSummary = useMemo(() => summarizeProgress(playerProgress), [playerProgress]);
 
   const activePact = useMemo(() => normalizePact(userProfile.pact), [userProfile.pact]);
   /**
@@ -2150,6 +2167,28 @@ const App: React.FC = () => {
                             <span>{stripKeyHint(UI.operator_record)}</span>
                         </button>
                     </div>
+
+                    {/* What a returning player should be met by. The wallet is the
+                        game's internal currency; this is the only reward that
+                        leaves with them, and it used to be filed behind menu
+                        item four. */}
+                    {skillHeadline.sessions > 0 && (
+                        <div className={`screens-return screens-return--${skillHeadline.deltaWpm > 0 ? 'up' : skillHeadline.deltaWpm < 0 ? 'down' : 'flat'} mx-auto`}>
+                            <div className="screens-return-figure">
+                                <strong>{skillHeadline.deltaWpm > 0 ? '+' : ''}{skillHeadline.deltaWpm}</strong>
+                                <span>{UI.wpm}</span>
+                            </div>
+                            <div className="screens-return-body">
+                                <span>{skillHeadline.hasEnoughHistory
+                                    ? (skillHeadline.deltaWpm > 0 ? UI.return_faster : skillHeadline.deltaWpm < 0 ? UI.return_slower : UI.return_holding)
+                                    : UI.return_early}</span>
+                                <small>
+                                    {skillHeadline.sessions} {UI.return_sessions}
+                                    {progressSummary.currentStreak > 1 ? ` · ${progressSummary.currentStreak} ${UI.return_streak}` : ''}
+                                </small>
+                            </div>
+                        </div>
+                    )}
 
                     {/* THE PACT — the only progression that raises the bar instead of
                         lowering it. Perfectionist used to sit here alone; it is now
