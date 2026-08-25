@@ -195,6 +195,32 @@ export const getWeakPatterns = (profile: TypingTrainingProfile, limit = 5): Patt
     .slice(0, limit);
 };
 
+/**
+ * Weak patterns cleaned up for the story generator.
+ *
+ * This is the point of the whole training profile: instead of exiling drills to
+ * a separate practice screen, the campaign itself can lean on the letter pairs
+ * the player actually fumbles. That makes the story the drill.
+ *
+ * Only letters survive, because asking a generator to work punctuation or digits
+ * into prose distorts the sentence far more than it trains anything. Patterns
+ * with almost no evidence behind them are dropped so the campaign is not shaped
+ * by two unlucky keystrokes.
+ */
+export const getTrainingFocusTokens = (
+  profile: TypingTrainingProfile,
+  limit = 4,
+  minAttempts = 6
+): string[] => {
+  const isLetters = (token: string) => /^[\p{Letter}]+$/u.test(token);
+  return getWeakPatterns(profile, limit * 3)
+    .filter((stat) => stat.attempts >= minAttempts)
+    .map((stat) => stat.token.toLowerCase())
+    .filter((token) => token.length > 0 && token.length <= 2 && isLetters(token))
+    .filter((token, index, all) => all.indexOf(token) === index)
+    .slice(0, limit);
+};
+
 export const buildTargetedDrill = (language: Language, profile: TypingTrainingProfile): string => {
   const words = language === 'ru' ? RU_WORDS : EN_WORDS;
   const weakTokens = getWeakPatterns(profile, 6).map((stat) => stat.token).filter((token) => token.trim());

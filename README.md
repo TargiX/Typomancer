@@ -16,7 +16,9 @@ A consequence-driven RPG typing game. You play as Agent Nox, a field hacker tryi
 - **Typing variety:** narrative flow, terminal breach commands, signal/number drills, and dialogue/punctuation drills.
 - **Adaptive first run:** a short keystroke calibration tunes trace pressure and mistake grace to the player's pace.
 - **Operator Record:** the last 20 runs, WPM trend, accuracy, streak, and next training target stay locally on the device.
-- **Targeted training:** weak keys and bigrams are learned locally from aggregate timing/error counts, then turned into repeatable drills. Typed text is never stored for training or sent to analytics.
+- **The campaign is the drill:** weak keys and letter pairs are learned locally from aggregate timing/error counts, then seeded into the story the generator writes for you — so you practise what you actually fumble without leaving the mission. They also power standalone drills.
+
+  Only the letter pairs themselves (`th`, `br`, …) are sent, and only to the story generator, as a soft preference it is told to ignore when a sentence has no natural home for them. Typed text is never stored and never sent anywhere.
 - **Player challenges:** Daily Sector results can be shared as a same-sector score target.
 - **Perk market expanded:** new run perks and permanent hardware upgrades support Focus Mode, evidence gain, breach rewards, and error recovery.
 - **Local campaign fallback:** the game works without a Gemini key. If AI is unavailable, it uses handcrafted cyberpunk branches and procedural SVG scene art.

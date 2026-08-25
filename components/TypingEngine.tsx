@@ -103,6 +103,8 @@ interface TypingEngineProps {
   onTypingObservation?: (observation: TypingObservation) => void;
   /** Calibrated words per minute; sets the pace the tracer chases you at. */
   baselineWpm?: number;
+  /** Letter pairs this player fumbles, seeded into the generated prose. */
+  trainingFocus?: string[];
 }
 
 const TYPE_CUE_MS = 1500;
@@ -170,7 +172,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     strictCase = false,
     deterministicStory = false,
     onTypingObservation,
-    baselineWpm
+    baselineWpm,
+    trainingFocus
 }) => {
   const [history, setHistory] = useState<StorySegment[]>([]);
   const [activeSegment, setActiveSegment] = useState<StorySegment>(initialSegment);
@@ -249,6 +252,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const skipTypeCueRef = useRef(false);
   const trackedReadySkillsRef = useRef<Set<string>>(new Set());
   const lastKeystrokeAtRef = useRef<number | null>(null);
+  // Held in a ref: the focus list updates as the player types, and putting it in
+  // the buffering effect's deps would cancel and refire the next-segment fetch.
+  const trainingFocusRef = useRef<string[]>(trainingFocus || []);
+  useEffect(() => { trainingFocusRef.current = trainingFocus || []; }, [trainingFocus]);
 
   useEffect(() => {
       lastKeystrokeAtRef.current = null;
@@ -724,7 +731,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         } else {
              const branch = deterministicStory
                ? getDeterministicStoryBranch(genre, nextLevel, nextRound, language, missionRef.current)
-               : await generateNextSegments(context, nextLevel, nextRound, language, prevLevelSummary, missionRef.current, genre);
+               : await generateNextSegments(context, nextLevel, nextRound, language, prevLevelSummary, missionRef.current, genre, trainingFocusRef.current);
              if (isMounted) setNextBranch(branch);
         }
       } catch (e) {

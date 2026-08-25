@@ -430,7 +430,9 @@ export const generateNextSegments = async (
   language: Language,
   prevLevelSummary?: string,
   mission?: MissionState,
-  genre: StoryGenreId = 'cyberpunk'
+  genre: StoryGenreId = 'cyberpunk',
+  /** Letter pairs this player fumbles, so the campaign itself becomes the drill. */
+  trainingFocus: string[] = []
 ): Promise<BranchingStory> => {
   const pack = getGenrePack(genre);
   const fallback = getLocalBranch(genre, level, round, language, mission);
@@ -457,7 +459,14 @@ export const generateNextSegments = async (
     typeRule = "TYPE RULE: keep it mostly NARRATIVE/DIALOG prose; a single BREACH or SIGNAL drill is allowed only occasionally and never in more than one of the three paths.";
   }
 
-  const prompt = `SETTING: ${pack.storyGenre}. WORLD RULES (follow strictly, never drift into another genre): ${pack.worldRules} HERO: ${pack.heroName}. CURRENT STATUS: Level ${level} | Round ${round}/${SECTOR_ROUNDS}. RECENT CONTEXT: "...${recentHistory}" LAST EVENT: "${lastSentence}" MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, route=${mission?.route ?? 'balanced'}, recent consequences (oldest to newest)=${getRecentConsequences(mission?.consequenceLog || [], 3).join(' | ')}. TASK: Generate the next story segment options. CORE LOOP: the player TYPES the sentence you write and the branch reflects their typing — so the main content is readable story prose, NOT puzzles. INSTRUCTION: ${narrativeInstruction} ${typeRule} RULES: 1. No repeated events. 2. NARRATIVE/DIALOG: 8-18 words, ordinary sentence case (do NOT write in all-caps). 3. If (and only if) a BREACH/SIGNAL drill is allowed here: 2-6 short tokens whose content matches the WORLD RULES for this world (never terminal/hex code unless the world is cyberpunk). 4. goodPath rewards clean play with control/evidence/trust. mediumPath shows messy survival. badPath shows concrete consequences that can echo later. 5. Include objective, skill, and a short consequenceHint. 6. Every sentence must stay strictly inside the SETTING's world and era — respect the FORBIDDEN vocabulary. 7. RECENT CONSEQUENCES are beats the player already lived, tagged CLEAN, MESSY or BLOWN by how they typed them. If the newest is MESSY or BLOWN, this segment must show its aftermath concretely — a guard who is now looking, a door that no longer opens — instead of resetting the scene. If it is CLEAN, let the player feel the advantage they earned. 8. OUTPUT LANGUAGE FOR NARRATIVE/DIALOG: ${language === 'ru' ? 'Russian' : 'English'}. Keep BREACH/SIGNAL tokens in English. Return JSON only.`;
+  // The player's own weak patterns, worked into the prose they are about to type.
+  // Framed as a preference rather than a requirement: a sentence contorted to hit
+  // a letter pair stops being a story, and the story is the reason anyone types.
+  const focusRule = trainingFocus.length
+    ? ` TYPING FOCUS: this player fumbles these letter pairs — ${trainingFocus.join(', ')}. Prefer ordinary words that happen to contain them. This is a soft preference and must never bend a sentence, invent an odd word, or repeat one: if a beat has no natural home for them, ignore it entirely.`
+    : '';
+
+  const prompt = `SETTING: ${pack.storyGenre}. WORLD RULES (follow strictly, never drift into another genre): ${pack.worldRules} HERO: ${pack.heroName}.${focusRule} CURRENT STATUS: Level ${level} | Round ${round}/${SECTOR_ROUNDS}. RECENT CONTEXT: "...${recentHistory}" LAST EVENT: "${lastSentence}" MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, route=${mission?.route ?? 'balanced'}, recent consequences (oldest to newest)=${getRecentConsequences(mission?.consequenceLog || [], 3).join(' | ')}. TASK: Generate the next story segment options. CORE LOOP: the player TYPES the sentence you write and the branch reflects their typing — so the main content is readable story prose, NOT puzzles. INSTRUCTION: ${narrativeInstruction} ${typeRule} RULES: 1. No repeated events. 2. NARRATIVE/DIALOG: 8-18 words, ordinary sentence case (do NOT write in all-caps). 3. If (and only if) a BREACH/SIGNAL drill is allowed here: 2-6 short tokens whose content matches the WORLD RULES for this world (never terminal/hex code unless the world is cyberpunk). 4. goodPath rewards clean play with control/evidence/trust. mediumPath shows messy survival. badPath shows concrete consequences that can echo later. 5. Include objective, skill, and a short consequenceHint. 6. Every sentence must stay strictly inside the SETTING's world and era — respect the FORBIDDEN vocabulary. 7. RECENT CONSEQUENCES are beats the player already lived, tagged CLEAN, MESSY or BLOWN by how they typed them. If the newest is MESSY or BLOWN, this segment must show its aftermath concretely — a guard who is now looking, a door that no longer opens — instead of resetting the scene. If it is CLEAN, let the player feel the advantage they earned. 8. OUTPUT LANGUAGE FOR NARRATIVE/DIALOG: ${language === 'ru' ? 'Russian' : 'English'}. Keep BREACH/SIGNAL tokens in English. Return JSON only.`;
 
   try {
     const apiCall = ai.models.generateContent({

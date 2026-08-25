@@ -30,6 +30,7 @@ import {
 } from './services/productAnalytics';
 import {
   buildTargetedDrill,
+  getTrainingFocusTokens,
   getWeakPatterns,
   loadTypingTraining,
   recordTypingSession,
@@ -706,6 +707,13 @@ const App: React.FC = () => {
         ? UI.challenge_missed
         : UI.challenge_tied
     : '';
+  // The player's weak letter pairs, handed to the story generator so the campaign
+  // doubles as their drill.
+  const trainingFocusTokens = useMemo(
+    () => getTrainingFocusTokens(typingTraining),
+    [typingTraining]
+  );
+
   const adaptiveDifficulty = useMemo(
     () => getAdaptiveDifficulty(playerProgress.calibration),
     [playerProgress.calibration]
@@ -2395,6 +2403,7 @@ const App: React.FC = () => {
                     strictCase={!!userProfile.strictCase}
                     deterministicStory={isDailyRun}
                     baselineWpm={playerProgress.calibration?.wpm}
+                    trainingFocus={trainingFocusTokens}
                     onTypingObservation={(observation) => runTrainingObservationsRef.current.push(observation)}
                 />
             )}
