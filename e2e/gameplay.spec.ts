@@ -155,6 +155,27 @@ test('a clean line is never told what it missed', async ({ page }) => {
   await expect(reveal.locator('.engine-fork-missed-text')).toHaveCount(0);
 });
 
+test('nothing covers the line the player is reading', async ({ page }) => {
+  await startCampaign(page);
+  const input = page.getByRole('textbox', { name: 'Typing practice input' });
+  const activeText = await page.locator('.engine-type-scroll span.relative.inline-block').innerText();
+
+  // Type far enough to unlock two protocols, which is when the floating stack
+  // used to settle on top of the words above the caret.
+  await input.pressSequentially(activeText.slice(0, 32), { delay: 5 });
+  await expect(page.locator('.engine-cursor-skills')).toBeVisible();
+
+  const covered = await page.evaluate(() => {
+    const stack = document.querySelector('.engine-cursor-skills')?.getBoundingClientRect();
+    if (!stack) return -1;
+    return [...document.querySelectorAll('span[data-index]')].filter((c) => {
+      const r = c.getBoundingClientRect();
+      return r.right > stack.left && r.left < stack.right && r.bottom > stack.top && r.top < stack.bottom;
+    }).length;
+  });
+  expect(covered).toBe(0);
+});
+
 test('a newcomer reaches the story without sitting a typing test first', async ({ page }) => {
   await page.addInitScript(() => {
     const audio = localStorage.getItem('typomancerAudioEnabled');

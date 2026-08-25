@@ -247,7 +247,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const activeRef = useRef<HTMLSpanElement>(null); 
   const cursorRef = useRef<HTMLSpanElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [focusHintPos, setFocusHintPos] = useState<{ left: number; top: number } | null>(null);
   const transitionLockRef = useRef(false); 
   const gameOverTriggeredRef = useRef(false);
   const forgivenMistakesRef = useRef(0);
@@ -593,14 +592,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         textContainerRef.current.scrollTop = textContainerRef.current.scrollHeight;
     }
 
-    const hasContextualSkill = firewallGrace > 0 || getCursorSkillStack(overclockCharge, modifiers.maxOverclock, isOverclockActive).length > 0;
-    if (hasContextualSkill && cursorRef.current) {
-        const rect = cursorRef.current.getBoundingClientRect();
-        setFocusHintPos({ left: rect.left + rect.width / 2, top: rect.top - 6 });
-    } else {
-        setFocusHintPos(null);
-    }
   }, [inputValue, activeSegment, isWaitingForAi, history, mistakesInSegment, overclockCharge, isOverclockActive, modifiers.maxOverclock, firewallGrace]);
+
+  const hasContextualSkill = firewallGrace > 0
+    || getCursorSkillStack(overclockCharge, modifiers.maxOverclock, isOverclockActive).length > 0;
 
   useEffect(() => {
     let isMounted = true;
@@ -1369,7 +1364,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
 
       if (isCursor) {
         className = isOverclockActive ? "text-white bg-emerald-400 animate-pulse shadow-[0_0_15px_rgba(52,211,153,0.8)]" :
-                    "text-white bg-slate-700 animate-pulse";
+                    "engine-caret text-[#06101a]";
       }
       return (
         <span key={index} ref={isCursor ? cursorRef : undefined} data-index={index} className={`${className} relative`}>
@@ -1536,11 +1531,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
               <div key={s.id} className="char-particle bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,1)]" style={{ left: `${s.left}px`, top: `${s.top}px`, width: `${s.size}px`, height: `${s.size}px`, backgroundColor: s.color, '--tx': s.tx, '--ty': s.ty } as any} />
           ))}
       </div>
-      {focusHintPos && (
-          <div
-              className="engine-cursor-skills fixed z-[110] -translate-x-1/2 -translate-y-full"
-              style={{ left: focusHintPos.left, top: focusHintPos.top }}
-          >
+      {hasContextualSkill && (
+          <div className="engine-cursor-skills absolute right-4 bottom-4 z-[60]">
               {firewallGrace > 0 && (
                   <span className="engine-cursor-skill engine-cursor-skill--active" aria-live="polite">
                       <span className="engine-cursor-skill-label">{UI.shield_active} ×{firewallGrace}</span>
@@ -1585,7 +1577,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                         {/* The sector escalates on an authored curve; naming the beat
                             is what lets the player feel it coming rather than only
                             noticing the line got longer. */}
-                        <div className={`engine-beat engine-beat--${roundShape.beat} mt-1.5`}>
+                        <div className={`engine-beat engine-beat--${roundShape.beat} mt-1`}>
                             {UI[`beat_${roundShape.beat}` as keyof typeof UI]}
                         </div>
                     </div>
@@ -1613,7 +1605,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       </div>
       {/* Scene wants 56% of the deck, but never at the expense of the typing panel:
           cap it so HUD + at least ~5 lines of text always fit on short windows. */}
-      <div className="engine-scene-bezel relative h-[52%] min-h-[130px] max-h-[calc(100%-360px)] w-full bg-black overflow-hidden border border-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+      <div className="engine-scene-bezel relative h-[34%] min-h-[120px] max-h-[300px] w-full bg-black overflow-hidden border border-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
         <div className="absolute left-2 top-2 z-[55] h-5 w-5 border-l border-t border-emerald-400/80 pointer-events-none"></div>
         <div className="absolute right-2 top-2 z-[55] h-5 w-5 border-r border-t border-emerald-400/80 pointer-events-none"></div>
         <div className="absolute bottom-2 left-2 z-[55] h-5 w-5 border-b border-l border-emerald-400/80 pointer-events-none"></div>
@@ -1746,7 +1738,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
             ></div>
           )}
         </div>
-        <div ref={textContainerRef} onClick={() => inputRef.current?.focus()} className="engine-type-scroll no-scrollbar absolute inset-0 overflow-y-auto px-8 md:px-10 py-6 md:py-8 leading-relaxed cursor-text font-mono text-xl md:text-2xl">
+        <div ref={textContainerRef} onClick={() => inputRef.current?.focus()} className="engine-type-scroll no-scrollbar absolute inset-0 flex flex-col justify-center overflow-y-auto px-8 md:px-10 py-6 md:py-8 leading-relaxed cursor-text font-mono text-2xl md:text-[28px]">
         {isOverclockActive && <div className="absolute inset-0 pointer-events-none shadow-[inset_0_0_100px_rgba(52,211,153,0.2)]"></div>}
         {typeCueActive && !isDecisionActive && (
             <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-slate-950/45 backdrop-blur-[1px]">
@@ -1757,7 +1749,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                 </div>
             </div>
         )}
-        <div className={`whitespace-pre-wrap break-words min-h-full pb-24 max-w-4xl mx-auto relative z-10 transition-all duration-300 ${typeCueActive ? 'opacity-0 translate-y-3' : 'opacity-100 translate-y-0'}`}>
+        {/* my-auto rather than centring the parent: a short line sits in the middle
+            of the panel, and once the sector's history has grown past the panel
+            the margin collapses and it scrolls normally instead of clipping. */}
+        <div className={`whitespace-pre-wrap break-words my-auto pb-10 max-w-4xl mx-auto relative z-10 transition-all duration-300 ${typeCueActive ? 'opacity-0 translate-y-3' : 'opacity-100 translate-y-0'}`}>
             {activeSegment.type === SegmentType.BREACH && <div className="text-emerald-400 text-[10px] mb-4 font-bold uppercase tracking-[0.2em] border-b border-emerald-400/30 pb-2">{UI.breach_init}</div>}
             {activeSegment.type === SegmentType.DIALOG && <div className="text-sky-400 text-[10px] mb-4 font-bold uppercase tracking-[0.2em] border-b border-sky-400/30 pb-2">{UI.dialog_init}</div>}
             {activeSegment.type === SegmentType.SIGNAL && <div className="text-amber-400 text-[10px] mb-4 font-bold uppercase tracking-[0.2em] border-b border-amber-400/30 pb-2">{UI.signal_init}</div>}
