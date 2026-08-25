@@ -1296,16 +1296,12 @@ const App: React.FC = () => {
       setCurrentDailyId(null);
       currentDailyIdRef.current = null;
       setCurrentDailyDateLabel(null);
-      if (!playerProgress.calibration) {
-          calibrationNextRef.current = 'campaign';
-          captureProductEvent('typomancer_calibration_started', {
-              ...getAnalyticsContext(),
-              recalibration: false
-          });
-          setGameState(GameState.CALIBRATION);
-      } else {
-          setGameState(GameState.GENRE_SELECTION);
-      }
+      // A newcomer meets the story first. Calibration used to be the very first
+      // thing a stranger saw: a 93-character typing test, before the game had
+      // shown them what it was for. The baseline now tracks real runs, so an
+      // uncalibrated player self-corrects within a few sectors — and the offer to
+      // calibrate lands after the first run, when they know what it tunes.
+      setGameState(GameState.GENRE_SELECTION);
       audioEngine.unlock();
   };
 
@@ -1390,16 +1386,7 @@ const App: React.FC = () => {
       setCurrentDailyDateLabel(brief.dateLabel);
       setSelectedGenre(brief.genre);
       runGenreRef.current = brief.genre;
-      if (!playerProgress.calibration) {
-          calibrationNextRef.current = 'daily';
-          captureProductEvent('typomancer_calibration_started', {
-              ...getAnalyticsContext(),
-              recalibration: false
-          });
-          setGameState(GameState.CALIBRATION);
-      } else {
-          setGameState(GameState.STARTER_PERK_SELECTION);
-      }
+      setGameState(GameState.STARTER_PERK_SELECTION);
       audioEngine.unlock();
   };
 

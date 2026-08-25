@@ -115,6 +115,8 @@ interface TypingEngineProps {
 }
 
 const TYPE_CUE_MS = 1500;
+/** How long a newly unlocked protocol explains itself beside the caret. */
+const SKILL_INTRO_MS = 3600;
 const SKILL_BRIEFING_STORAGE_KEY = 'narrativeFlowSkillBriefingSeen';
 
 const clamp = (value: number, min = 0, max = 100) => Math.max(min, Math.min(max, value));
@@ -263,6 +265,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   });
   const skipTypeCueRef = useRef(false);
   const trackedReadySkillsRef = useRef<Set<string>>(new Set());
+  /** Protocols already introduced this run, so each explains itself exactly once. */
+  const introducedSkillsRef = useRef<Set<string>>(new Set());
+  const [introducingSkill, setIntroducingSkill] = useState<string | null>(null);
+  const introduceTimerRef = useRef<number | null>(null);
   const lastKeystrokeAtRef = useRef<number | null>(null);
   // Held in a ref: the focus list updates as the player types, and putting it in
   // the buffering effect's deps would cancel and refire the next-segment fetch.
@@ -569,6 +575,14 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           trackedReadySkillsRef.current.add(key);
           audioEngine.skillReady();
           captureSkillEvent('typomancer_skill_became_ready', skill);
+          // Teach a protocol the first time it can actually be cast, rather than
+          // in a wall of text before the run when none of them are castable yet.
+          if (!introducedSkillsRef.current.has(skill)) {
+              introducedSkillsRef.current.add(skill);
+              setIntroducingSkill(skill);
+              if (introduceTimerRef.current) clearTimeout(introduceTimerRef.current);
+              introduceTimerRef.current = window.setTimeout(() => setIntroducingSkill(null), SKILL_INTRO_MS);
+          }
       }
   }, [currentLevel, isOverclockActive, modifiers.maxOverclock, overclockCharge]);
 
@@ -1146,6 +1160,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     if (timerRef.current) clearInterval(timerRef.current);
     if (overclockTimerRef.current) clearTimeout(overclockTimerRef.current);
     if (forkRevealTimerRef.current) clearTimeout(forkRevealTimerRef.current);
+    if (introduceTimerRef.current) clearTimeout(introduceTimerRef.current);
     const { totalErrors: recordedErrors } = getErrorReport();
     const totalErrors = totalErrorsOverride ?? recordedErrors;
     const typedCharacters = inputValue.length + (totalErrorsOverride === undefined ? 0 : 1);
@@ -1492,9 +1507,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                   </div>
                   <div className="engine-skill-briefing-grid mt-6">
                       {[
-                        { key: 'TAB', name: 'FOCUS', cost: '100%', effect: UI.skill_focus_short },
-                        { key: '↑', name: 'FIREWALL', cost: '40%', effect: UI.skill_firewall_short },
-                        { key: '↓', name: language === 'ru' ? 'СБРОС' : 'PURGE', cost: '55%', effect: UI.skill_purge_short }
+                        { key: 'TAB', name: 'FOCUS', cost: '100%', effect: UI.skill_focus_short }
                       ].map((skill) => (
                         <div key={skill.name} className="engine-skill-briefing-card">
                             <div className="flex items-center justify-between gap-3">
@@ -1548,7 +1561,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                         type="button"
                         onClick={details.use}
                         aria-label={`${details.label}: ${details.effect}`}
-                        className={`engine-cursor-skill engine-cursor-skill--ready ${isFocus ? 'engine-cursor-skill--focus' : ''}`}
+                        className={`engine-cursor-skill engine-cursor-skill--ready ${isFocus ? 'engine-cursor-skill--focus' : ''} ${introducingSkill === skill ? 'engine-cursor-skill--introducing' : ''}`}
                     >
                         <span className="keycap">{details.key}</span>
                         <span className="engine-cursor-skill-label">{details.label}</span>

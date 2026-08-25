@@ -155,6 +155,39 @@ test('a clean line is never told what it missed', async ({ page }) => {
   await expect(reveal.locator('.engine-fork-missed-text')).toHaveCount(0);
 });
 
+test('a newcomer reaches the story without sitting a typing test first', async ({ page }) => {
+  await page.addInitScript(() => {
+    const audio = localStorage.getItem('typomancerAudioEnabled');
+    localStorage.clear();
+    if (audio !== null) localStorage.setItem('typomancerAudioEnabled', audio);
+  });
+  await page.goto('/');
+
+  await page.getByRole('button', { name: /INITIALIZE LINK/ }).click();
+
+  // Calibration used to be the first thing a stranger saw: 93 characters to type
+  // before the game had shown them anything. The baseline tracks real runs now.
+  await expect(page.locator('.calibration-panel')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Cyberpunk Espionage/ })).toBeVisible();
+});
+
+test('a protocol explains itself the first time it can be cast', async ({ page }) => {
+  await startCampaign(page);
+  const input = page.getByRole('textbox', { name: 'Typing practice input' });
+  const activeText = await page.locator('.engine-type-scroll span.relative.inline-block').innerText();
+
+  // Nothing is castable yet, so nothing is being taught yet.
+  await expect(page.locator('.engine-cursor-skill--introducing')).toHaveCount(0);
+
+  await input.pressSequentially(activeText.slice(0, 20), { delay: 5 });
+
+  const introducing = page.locator('.engine-cursor-skill--introducing');
+  await expect(introducing).toHaveCount(1);
+  await expect(introducing).toContainText('FIREWALL');
+  // The effect is readable without hovering, which is the whole point.
+  await expect(introducing.locator('.engine-cursor-skill-effect')).toBeVisible();
+});
+
 test('the Pact raises the bar and pays for it', async ({ page }) => {
   await page.goto('/');
   const clauses = page.locator('.screens-pact-clause');

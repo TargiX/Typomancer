@@ -595,3 +595,15 @@ button.engine-cursor-skill:disabled {
 .engine-impact-chip--bad .engine-impact-chip-value {
   color: #fdba74;
 }
+
+/* A protocol explains itself the first time it unlocks, so the run does not have
+   to be preceded by a wall of text about tools nobody can use yet. */
+.engine-cursor-skill--introducing .engine-cursor-skill-effect {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+
+.engine-cursor-skill--introducing {
+  border-color: rgba(52, 211, 153, 0.9);
+  box-shadow: 0 0 18px rgba(52, 211, 153, 0.28);
+}
