@@ -32,7 +32,19 @@ const typeActiveLine = async (page: Page) => {
   const input = page.getByRole('textbox', { name: 'Typing practice input' });
   const activeLine = page.locator('.engine-type-scroll span.relative.inline-block');
   const text = await activeLine.innerText();
+  await expect(input).toHaveValue('');
+  // TypingEngine briefly locks input while handing one completed line to the
+  // next. Give that 50 ms transition time to release before sending characters.
+  await page.waitForTimeout(75);
   await input.pressSequentially(text, { delay: 5 });
+
+  // The player reproduces this line keystroke by keystroke, so a malformed one is
+  // a defect they are forced to copy. Drill lines are exact by definition.
+  const isDrill = /^>>|\/\//.test(text);
+  if (!isDrill) {
+    expect(text, `line should open with a capital: ${text}`).not.toMatch(/^\p{Ll}/u);
+    expect(text, `line should end with terminal punctuation: ${text}`).toMatch(/[.!?…]["'»”’)\]]?$/);
+  }
   return text;
 };
 
@@ -47,15 +59,217 @@ test('bulk insertion cannot complete a typing line', async ({ page }) => {
 
   await input.fill(text);
 
+  // Nothing was accepted and nothing was paid for: the line is untouched and the
+  // run has earned nothing. Credits read from the HUD; the shell column is gone.
   await expect(input).toHaveValue('');
-  await expect(page.getByText('SCORE').locator('..')).toContainText('0');
+  await expect(page.getByText('CREDITS').locator('..')).toContainText('0');
+});
+
+test('the caret only offers skills the player can cast, and unlocks stack upward', async ({ page }) => {
+  await startCampaign(page);
+  const input = page.getByRole('textbox', { name: 'Typing practice input' });
+  const activeText = await page.locator('.engine-type-scroll span.relative.inline-block').innerText();
+  const stack = page.locator('.engine-cursor-skills');
+  const labels = stack.locator('.engine-cursor-skill-label');
+
+  // Energy starts empty, so there is nothing to offer and nothing to render.
+  await expect(labels).toHaveCount(0);
+
+  await input.pressSequentially(activeText.slice(0, 20), { delay: 5 });
+  await expect(labels).toHaveText(['FIREWALL']);
+  const before = await stack.locator('.engine-cursor-skill').last().evaluate((element) => ({
+    bottom: element.getBoundingClientRect().bottom,
+    rowHeight: element.getBoundingClientRect().height
+  }));
+
+  await input.pressSequentially(activeText.slice(20, 28), { delay: 5 });
+  await expect(labels).toHaveText(['PURGE', 'FIREWALL']);
+
+  const geometry = await stack.evaluate((element) => ({
+    direction: getComputedStyle(element).flexDirection,
+    bottomLabel: element.lastElementChild?.querySelector('.engine-cursor-skill-label')?.textContent,
+    bottomEdge: element.lastElementChild?.getBoundingClientRect().bottom ?? 0
+  }));
+  expect(geometry.direction).toBe('column');
+  // The cheapest unlock stays put by the caret; PURGE arrived above it. The stack
+  // is anchored to the caret, which drifts sub-pixel as the line advances, so the
+  // claim worth testing is that FIREWALL did not get pushed up by a whole row.
+  expect(geometry.bottomLabel).toBe('FIREWALL');
+  expect(Math.abs(geometry.bottomEdge - before.bottom)).toBeLessThan(before.rowHeight / 2);
+
+  // Nothing in the stack is ever a dead key.
+  await expect(stack.locator('.engine-cursor-skill:disabled')).toHaveCount(0);
+});
+
+test('the tracer eats the line behind a stalled player and PURGE throws it back', async ({ page }) => {
+  await startCampaign(page);
+  const input = page.getByRole('textbox', { name: 'Typing practice input' });
+  const activeText = await page.locator('.engine-type-scroll span.relative.inline-block').innerText();
+  const burned = page.locator('.tracer-burned');
+
+  // Opening a line and reading it is free: the chase has not armed yet.
+  await expect(burned).toHaveCount(0);
+
+  // Build a lead, then stop dead. TRACER_GRACE_MS is 3s from the first keystroke.
+  await input.pressSequentially(activeText.slice(0, 40), { delay: 5 });
+  await expect(burned).toHaveCount(0);
+
+  // The burn front now marches into the lead we just built.
+  await expect
+    .poll(async () => burned.count(), { timeout: 20_000, message: 'tracer should consume the line behind a stalled caret' })
+    .toBeGreaterThan(4);
+
+  const beforePurge = await burned.count();
+  await page.keyboard.press('ArrowDown');
+  await expect
+    .poll(async () => burned.count(), { timeout: 5_000, message: 'PURGE should throw the burn front back' })
+    .toBeLessThan(beforePurge);
+});
+
+test('a lost branch shows the player the line clean typing would have earned', async ({ page }) => {
+  await startCampaign(page);
+  const input = page.getByRole('textbox', { name: 'Typing practice input' });
+  const activeText = await page.locator('.engine-type-scroll span.relative.inline-block').innerText();
+  const reveal = page.locator('.engine-fork-reveal');
+
+  await expect(reveal).toHaveCount(0);
+
+  // Enough uncorrected typos to lose the good branch (more than 4 counted), but
+  // short of the 10 that end the run — which would take the input away mid-test.
+  const typoCount = 7;
+  const wrong = activeText.slice(0, typoCount).replace(/./g, (character) => (character === 'z' ? 'q' : 'z'));
+  await input.pressSequentially(wrong, { delay: 5 });
+  await input.pressSequentially(activeText.slice(typoCount), { delay: 5 });
+
+  await expect(reveal).toHaveClass(/engine-fork-reveal--bad/);
+  await expect(reveal.locator('.engine-fork-missed-text')).not.toBeEmpty();
+});
+
+test('a clean line is never told what it missed', async ({ page }) => {
+  await startCampaign(page);
+  const input = page.getByRole('textbox', { name: 'Typing practice input' });
+  const activeText = await page.locator('.engine-type-scroll span.relative.inline-block').innerText();
+  const reveal = page.locator('.engine-fork-reveal');
+
+  await input.pressSequentially(activeText, { delay: 5 });
+
+  await expect(reveal).toHaveClass(/engine-fork-reveal--good/);
+  await expect(reveal.locator('.engine-fork-missed-text')).toHaveCount(0);
+});
+
+test('nothing covers the line the player is reading', async ({ page }) => {
+  await startCampaign(page);
+  const input = page.getByRole('textbox', { name: 'Typing practice input' });
+  const activeText = await page.locator('.engine-type-scroll span.relative.inline-block').innerText();
+
+  // Type far enough to unlock two protocols, which is when the floating stack
+  // used to settle on top of the words above the caret.
+  await input.pressSequentially(activeText.slice(0, 32), { delay: 5 });
+  await expect(page.locator('.engine-cursor-skills')).toBeVisible();
+
+  const covered = await page.evaluate(() => {
+    const stack = document.querySelector('.engine-cursor-skills')?.getBoundingClientRect();
+    if (!stack) return -1;
+    return [...document.querySelectorAll('span[data-index]')].filter((c) => {
+      const r = c.getBoundingClientRect();
+      return r.right > stack.left && r.left < stack.right && r.bottom > stack.top && r.top < stack.bottom;
+    }).length;
+  });
+  expect(covered).toBe(0);
+});
+
+test('a newcomer reaches the story without sitting a typing test first', async ({ page }) => {
+  await page.addInitScript(() => {
+    const audio = localStorage.getItem('typomancerAudioEnabled');
+    localStorage.clear();
+    if (audio !== null) localStorage.setItem('typomancerAudioEnabled', audio);
+  });
+  await page.goto('/');
+
+  await page.getByRole('button', { name: /INITIALIZE LINK/ }).click();
+
+  // Calibration used to be the first thing a stranger saw: 93 characters to type
+  // before the game had shown them anything. The baseline tracks real runs now.
+  await expect(page.locator('.calibration-panel')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Cyberpunk Espionage/ })).toBeVisible();
+});
+
+test('a protocol explains itself the first time it can be cast', async ({ page }) => {
+  await startCampaign(page);
+  const input = page.getByRole('textbox', { name: 'Typing practice input' });
+  const activeText = await page.locator('.engine-type-scroll span.relative.inline-block').innerText();
+
+  // Nothing is castable yet, so nothing is being taught yet.
+  await expect(page.locator('.engine-cursor-skill--introducing')).toHaveCount(0);
+
+  await input.pressSequentially(activeText.slice(0, 20), { delay: 5 });
+
+  const introducing = page.locator('.engine-cursor-skill--introducing');
+  await expect(introducing).toHaveCount(1);
+  await expect(introducing).toContainText('FIREWALL');
+  // The effect is readable without hovering, which is the whole point.
+  await expect(introducing.locator('.engine-cursor-skill-effect')).toBeVisible();
+});
+
+test('the Pact raises the bar and pays for it', async ({ page }) => {
+  await page.goto('/');
+  const clauses = page.locator('.screens-pact-clause');
+  const reward = page.locator('.screens-pact-reward');
+
+  // Collapsed by default: five clauses expanded is a wall of text on the first
+  // screen, and the multiplier alone says whether anything is taken on.
+  await expect(reward).toContainText('x1.00');
+  await expect(clauses).toHaveCount(0);
+  await page.getByRole('button', { expanded: false }).filter({ hasText: 'THE PACT' }).click();
+  await expect(clauses.locator('.is-active')).toHaveCount(0);
+
+  const count = await clauses.count();
+  for (let i = 0; i < count; i += 1) await clauses.nth(i).click();
+
+  // Every clause pays, so a full Pact more than doubles the run.
+  await expect(reward).toContainText('x2.25');
+  const multiplier = Number((await reward.innerText()).match(/x([\d.]+)/)![1]);
+  expect(multiplier).toBeGreaterThan(2);
+
+  // Taking one back lowers the payout rather than sticking.
+  await clauses.first().click();
+  await expect(reward).not.toContainText('x2.25');
+
+  // And the choice survives a reload, because it is a standing commitment —
+  // even though the panel itself reopens collapsed.
+  const before = await reward.innerText();
+  await page.reload();
+  await expect(page.locator('.screens-pact-reward')).toHaveText(before);
+  await expect(page.locator('.screens-pact-clause')).toHaveCount(0);
+});
+
+test('a Pact clause changes the run it was taken for', async ({ page }) => {
+  await page.addInitScript(() => {
+    const raw = localStorage.getItem('narrativeFlowProfile');
+    const profile = raw ? JSON.parse(raw) : {};
+    localStorage.setItem('narrativeFlowProfile', JSON.stringify({ ...profile, pact: ['hot_start'] }));
+  });
+  await startCampaign(page);
+
+  // Hot Start opens the sector already hunted, against a default of 18%. Heat
+  // reads from the HUD mission rail now: the shell column is gone during a run.
+  const heatMeter = page.locator('.engine-mission-meter').filter({ hasText: 'HEAT' });
+  await expect(heatMeter).toContainText('45%');
 });
 
 test('banking a completed sector adds it to Operator Record', async ({ page }) => {
+  // Run it under a Pact so the record has something to distinguish it by.
+  await page.addInitScript(() => {
+    const raw = localStorage.getItem('narrativeFlowProfile');
+    const profile = raw ? JSON.parse(raw) : {};
+    localStorage.setItem('narrativeFlowProfile', JSON.stringify({ ...profile, pact: ['hot_start', 'hunted'] }));
+  });
   await startCampaign(page);
   const activeLine = page.locator('.engine-type-scroll span.relative.inline-block');
 
+  const beats: string[] = [];
   for (let round = 1; round <= 7; round += 1) {
+    beats.push((await page.locator('.engine-beat').innerText()).trim());
     const completedText = await typeActiveLine(page);
     if (round === 3) {
       await page.getByRole('button', { name: /STEALTH/ }).click();
@@ -65,12 +279,37 @@ test('banking a completed sector adds it to Operator Record', async ({ page }) =
     }
   }
 
+  // The sector runs on an authored curve, so it opens gently and ends on a climax
+  // rather than being seven interchangeable beats.
+  expect(beats[0]).toBe('OPENING');
+  expect(beats[beats.length - 1]).toBe('CLIMAX');
+  expect(new Set(beats).size).toBeGreaterThan(2);
+
   await expect(page.getByRole('heading', { name: 'SEQUENCE COMPLETE' })).toBeVisible();
+
+  // Accuracy leads the debrief; speed is one tile among the rest. This is an
+  // accuracy trainer, and the screen used to open with a speed number.
+  const hero = page.locator('.screens-accuracy-hero');
+  await expect(hero).toBeVisible();
+  await expect(hero.locator('.screens-accuracy-value')).toContainText('%');
+  const heroBox = await hero.boundingBox();
+  const speedTile = page.locator('.screens-stat-tile').first();
+  const speedBox = await speedTile.boundingBox();
+  expect(heroBox!.y).toBeLessThan(speedBox!.y);
+  expect(heroBox!.height).toBeGreaterThan(speedBox!.height * 0.9);
+
   await page.getByRole('button', { name: 'SAVE & EXIT' }).click();
   await expect(page.getByRole('button', { name: /RESUME OPERATION · Sector 2/ })).toBeVisible();
   await page.getByRole('button', { name: /OPERATOR RECORD/ }).click();
 
   await expect(page.locator('.operator-record-run')).toContainText('BANKED');
+  // A Pact run must read as one afterwards, or taking the hard road leaves no trace.
+  await expect(page.locator('.operator-record-run .operator-record-pact')).toContainText('x1.50');
+
+  const storedPact = await page.evaluate(
+    () => JSON.parse(localStorage.getItem('typomancerPlayerProgress') || '{}').runs?.[0]?.pact
+  );
+  expect(storedPact).toEqual(['hot_start', 'hunted']);
   await expect(page.locator('.operator-record-run')).toContainText('LVL 1');
 });
 

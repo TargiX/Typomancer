@@ -7,17 +7,41 @@ import {
   getDeterministicStoryBranch,
   getDeterministicStrategicDecision
 } from '../services/geminiService';
-import { audioEngine } from '../services/audioEngine';
+import { audioEngine, type ComboTier } from '../services/audioEngine';
+import {
+  TRACER_CATCH_KNOCKBACK,
+  TRACER_CATCH_TRACE_PENALTY,
+  TRACER_PURGE_KNOCKBACK,
+  TRACER_TIER_KNOCKBACK,
+  advanceTracer,
+  getTracerCharsPerSecond,
+  getTracerSpeedScale,
+  getTracerStartIndex,
+  getTracerThreat,
+  isTracerArmed,
+  isTracerCaught,
+  isTracerStunned,
+  knockBackTracer
+} from '../services/tracer';
 import {
   DECISION_ROUND,
   SECTOR_ROUNDS,
   calculateSegmentCredits,
+  DEFAULT_BRANCH_THRESHOLDS,
   calculateSegmentScore,
+  getBranchPerformance,
+  getComboMultiplier,
+  getCursorSkillStack,
   getReadyActiveSkills,
   getTypingAccuracy,
-  isLowHealth
+  isLowHealth,
+  type BranchThresholds
 } from '../services/gameRules';
+import { FORK_REVEAL_MS, buildForkReveal, describeFork, type ForkReveal } from '../services/forkReveal';
+import { appendConsequence, describeDecisionBeat, describeSegmentBeat } from '../services/missionLog';
 import { captureProductEvent, getDeviceClass } from '../services/productAnalytics';
+import { formatImpactValue, getDecisionImpactChips } from '../services/decisionImpact';
+import { getRoundShape } from '../services/sectorRhythm';
 import type { TypingObservation } from '../services/typingTraining';
 
 const CRACK_PATHS = [
@@ -82,9 +106,22 @@ interface TypingEngineProps {
   strictCase?: boolean;
   deterministicStory?: boolean;
   onTypingObservation?: (observation: TypingObservation) => void;
+  /** Calibrated words per minute; sets the pace the tracer chases you at. */
+  baselineWpm?: number;
+  /** Letter pairs this player fumbles, seeded into the generated prose. */
+  trainingFocus?: string[];
+  /** Accuracy demanded for each branch; the Exacting Pact clause tightens these. */
+  branchThresholds?: BranchThresholds;
 }
 
 const TYPE_CUE_MS = 1500;
+/** Notches in the Security Trace gauge. Wider than the sidebar gauges: it is the
+ *  meter the player checks most, so it gets the finer resolution. */
+const TRACE_GAUGE_SEGMENTS = 28;
+/** Compact gauges for the three mission meters on the HUD rail. */
+const MISSION_GAUGE_SEGMENTS = 10;
+/** How long a newly unlocked protocol explains itself beside the caret. */
+const SKILL_INTRO_MS = 3600;
 const SKILL_BRIEFING_STORAGE_KEY = 'narrativeFlowSkillBriefingSeen';
 
 const clamp = (value: number, min = 0, max = 100) => Math.max(min, Math.min(max, value));
@@ -93,8 +130,6 @@ const normalizeMissionState = (mission?: MissionState): MissionState => ({
   heat: mission?.heat ?? 18,
   trust: mission?.trust ?? 44,
   evidence: mission?.evidence ?? 0,
-  corruption: mission?.corruption ?? 0,
-  signal: mission?.signal ?? 55,
   route: mission?.route ?? 'balanced',
   flags: mission?.flags ? [...mission.flags] : [],
   consequenceLog: mission?.consequenceLog ? [...mission.consequenceLog] : [],
@@ -150,7 +185,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     genre,
     strictCase = false,
     deterministicStory = false,
-    onTypingObservation
+    onTypingObservation,
+    baselineWpm,
+    trainingFocus,
+    branchThresholds = DEFAULT_BRANCH_THRESHOLDS
 }) => {
   const [history, setHistory] = useState<StorySegment[]>([]);
   const [activeSegment, setActiveSegment] = useState<StorySegment>(initialSegment);
@@ -163,7 +201,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const [debris, setDebris] = useState<Debris[]>([]);
   const [sparks, setSparks] = useState<Spark[]>([]);
   const [showFlash, setShowFlash] = useState(false);
-  const [isCriticalHack, setIsCriticalHack] = useState(false); 
   const [overclockCharge, setOverclockCharge] = useState(0);
   const [isOverclockActive, setIsOverclockActive] = useState(false);
   const overclockTimerRef = useRef<number | null>(null);
@@ -177,6 +214,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const [combo, setCombo] = useState(0);
   const [comboPulse, setComboPulse] = useState(0);
   const [deltaPopups, setDeltaPopups] = useState<DeltaPopup[]>([]);
+  // The branch the player's accuracy just bought them, surfaced for a few seconds.
+  const [forkReveal, setForkReveal] = useState<ForkReveal | null>(null);
+  const forkRevealTimerRef = useRef<number | null>(null);
   const [typeCueActive, setTypeCueActive] = useState(true);
   // Remember WHICH segment got the TYPE cue (not a boolean) — StrictMode re-runs the
   // effect for the same segment, and a plain flag would cancel the cue instantly.
@@ -185,6 +225,22 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const [round, setRound] = useState(1);
   const [totalWPM, setTotalWPM] = useState(0);
   const [tracePercent, setTracePercent] = useState(0);
+  // The tracer's exact position lives in a ref and is integrated every frame; only
+  // the whole-character burn front reaches React, so a 60fps chase re-renders the
+  // line about twice a second instead of sixty times.
+  const tracerRef = useRef<number>(getTracerStartIndex());
+  const [tracerBurnFront, setTracerBurnFront] = useState<number>(Math.floor(getTracerStartIndex()));
+  const inputLengthRef = useRef(0);
+  const healthRef = useRef(currentRoundHealth);
+  /** Timestamp of the first keystroke of the current segment; null until it lands. */
+  const segmentFirstKeyAtRef = useRef<number | null>(null);
+  const tracerCaughtAtRef = useRef<number | null>(null);
+  /** Read by the chase loop each frame so a streak slows the tracer as it builds. */
+  const comboTierRef = useRef(0);
+  /** Combo shields spent this round, and whether one is currently absorbing a break. */
+  const comboShieldsUsedRef = useRef(0);
+  /** Live combo for the animation frame, which cannot read state directly. */
+  const comboRef = useRef(0);
   const [missionState, setMissionState] = useState<MissionState>(() => normalizeMissionState(missionSeed));
   const missionRef = useRef<MissionState>(normalizeMissionState(missionSeed));
   const timerRef = useRef<number | null>(null);
@@ -195,7 +251,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const activeRef = useRef<HTMLSpanElement>(null); 
   const cursorRef = useRef<HTMLSpanElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [focusHintPos, setFocusHintPos] = useState<{ left: number; top: number } | null>(null);
   const transitionLockRef = useRef(false); 
   const gameOverTriggeredRef = useRef(false);
   const forgivenMistakesRef = useRef(0);
@@ -213,7 +268,15 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   });
   const skipTypeCueRef = useRef(false);
   const trackedReadySkillsRef = useRef<Set<string>>(new Set());
+  /** Protocols already introduced this run, so each explains itself exactly once. */
+  const introducedSkillsRef = useRef<Set<string>>(new Set());
+  const [introducingSkill, setIntroducingSkill] = useState<string | null>(null);
+  const introduceTimerRef = useRef<number | null>(null);
   const lastKeystrokeAtRef = useRef<number | null>(null);
+  // Held in a ref: the focus list updates as the player types, and putting it in
+  // the buffering effect's deps would cancel and refire the next-segment fetch.
+  const trainingFocusRef = useRef<string[]>(trainingFocus || []);
+  useEffect(() => { trainingFocusRef.current = trainingFocus || []; }, [trainingFocus]);
 
   useEffect(() => {
       lastKeystrokeAtRef.current = null;
@@ -254,7 +317,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           heat: "HEAT",
           trust: "TRUST",
           evidence: "EVIDENCE",
-          corruption: "CORRUPTION",
           route: "ROUTE",
           consequence: "CONSEQUENCE",
           clean: "clean",
@@ -267,6 +329,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           skill_purge: "PURGE TRACE — instantly cut Security Trace by 25% (costs Energy)",
           skills_title: "ACTIVE PROTOCOLS",
           skills_intro: "Clean typing charges Energy. Spend it without leaving the typing line.",
+          tracer_brief_title: "THE TRACE IS ON THE LINE",
+          tracer_brief_body: "A burn front eats the line behind you. Keep typing and it never reaches your cursor — stall and it does. PURGE throws it back.",
           skill_focus_short: "Pause trace · soften mistakes · 2x rewards",
           skill_firewall_short: "Shield the next 3 mistakes",
           skill_purge_short: "Cut Security Trace by 25%",
@@ -276,7 +340,15 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           route_silent: "SILENT",
           route_loud: "LOUD",
           type_cue: "TYPE",
-          type_subcue: "BEGIN INPUT"
+          type_subcue: "BEGIN INPUT",
+          score_word: "SCORE",
+          fork_error_one: "error",
+          fork_error_many: "errors",
+          beat_establish: "OPENING",
+          beat_build: "BUILDING",
+          beat_turn: "TURNING POINT",
+          beat_escalate: "CLOSING IN",
+          beat_climax: "CLIMAX"
       },
       ru: {
           overclock_active: "ФОКУС-МОД АКТИВЕН",
@@ -302,7 +374,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           heat: "УГРОЗА",
           trust: "ДОВЕРИЕ",
           evidence: "УЛИКИ",
-          corruption: "КОРРУПЦИЯ",
           route: "МАРШРУТ",
           consequence: "ПОСЛЕДСТВИЕ",
           clean: "чисто",
@@ -315,6 +386,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           skill_purge: "СБРОС ТРАССЫ — мгновенно −25% к трассировке (тратит Energy)",
           skills_title: "АКТИВНЫЕ ПРОТОКОЛЫ",
           skills_intro: "Точная печать заряжает Energy. Трать её, не отрывая взгляд от строки.",
+          tracer_brief_title: "ТРАССА ИДЁТ ПО СТРОКЕ",
+          tracer_brief_body: "След выжигает строку за твоей спиной. Пока печатаешь — он не догонит; замрёшь — догонит. СБРОС отбрасывает его назад.",
           skill_focus_short: "Пауза трассы · мягче ошибки · x2 награды",
           skill_firewall_short: "Щит на следующие 3 ошибки",
           skill_purge_short: "Снизить трассировку на 25%",
@@ -324,7 +397,15 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           route_silent: "ТИХО",
           route_loud: "ГРОМКО",
           type_cue: "TYPE",
-          type_subcue: "НАЧИНАЙ ВВОД"
+          type_subcue: "НАЧИНАЙ ВВОД",
+          score_word: "СЧЁТ",
+          fork_error_one: "ошибка",
+          fork_error_many: "ошибок",
+          beat_establish: "ЗАВЯЗКА",
+          beat_build: "НАРАСТАНИЕ",
+          beat_turn: "ПЕРЕЛОМ",
+          beat_escalate: "КОЛЬЦО СЖИМАЕТСЯ",
+          beat_climax: "КУЛЬМИНАЦИЯ"
       }
   };
 
@@ -418,7 +499,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
             return;
         }
         if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
-        if (isWaitingForAi || transitionLockRef.current || isCriticalHack) return;
+        if (isWaitingForAi || transitionLockRef.current) return;
 
         if (e.key === 'Backspace') {
             e.preventDefault();
@@ -442,7 +523,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     inputValue,
     activeSegment,
     isWaitingForAi,
-    isCriticalHack,
     mistakesInSegment,
     health,
     showSkillBriefing
@@ -451,10 +531,12 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const activateOverclock = () => {
       if (isOverclockActive || overclockCharge < modifiers.maxOverclock) return;
       captureSkillEvent('typomancer_skill_used', 'focus');
+      audioEngine.focusStart();
       setIsOverclockActive(true);
       setOverclockCharge(0);
       if (overclockTimerRef.current) clearTimeout(overclockTimerRef.current);
       overclockTimerRef.current = window.setTimeout(() => {
+          audioEngine.focusEnd();
           setIsOverclockActive(false);
       }, modifiers.focusDurationMs);
   };
@@ -480,8 +562,11 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       const cost = PURGE_COST();
       if (isOverclockActive || isDecisionActive || overclockCharge < cost) return;
       captureSkillEvent('typomancer_skill_used', 'purge');
+      audioEngine.purge();
       setOverclockCharge(c => Math.max(0, c - cost));
       setTracePercent(p => clamp(p - 25));
+      tracerRef.current = knockBackTracer(tracerRef.current, TRACER_PURGE_KNOCKBACK);
+      setTracerBurnFront(Math.floor(tracerRef.current));
       inputRef.current?.focus();
   };
 
@@ -491,7 +576,16 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           const key = `${currentLevel}:${skill}`;
           if (trackedReadySkillsRef.current.has(key)) continue;
           trackedReadySkillsRef.current.add(key);
+          audioEngine.skillReady();
           captureSkillEvent('typomancer_skill_became_ready', skill);
+          // Teach a protocol the first time it can actually be cast, rather than
+          // in a wall of text before the run when none of them are castable yet.
+          if (!introducedSkillsRef.current.has(skill)) {
+              introducedSkillsRef.current.add(skill);
+              setIntroducingSkill(skill);
+              if (introduceTimerRef.current) clearTimeout(introduceTimerRef.current);
+              introduceTimerRef.current = window.setTimeout(() => setIntroducingSkill(null), SKILL_INTRO_MS);
+          }
       }
   }, [currentLevel, isOverclockActive, modifiers.maxOverclock, overclockCharge]);
 
@@ -502,14 +596,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         textContainerRef.current.scrollTop = textContainerRef.current.scrollHeight;
     }
 
-    const hasContextualSkill = firewallGrace > 0 || getReadyActiveSkills(overclockCharge, modifiers.maxOverclock, isOverclockActive).length > 0;
-    if (hasContextualSkill && cursorRef.current) {
-        const rect = cursorRef.current.getBoundingClientRect();
-        setFocusHintPos({ left: rect.left + rect.width / 2, top: rect.top - 6 });
-    } else {
-        setFocusHintPos(null);
-    }
   }, [inputValue, activeSegment, isWaitingForAi, history, mistakesInSegment, overclockCharge, isOverclockActive, modifiers.maxOverclock, firewallGrace]);
+
+  const hasContextualSkill = firewallGrace > 0
+    || getCursorSkillStack(overclockCharge, modifiers.maxOverclock, isOverclockActive).length > 0;
 
   useEffect(() => {
     let isMounted = true;
@@ -530,7 +620,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
 
     const BASE_INCREMENT = 0.065; 
     const stealthDivisor = 1 + (stealthLevel * 0.1);
-    const missionPressure = 1 + (missionRef.current.heat / 140) + (missionRef.current.corruption / 200) - (missionRef.current.trust / 320);
+    // Heat absorbed corruption, so its divisor widened to keep total pressure
+    // roughly where it was before the two meters merged.
+    const missionPressure = 1 + (missionRef.current.heat / 160) - (missionRef.current.trust / 320);
     const segmentPressure = 1 + ((activeSegment.pressure || 0) * 0.06);
     const perkMultiplier = modifiers.traceSpeedMultiplier * Math.max(0.45, missionPressure) * segmentPressure; 
 
@@ -557,6 +649,110 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     };
   }, [isWaitingForAi, transitionLockRef.current, stealthLevel, modifiers.traceSpeedMultiplier, inputValue.length, startTime, isOverclockActive, isDecisionActive, activeSegment.pressure, typeCueActive]); 
 
+  // Refs the animation frame reads. Reading state inside the loop would pin it to
+  // whatever the closure captured on the frame it was created.
+  useEffect(() => { inputLengthRef.current = inputValue.length; }, [inputValue]);
+  useEffect(() => { healthRef.current = health; }, [health]);
+
+  // Every segment reopens the chase with the player ahead by a fixed run of
+  // characters, so the tracer is a threat you can see approaching rather than
+  // something already on top of you when the line appears.
+  useEffect(() => {
+      tracerRef.current = getTracerStartIndex();
+      setTracerBurnFront(Math.floor(getTracerStartIndex()));
+      segmentFirstKeyAtRef.current = null;
+      tracerCaughtAtRef.current = null;
+      comboShieldsUsedRef.current = 0;
+  }, [activeSegment]);
+
+  // Combo survives across segments, so the streak advantage must follow it rather
+  // than silently reset at every line break.
+  useEffect(() => {
+      comboTierRef.current = comboTier(combo);
+      comboRef.current = combo;
+  }, [combo]);
+
+  const handleTracerCatch = () => {
+      tracerCaughtAtRef.current = Date.now();
+      tracerRef.current = knockBackTracer(tracerRef.current, TRACER_CATCH_KNOCKBACK);
+      setTracerBurnFront(Math.floor(tracerRef.current));
+      setCombo(0);
+      audioEngine.tracerCatch();
+      setTracePercent(p => clamp(p + TRACER_CATCH_TRACE_PENALTY));
+      const nextHealth = Math.max(0, healthRef.current - 1);
+      healthRef.current = nextHealth;
+      setHealth(nextHealth);
+      triggerImpact(Math.max(4, mistakesInSegment));
+      if (nextHealth <= 0) triggerGameOver(0);
+  };
+
+  // The chase itself. Paused by exactly the things that pause the trace bar, plus
+  // Focus Mode — the two are one threat read two ways and must never disagree.
+  useEffect(() => {
+      const frozen = isWaitingForAi
+          || transitionLockRef.current
+          || isDecisionActive
+          || typeCueActive
+          || isOverclockActive
+          || showSkillBriefing
+          || gameOverTriggeredRef.current;
+      if (frozen) return;
+
+      const charsPerSecond = getTracerCharsPerSecond({
+          baselineWpm: baselineWpm ?? 0,
+          traceSpeedMultiplier: modifiers.traceSpeedMultiplier,
+          stealthLevel,
+          heat: missionRef.current.heat,
+          trust: missionRef.current.trust,
+          segmentPressure: activeSegment.pressure || 0
+      });
+
+      let frame = 0;
+      let last = performance.now();
+      const step = (now: number) => {
+          const delta = now - last;
+          last = now;
+          const firstKeyAt = segmentFirstKeyAtRef.current;
+          const caughtAt = tracerCaughtAtRef.current;
+          const armed = isTracerArmed(firstKeyAt === null ? null : Date.now() - firstKeyAt);
+          const stunned = isTracerStunned(caughtAt === null ? null : Date.now() - caughtAt);
+          if (!armed || stunned) {
+              frame = requestAnimationFrame(step);
+              return;
+          }
+          // Accuracy is the weapon: an unbroken streak slows the chase, and one
+          // typo hands the whole advantage back at once. Ghost Protocol stacks on
+          // top, but only while the streak it demands is actually held.
+          const stealth = (modifiers.streakTraceThreshold > 0 && comboRef.current >= modifiers.streakTraceThreshold)
+            ? modifiers.streakTraceMultiplier
+            : 1;
+          const streakSpeed = charsPerSecond * getTracerSpeedScale(comboTierRef.current) * stealth;
+          tracerRef.current = advanceTracer(tracerRef.current, delta, streakSpeed, activeSegment.text.length);
+          const front = Math.floor(tracerRef.current);
+          setTracerBurnFront(prev => (prev === front ? prev : front));
+          // A finished line is out of the tracer's reach: the caret only sits at the
+          // end because the player already won the race down it.
+          const lineComplete = inputLengthRef.current >= activeSegment.text.length;
+          if (!lineComplete && !gameOverTriggeredRef.current
+              && isTracerCaught(tracerRef.current, inputLengthRef.current)) {
+              handleTracerCatch();
+          }
+          frame = requestAnimationFrame(step);
+      };
+      frame = requestAnimationFrame(step);
+      return () => cancelAnimationFrame(frame);
+  }, [
+      activeSegment,
+      baselineWpm,
+      isDecisionActive,
+      isOverclockActive,
+      isWaitingForAi,
+      modifiers.traceSpeedMultiplier,
+      showSkillBriefing,
+      stealthLevel,
+      typeCueActive
+  ]);
+
   useEffect(() => {
     let isMounted = true;
     const bufferNext = async () => {
@@ -576,7 +772,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         } else {
              const branch = deterministicStory
                ? getDeterministicStoryBranch(genre, nextLevel, nextRound, language, missionRef.current)
-               : await generateNextSegments(context, nextLevel, nextRound, language, prevLevelSummary, missionRef.current, genre);
+               : await generateNextSegments(context, nextLevel, nextRound, language, prevLevelSummary, missionRef.current, genre, trainingFocusRef.current);
              if (isMounted) setNextBranch(branch);
         }
       } catch (e) {
@@ -586,33 +782,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     bufferNext();
     return () => { isMounted = false; };
   }, [activeSegment, history, currentLevel, round, prevLevelSummary, language, genre, deterministicStory]);
-
-  useEffect(() => {
-      if (inputValue.length === 0 && !transitionLockRef.current && round <= SECTOR_ROUNDS && !isCriticalHack && !isDecisionActive && !typeCueActive) {
-          if (!deterministicStory && Math.random() < modifiers.criticalHackChance) {
-             performCriticalHack(); 
-          }
-      }
-  }, [activeSegment, round, isDecisionActive, typeCueActive]);
-
-  const performCriticalHack = () => {
-      setIsCriticalHack(true);
-      let i = 0;
-      const target = activeSegment.text;
-      const interval = setInterval(() => {
-          i += 3;
-          if (i >= target.length) {
-              i = target.length;
-              clearInterval(interval);
-              setInputValue(target);
-              setTimeout(() => {
-                  setIsCriticalHack(false);
-              }, 500);
-          } else {
-              setInputValue(target.substring(0, i));
-          }
-      }, 30);
-  };
 
   const describeImpact = (impact?: DecisionImpact): string => {
       if (!impact) return '';
@@ -624,11 +793,35 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       fmt(UI.heat, impact.heat, '%');
       fmt(UI.trust, impact.trust);
       fmt(UI.evidence, impact.evidence);
-      fmt(UI.corruption, impact.corruption);
       fmt(UI.security, impact.trace, '%');
       fmt(UI.hp, impact.health);
       fmt(UI.credits, impact.credits);
       return parts.join(' · ');
+  };
+
+  const impactLabels = {
+      heat: UI.heat,
+      trust: UI.trust,
+      evidence: UI.evidence,
+      trace: UI.security,
+      health: UI.hp,
+      credits: UI.credits
+  };
+
+  // The price of a choice belongs on the card, not in the log afterwards.
+  const renderImpactChips = (impact?: DecisionImpact) => {
+      const chips = getDecisionImpactChips(impact, impactLabels);
+      if (!chips.length) return null;
+      return (
+          <div className="engine-decision-impact mt-4">
+              {chips.map((chip) => (
+                  <span key={chip.key} className={`engine-impact-chip engine-impact-chip--${chip.tone}`}>
+                      <span className="engine-impact-chip-label">{chip.label}</span>
+                      <span className="engine-impact-chip-value">{formatImpactValue(chip)}</span>
+                  </span>
+              ))}
+          </div>
+      );
   };
 
   const routeLabel = (route = missionRef.current.route) => {
@@ -637,7 +830,14 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       return UI.route_balanced;
   };
 
-  const comboMultiplier = combo >= 50 ? 3 : combo >= 25 ? 2 : combo >= 10 ? 1.5 : 1;
+  const roundShape = getRoundShape(round, SECTOR_ROUNDS, currentLevel);
+
+  const comboMultiplier = getComboMultiplier(combo);
+
+  // Maps the combo ladder onto the four brightness steps of the keystroke voice.
+  const comboTier = (value: number): ComboTier => (
+    value >= 50 ? 3 : value >= 25 ? 2 : value >= 10 ? 1 : 0
+  );
 
   const comboAccent = () => {
     if (combo >= 50) return { text: 'text-emerald-200', glow: 'rgba(52,211,153,0.95)' };
@@ -663,13 +863,12 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     }, 1900);
   };
 
-  // Scene atmosphere driven by mission meters: hostile heat/corruption tints the
-  // frame red/violet, a calm clean run cools it toward emerald. This is the
-  // "consequences you can feel" layer over the generated art.
+  // Scene atmosphere driven by mission meters: rising Heat tints the frame
+  // orange, then red, then violet; a calm clean run cools it toward emerald.
+  // This is the "consequences you can feel" layer over the generated art.
   const atmosphere = () => {
     const heat = missionState.heat;
-    const corruption = missionState.corruption;
-    if (corruption >= 45) return { color: 'rgba(126,34,206,0.32)', label: 'compromised' };
+    if (heat >= 85) return { color: 'rgba(126,34,206,0.32)', label: 'compromised' };
     if (heat >= 70) return { color: 'rgba(220,38,38,0.34)', label: 'burning' };
     if (heat >= 50) return { color: 'rgba(234,88,12,0.22)', label: 'hot' };
     if (heat <= 28 && missionState.trust >= 50) return { color: 'rgba(16,185,129,0.20)', label: 'ghost' };
@@ -683,11 +882,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           heat: clamp(prev.heat + (impact.heat || 0)),
           trust: clamp(prev.trust + (impact.trust || 0)),
           evidence: clamp(prev.evidence + (impact.evidence || 0)),
-          corruption: clamp(prev.corruption + (impact.corruption || 0)),
-          signal: clamp(prev.signal + (impact.signal || 0)),
           route: impact.route || prev.route,
           flags: impact.flag && !prev.flags.includes(impact.flag) ? [...prev.flags, impact.flag] : prev.flags,
-          consequenceLog: [note, ...prev.consequenceLog].slice(0, 7),
+          consequenceLog: appendConsequence(prev.consequenceLog, note),
           lastDecision: decisionId || prev.lastDecision
       };
       missionRef.current = next;
@@ -698,10 +895,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const applyDecisionImpact = (impact: DecisionImpact | undefined, choiceText: string, choiceId: string) => {
       const safeImpact = impact || {};
       const meta = describeImpact(safeImpact);
-      const note = language === 'ru'
-          ? `Решение: ${choiceText}${meta ? ` (${meta})` : ''}`
-          : `Decision: ${choiceText}${meta ? ` (${meta})` : ''}`;
-      commitMission(safeImpact, note, choiceId);
+      commitMission(safeImpact, describeDecisionBeat(choiceText, language), choiceId);
       if (safeImpact.trace) setTracePercent(p => clamp(p + safeImpact.trace!));
       if (safeImpact.health) setHealth(h => clamp(h + safeImpact.health!, 0, modifiers.maxHealth));
       if (safeImpact.credits) setCredits(c => c + safeImpact.credits!);
@@ -742,30 +936,25 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       let evidenceDelta = 0;
       let heatDelta = 0;
       let trustDelta = 0;
-      let corruptionDelta = 0;
-      let signalDelta = 0;
       let traceDelta = 0;
       const pressure = segment.pressure || 1;
 
+      // Heat carries what Corruption used to: a fumbled line makes you more
+      // hunted, which is the one thing both meters were ever saying.
       if (performance === 'good') {
           evidenceDelta = Math.ceil((isBreach ? 5 : isSignal ? 4 : isDialog ? 3 : 2) * modifiers.evidenceMultiplier);
           heatDelta = -3 - (isBreach ? 2 : 0);
           trustDelta = isDialog ? 3 : 1;
-          signalDelta = 2;
           traceDelta = isBreach ? -14 : -5;
       } else if (performance === 'average') {
           evidenceDelta = Math.ceil((isBreach ? 2 : 1) * modifiers.evidenceMultiplier);
-          heatDelta = 2 + pressure;
+          heatDelta = 3 + pressure;
           trustDelta = isDialog ? -1 : 0;
-          corruptionDelta = 1;
-          signalDelta = -1;
           traceDelta = isBreach ? -4 : 2;
       } else {
           evidenceDelta = isBreach ? 1 : 0;
-          heatDelta = 6 + Math.min(10, totalErrors) + pressure;
+          heatDelta = 9 + Math.min(10, totalErrors) + Math.floor(totalErrors / 2) + pressure;
           trustDelta = -3;
-          corruptionDelta = 3 + Math.floor(totalErrors / 2);
-          signalDelta = -5;
           traceDelta = 8 + pressure;
       }
 
@@ -775,23 +964,22 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       }
 
       const meta = `${UI.evidence} ${evidenceDelta >= 0 ? '+' : ''}${evidenceDelta} · ${UI.heat} ${heatDelta >= 0 ? '+' : ''}${heatDelta}% · ${UI.trust} ${trustDelta >= 0 ? '+' : ''}${trustDelta}`;
-      const note = language === 'ru'
-          ? `${performance === 'good' ? 'Чистый' : performance === 'average' ? 'Шумный' : 'Сорванный'} сегмент: ${meta}`
-          : `${performance === 'good' ? 'Clean' : performance === 'average' ? 'Messy' : 'Compromised'} segment: ${meta}`;
-      commitMission({ heat: heatDelta, trust: trustDelta, evidence: evidenceDelta, corruption: corruptionDelta, signal: signalDelta }, note);
+      commitMission(
+          { heat: heatDelta, trust: trustDelta, evidence: evidenceDelta },
+          describeSegmentBeat(segment.text, performance, language)
+      );
       setTracePercent(p => clamp(p + traceDelta));
 
       spawnDelta(UI.evidence, evidenceDelta, '#34d399');
       spawnDelta(UI.heat, heatDelta, '#fbbf24', '%');
       spawnDelta(UI.trust, trustDelta, '#38bdf8');
-      if (corruptionDelta) spawnDelta(UI.corruption, corruptionDelta, '#a78bfa');
 
       return { meta, evidenceDelta, heatDelta, traceDelta };
   };
 
 
   const applyInputValue = (val: string) => {
-    if (isCriticalHack || isDecisionActive) return;
+    if (isDecisionActive) return;
     if (typeCueActive) {
       setTypeCueActive(false);
       setStartTime(Date.now());
@@ -802,7 +990,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     // multi-character insertion instead of awarding a whole line for one event.
     if (val.length > inputValue.length + 1) return;
     if (val.length === inputValue.length + 1 && !val.startsWith(inputValue)) return;
-    if (inputValue.length === 0 && val.length > 0) setStartTime(Date.now());
+    if (inputValue.length === 0 && val.length > 0) {
+      setStartTime(Date.now());
+      if (segmentFirstKeyAtRef.current === null) segmentFirstKeyAtRef.current = Date.now();
+    }
     const charIndex = val.length - 1;
 
     if (charIndex >= 0 && val.length > inputValue.length) {
@@ -834,8 +1025,21 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
              triggerShieldEffect();
          } else {
              const newMistakes = mistakesInSegment + 1;
+             audioEngine.keyError();
              setMistakesInSegment(newMistakes);
-             setCombo(0);
+             // Only a mistake that would actually break the streak can buy a
+             // shield against it. The mistake still counts either way.
+             const canShield = modifiers.comboShields > 0
+                 && comboShieldsUsedRef.current < modifiers.comboShields
+                 && overclockCharge >= modifiers.comboShieldCost;
+             if (canShield) {
+                 comboShieldsUsedRef.current += 1;
+                 setOverclockCharge(c => Math.max(0, c - modifiers.comboShieldCost));
+                 triggerShieldEffect();
+             } else {
+                 comboTierRef.current = 0;
+                 setCombo(0);
+             }
              setOverclockCharge(c => Math.min(modifiers.maxOverclock, Math.max(0, c - 5 + modifiers.errorChargeGain)));
              const newHealth = Math.max(0, health - 1);
              setHealth(newHealth);
@@ -846,6 +1050,25 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
              }
          }
        } else {
+           audioEngine.keyHit(comboTier(combo));
+           const streak = combo + 1;
+           if (modifiers.streakPurgeInterval > 0 && streak % modifiers.streakPurgeInterval === 0) {
+               // Accuracy paying out as pressure relief, rather than a perk that
+               // types the line for you.
+               tracerRef.current = knockBackTracer(tracerRef.current, modifiers.streakPurgeCharacters);
+               setTracerBurnFront(Math.floor(tracerRef.current));
+               audioEngine.purge();
+               spawnDelta(UI.security, -modifiers.streakPurgeCharacters, '#f472b6');
+           }
+           const nextTier = comboTier(combo + 1);
+           if (nextTier > comboTierRef.current) {
+               // Crossing a tier pushes the tracer back a visible distance. The
+               // continuous slowdown alone is too gradual to notice.
+               comboTierRef.current = nextTier;
+               tracerRef.current = knockBackTracer(tracerRef.current, TRACER_TIER_KNOCKBACK);
+               setTracerBurnFront(Math.floor(tracerRef.current));
+               audioEngine.skillReady();
+           }
            setCombo(c => c + 1);
            setComboPulse(p => p + 1);
            if (!isOverclockActive) {
@@ -918,6 +1141,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   };
 
   const triggerShieldEffect = () => {
+      audioEngine.shield();
       if (containerRef.current) {
           containerRef.current.classList.add('shadow-[inset_0_0_20px_rgba(52,211,153,0.5)]');
           setTimeout(() => {
@@ -927,8 +1151,15 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   };
 
   const triggerGameOver = (finalHealth: number, totalErrorsOverride?: number) => {
+    // A fatal tracer catch left this unlatched: health stayed at 0, the stun
+    // expired, the tracer caught the caret again and the parent received several
+    // run-completion callbacks for one death.
+    if (gameOverTriggeredRef.current) return;
+    gameOverTriggeredRef.current = true;
     if (timerRef.current) clearInterval(timerRef.current);
     if (overclockTimerRef.current) clearTimeout(overclockTimerRef.current);
+    if (forkRevealTimerRef.current) clearTimeout(forkRevealTimerRef.current);
+    if (introduceTimerRef.current) clearTimeout(introduceTimerRef.current);
     const { totalErrors: recordedErrors } = getErrorReport();
     const totalErrors = totalErrorsOverride ?? recordedErrors;
     const typedCharacters = inputValue.length + (totalErrorsOverride === undefined ? 0 : 1);
@@ -947,8 +1178,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   };
 
   useEffect(() => {
-    if (tracePercent < 100 || gameOverTriggeredRef.current) return;
-    gameOverTriggeredRef.current = true;
+    if (tracePercent < 100) return;
     triggerGameOver(0);
   }, [tracePercent]);
 
@@ -1022,7 +1252,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       type: activeSegment.type,
       wpm,
       overclock: isOverclockActive,
-      breachMultiplier: modifiers.breachRewardMultiplier
+      breachMultiplier: modifiers.breachRewardMultiplier,
+      comboMultiplier
     });
     const segmentCredits = calculateSegmentCredits({
       errors: totalErrors,
@@ -1034,26 +1265,24 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     setCredits(current => current + segmentCredits);
 
     let healthChange = 0;
-    if (totalErrors === 0) healthChange += 1;
+    if (totalErrors === 0) healthChange += 1 + modifiers.perfectLineHealth;
     if (modifiers.healthRegenWpmThreshold > 0 && wpm > modifiers.healthRegenWpmThreshold) {
       healthChange += modifiers.healthRegenAmount;
     }
     if (healthChange > 0) setHealth(h => Math.min(modifiers.maxHealth, h + healthChange));
 
-    let nextSeg: StorySegment;
-    let performanceType: 'good' | 'average' | 'bad';
-    if (totalErrors <= 1) {
-        nextSeg = branch.goodPath;
-        performanceType = 'good';
-    } else if (totalErrors <= 4) {
-        nextSeg = branch.mediumPath;
-        performanceType = 'average';
-    } else {
-        nextSeg = branch.badPath;
-        performanceType = 'bad';
-    }
+    const performanceType = getBranchPerformance(totalErrors, activeSegment.text.length, branchThresholds);
+    const nextSeg: StorySegment = performanceType === 'good'
+        ? branch.goodPath
+        : performanceType === 'average'
+            ? branch.mediumPath
+            : branch.badPath;
 
     const outcome = applySegmentOutcome(performanceType, totalErrors, wpm, activeSegment);
+    audioEngine.segmentClear(performanceType);
+    setForkReveal(buildForkReveal(branch, performanceType, totalErrors));
+    if (forkRevealTimerRef.current) clearTimeout(forkRevealTimerRef.current);
+    forkRevealTimerRef.current = window.setTimeout(() => setForkReveal(null), FORK_REVEAL_MS);
     addToLog(activeSegment.text, performanceType, segmentScore, wpm, totalErrors, outcome.meta, activeSegment.type);
     onCaptureFrame?.({ image: currentImageRef.current, caption: activeSegment.text, performance: performanceType, level: currentLevel });
     setHistory(prev => [...prev, { ...activeSegment, performance: performanceType }]);
@@ -1074,15 +1303,16 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       const durationSec = (Date.now() - startTime) / 1000;
       const wpm = Math.round((activeSegment.text.length / 5) / (durationSec / 60 || 0.01));
       const { totalErrors } = getErrorReport();
-      let performanceType: 'good' | 'average' | 'bad' = 'average';
-      if (totalErrors <= 1) performanceType = 'good';
-      else if (totalErrors >= 5) performanceType = 'bad';
+      // The closing line is judged by the same rule as every other line; it used
+      // to run its own thresholds and could disagree with the rest of the sector.
+      const performanceType = getBranchPerformance(totalErrors, activeSegment.text.length, branchThresholds);
       const score = calculateSegmentScore({
         errors: totalErrors,
         type: activeSegment.type,
         wpm,
         overclock: isOverclockActive,
-        breachMultiplier: modifiers.breachRewardMultiplier
+        breachMultiplier: modifiers.breachRewardMultiplier,
+        comboMultiplier
       });
       const segmentCredits = calculateSegmentCredits({
         errors: totalErrors,
@@ -1092,6 +1322,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         creditMultiplier: modifiers.creditMultiplier
       });
       const outcome = applySegmentOutcome(performanceType, totalErrors, wpm, activeSegment);
+      audioEngine.segmentClear(performanceType);
       addToLog(activeSegment.text, performanceType, score, wpm, totalErrors, outcome.meta, activeSegment.type);
       onCaptureFrame?.({ image: currentImageRef.current, caption: activeSegment.text, performance: performanceType, level: currentLevel });
       const stats: GameStats = {
@@ -1110,6 +1341,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   };
 
   const renderActive = () => {
+    const burnFront = tracerBurnFront;
     return activeSegment.text.split('').map((char, index) => {
       // Focus mode = clarity: the UPCOMING text turns bright and crisp (easier to read
       // ahead), instead of dimming. Typed chars stay saturated so progress is obvious.
@@ -1125,10 +1357,17 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
              className = "text-white bg-rose-600";
           }
         }
-      } else if (isCursor) {
-        className = isCriticalHack ? "text-white bg-rose-500 animate-ping" :
-                    isOverclockActive ? "text-white bg-emerald-400 animate-pulse shadow-[0_0_15px_rgba(52,211,153,0.8)]" :
-                    "text-white bg-slate-700 animate-pulse";
+      }
+
+      // The tracer eats the line from behind. Burned characters replace their
+      // own styling so the damage reads at a glance, but the caret always wins:
+      // losing sight of where you are would be the one unfair outcome.
+      if (index < burnFront) className = "tracer-burned";
+      else if (index === burnFront) className = "tracer-head";
+
+      if (isCursor) {
+        className = isOverclockActive ? "text-white bg-emerald-400 animate-pulse shadow-[0_0_15px_rgba(52,211,153,0.8)]" :
+                    "engine-caret text-[#06101a]";
       }
       return (
         <span key={index} ref={isCursor ? cursorRef : undefined} data-index={index} className={`${className} relative`}>
@@ -1145,6 +1384,12 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
 
     // Trace effect logic
     if (tracePercent > 80) base += " shadow-[inset_0_0_50px_rgba(244,63,94,0.2)]";
+
+    // The tracer closing on the caret escalates the whole panel, so the warning
+    // is available in peripheral vision without looking away from the line.
+    const threat = getTracerThreat(tracerBurnFront, inputValue.length);
+    if (!isOverclockActive && threat === 'critical') base += " tracer-panel-critical";
+    else if (!isOverclockActive && threat === 'closing') base += " tracer-panel-closing";
 
     let borderColor = "border-slate-800";
     if (isOverclockActive) {
@@ -1192,8 +1437,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     return "rgba(7,10,17,0.2)";
   };
 
+  // No centred 1024px column here: with the shell gone, capping the deck puts it
+  // back into a page. A HUD fills the frame; the line keeps its own measure.
   return (
-    <div ref={containerRef} className="w-full max-w-5xl mx-auto flex flex-col gap-0 h-full min-h-0 relative">
+    <div ref={containerRef} className="w-full max-w-[1600px] mx-auto flex flex-col gap-0 h-full min-h-0 relative">
       {showFlash && <div className="absolute inset-0 z-[60] pointer-events-none flash-overlay"></div>}
       
       {isOverclockActive && (
@@ -1201,7 +1448,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                <div className="absolute inset-0 z-[5] pointer-events-none bg-emerald-950/10 backdrop-contrast-125"></div>
                <div className="absolute -top-8 right-0 z-50 pointer-events-none flex items-center gap-3 animate-fade-in-up">
                    <div className="h-px w-12 bg-gradient-to-l from-emerald-400/50 to-transparent"></div>
-                   <div className="font-display text-emerald-400 font-bold text-lg animate-pulse tracking-widest drop-shadow-[0_0_10px_rgba(52,211,153,0.7)]">
+                   <div className="font-display text-emerald-400 font-bold fs-lead animate-pulse tracking-widest drop-shadow-[0_0_10px_rgba(52,211,153,0.7)]">
                        {UI.overclock_active}
                    </div>
                </div>
@@ -1212,26 +1459,28 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
            <div className="engine-decision-overlay absolute inset-0 z-[80] bg-[#070a11]/95 backdrop-blur-md flex flex-col items-center justify-center p-5 md:p-8 animate-fade-in-up">
                <div className="w-full max-w-3xl space-y-8">
                    <div className="text-center border-b border-white/[0.06] pb-6">
-                        <div className="mb-4 text-[10px] font-bold uppercase tracking-[0.22em] text-emerald-400 animate-pulse">{UI.tactical_intervention}</div>
+                        <div className="mb-4 fs-micro font-bold uppercase tracking-[0.22em] text-emerald-400 animate-pulse">{UI.tactical_intervention}</div>
                         <h2 className="font-display text-2xl md:text-3xl font-bold text-white leading-relaxed">"{nextDecision.introText}"</h2>
                    </div>
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                        <button type="button" className="engine-decision-card engine-decision-card--aggressive group relative p-6 bg-white/[0.02] border border-rose-500/35 hover:border-rose-400/75 transition-all cursor-pointer text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-400" onClick={() => handleDecisionSelect(0)}>
                            <h3 className="font-display text-xl font-bold text-rose-400 mb-2 group-hover:text-rose-300">{UI.aggressive}</h3>
-                           <p className="text-slate-300 text-lg">"{nextDecision.options[0].text}"</p>
-                           <div className="mt-4 text-xs text-rose-300/80 font-mono">{nextDecision.options[0].preview || describeImpact(nextDecision.options[0].impact)}</div>
+                           <p className="text-slate-300 fs-lead">"{nextDecision.options[0].text}"</p>
+                           <div className="mt-4 fs-label text-rose-300/80 font-mono">{nextDecision.options[0].preview || describeImpact(nextDecision.options[0].impact)}</div>
+                           {renderImpactChips(nextDecision.options[0].impact)}
                            <div className="mt-5 flex items-center gap-2.5 font-mono uppercase tracking-[0.18em]">
-                               <span className="keycap text-lg">1</span>
-                               <span className="text-[12px] text-slate-300 group-hover:text-white transition-colors">{UI.press_1.replace('[1]', '').trim()}</span>
+                               <span className="keycap fs-lead">1</span>
+                               <span className="fs-label text-slate-300 group-hover:text-white transition-colors">{UI.press_1.replace('[1]', '').trim()}</span>
                            </div>
                        </button>
                        <button type="button" className="engine-decision-card engine-decision-card--stealth group relative p-6 bg-white/[0.02] border border-emerald-500/35 hover:border-emerald-400/75 transition-all cursor-pointer text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-400" onClick={() => handleDecisionSelect(1)}>
                            <h3 className="font-display text-xl font-bold text-emerald-400 mb-2 group-hover:text-emerald-300">{UI.stealth}</h3>
-                           <p className="text-slate-300 text-lg">"{nextDecision.options[1].text}"</p>
-                           <div className="mt-4 text-xs text-emerald-300/80 font-mono">{nextDecision.options[1].preview || describeImpact(nextDecision.options[1].impact)}</div>
+                           <p className="text-slate-300 fs-lead">"{nextDecision.options[1].text}"</p>
+                           <div className="mt-4 fs-label text-emerald-300/80 font-mono">{nextDecision.options[1].preview || describeImpact(nextDecision.options[1].impact)}</div>
+                           {renderImpactChips(nextDecision.options[1].impact)}
                            <div className="mt-5 flex items-center gap-2.5 font-mono uppercase tracking-[0.18em]">
-                               <span className="keycap text-lg">2</span>
-                               <span className="text-[12px] text-slate-300 group-hover:text-white transition-colors">{UI.press_2.replace('[2]', '').trim()}</span>
+                               <span className="keycap fs-lead">2</span>
+                               <span className="fs-label text-slate-300 group-hover:text-white transition-colors">{UI.press_2.replace('[2]', '').trim()}</span>
                            </div>
                        </button>
                    </div>
@@ -1242,19 +1491,28 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           <div className="engine-skill-briefing absolute inset-0 z-[85] flex items-center justify-center p-5 md:p-8">
               <div className="engine-skill-briefing-panel w-full max-w-3xl">
                   <div className="text-center">
-                      <div className="text-[9px] font-bold uppercase tracking-[0.24em] text-cyan-300">{UI.skills_title}</div>
+                      <div className="fs-micro font-bold uppercase tracking-[0.24em] text-cyan-300">{UI.skills_title}</div>
                       <h2 className="mt-2 font-display text-2xl md:text-3xl font-bold text-white">{UI.skills_intro}</h2>
+                  </div>
+                  <div className="engine-tracer-brief mt-5">
+                      <div className="engine-tracer-brief-strip" aria-hidden="true">
+                          <span className="tracer-burned">████</span>
+                          <span className="tracer-head">▓</span>
+                          <span className="text-slate-500">░░░░░░░░</span>
+                      </div>
+                      <div>
+                          <div className="fs-micro font-bold uppercase tracking-[0.24em] text-rose-300">{UI.tracer_brief_title}</div>
+                          <p className="mt-1 fs-label text-slate-300 leading-relaxed">{UI.tracer_brief_body}</p>
+                      </div>
                   </div>
                   <div className="engine-skill-briefing-grid mt-6">
                       {[
-                        { key: 'TAB', name: 'FOCUS', cost: '100%', effect: UI.skill_focus_short },
-                        { key: '↑', name: 'FIREWALL', cost: '40%', effect: UI.skill_firewall_short },
-                        { key: '↓', name: language === 'ru' ? 'СБРОС' : 'PURGE', cost: '55%', effect: UI.skill_purge_short }
+                        { key: 'TAB', name: 'FOCUS', cost: '100%', effect: UI.skill_focus_short }
                       ].map((skill) => (
                         <div key={skill.name} className="engine-skill-briefing-card">
                             <div className="flex items-center justify-between gap-3">
                                 <span className="keycap">{skill.key}</span>
-                                <span className="text-[9px] uppercase tracking-[0.18em] text-cyan-300">Energy {skill.cost}</span>
+                                <span className="fs-micro uppercase tracking-[0.18em] text-cyan-300">Energy {skill.cost}</span>
                             </div>
                             <strong>{skill.name}</strong>
                             <p>{skill.effect}</p>
@@ -1278,35 +1536,36 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
               <div key={s.id} className="char-particle bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,1)]" style={{ left: `${s.left}px`, top: `${s.top}px`, width: `${s.size}px`, height: `${s.size}px`, backgroundColor: s.color, '--tx': s.tx, '--ty': s.ty } as any} />
           ))}
       </div>
-      {focusHintPos && (
-          <div
-              className="engine-cursor-skills fixed z-[110] flex items-center gap-1.5 -translate-x-1/2 -translate-y-full"
-              style={{ left: focusHintPos.left, top: focusHintPos.top }}
-          >
+      {hasContextualSkill && (
+          <div className="engine-cursor-skills absolute right-4 bottom-4 z-[60]">
               {firewallGrace > 0 && (
                   <span className="engine-cursor-skill engine-cursor-skill--active" aria-live="polite">
                       <span className="engine-cursor-skill-label">{UI.shield_active} ×{firewallGrace}</span>
                   </span>
               )}
-              {getReadyActiveSkills(overclockCharge, modifiers.maxOverclock, isOverclockActive).map((skill) => {
+              {getCursorSkillStack(overclockCharge, modifiers.maxOverclock, isOverclockActive).map((skill) => {
                   const details = skill === 'focus'
                     ? { key: 'TAB', label: 'FOCUS', effect: UI.skill_focus_short, use: activateOverclock }
                     : skill === 'firewall'
                       ? { key: '↑', label: 'FIREWALL', effect: UI.skill_firewall_short, use: useFirewall }
                       : { key: '↓', label: language === 'ru' ? 'СБРОС' : 'PURGE', effect: UI.skill_purge_short, use: usePurgeTrace };
+                  // Everything in the stack is castable by construction, so there is
+                  // no disabled state left to render here.
+                  const isFocus = skill === 'focus';
                   return (
-                    <button key={skill} type="button" onClick={details.use} className="engine-cursor-skill" title={details.effect}>
+                    <button
+                        key={skill}
+                        type="button"
+                        onClick={details.use}
+                        aria-label={`${details.label}: ${details.effect}`}
+                        className={`engine-cursor-skill engine-cursor-skill--ready ${isFocus ? 'engine-cursor-skill--focus' : ''} ${introducingSkill === skill ? 'engine-cursor-skill--introducing' : ''}`}
+                    >
                         <span className="keycap">{details.key}</span>
                         <span className="engine-cursor-skill-label">{details.label}</span>
-                        <span className="engine-cursor-skill-effect">{details.effect}</span>
+                        <span className="engine-cursor-skill-effect" role="tooltip">{details.effect}</span>
                     </button>
                   );
               })}
-          </div>
-      )}
-      {isCriticalHack && (
-          <div className="absolute top-[20%] left-1/2 -translate-x-1/2 z-[70] pointer-events-none">
-              <div className="engine-critical-alert bg-rose-500 text-[#16070b] font-bold px-4 py-1 shadow-[0_0_20px_rgba(244,63,94,0.55)] animate-bounce">{UI.critical_override}</div>
           </div>
       )}
       <div className="engine-hud flex flex-col font-mono px-4 py-3 bg-white/[0.02] border border-white/[0.06] mb-2 gap-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
@@ -1314,38 +1573,76 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
             <div className="flex flex-wrap items-end gap-5 md:gap-7">
                 <div className="flex items-end gap-6">
                     <div>
-                        <div className="text-[9px] uppercase tracking-[0.22em] text-slate-500">{UI.level}</div>
+                        <div className="fs-micro uppercase tracking-[0.22em] text-slate-500">{UI.level}</div>
                         <div className="font-display mt-1 text-xl font-bold tabular-nums leading-none text-slate-100">{currentLevel}</div>
                     </div>
                     <div>
-                        <div className="text-[9px] uppercase tracking-[0.22em] text-slate-500">{UI.round}</div>
-                        <div className="font-display mt-1 text-xl font-bold tabular-nums leading-none text-slate-100">{round}<span className="ml-1 text-[10px] font-mono text-slate-600">/{SECTOR_ROUNDS}</span></div>
+                        <div className="fs-micro uppercase tracking-[0.22em] text-slate-500">{UI.round}</div>
+                        <div className="font-display mt-1 text-xl font-bold tabular-nums leading-none text-slate-100">{round}<span className="ml-1 fs-micro font-mono text-slate-600">/{SECTOR_ROUNDS}</span></div>
+                        {/* The sector escalates on an authored curve; naming the beat
+                            is what lets the player feel it coming rather than only
+                            noticing the line got longer. */}
+                        <div className={`engine-beat engine-beat--${roundShape.beat} mt-1`}>
+                            {UI[`beat_${roundShape.beat}` as keyof typeof UI]}
+                        </div>
                     </div>
                 </div>
                 <div className="border-l border-white/[0.06] pl-5">
-                    <div className="text-[9px] uppercase tracking-[0.22em] text-slate-500">{UI.credits}</div>
+                    <div className="fs-micro uppercase tracking-[0.22em] text-slate-500">{UI.credits}</div>
                     <div className="font-display mt-1 text-2xl font-bold tabular-nums leading-none text-emerald-400">
                         {Math.floor(credits)}
-                        {isOverclockActive && <span className="ml-2 font-mono text-[9px] uppercase tracking-[0.16em] text-emerald-300 animate-pulse">2x</span>}
+                        {isOverclockActive && <span className="ml-2 font-mono fs-micro uppercase tracking-[0.16em] text-emerald-300 animate-pulse">2x</span>}
                     </div>
                 </div>
             </div>
+            {/* Mission state belongs on the HUD beside the rest of the run, not in a
+                document column down the side of the screen. */}
+            <div className="engine-mission-rail">
+                {[
+                    { key: 'heat', label: UI.heat, value: missionState.heat, color: '#fbbf24', suffix: '%' },
+                    { key: 'trust', label: UI.trust, value: missionState.trust, color: '#38bdf8', suffix: '' },
+                    { key: 'evidence', label: UI.evidence, value: missionState.evidence, color: '#34d399', suffix: '' }
+                ].map((meter) => (
+                    <div key={meter.key} className="engine-mission-meter">
+                        <span className="fs-micro uppercase tracking-[0.18em] text-slate-500">{meter.label}</span>
+                        <div className="hud-gauge" role="img" aria-label={`${meter.label} ${Math.round(meter.value)}${meter.suffix}`}>
+                            {Array.from({ length: MISSION_GAUGE_SEGMENTS }).map((_, index) => {
+                                const lit = index < Math.round((clamp(meter.value) / 100) * MISSION_GAUGE_SEGMENTS);
+                                return (
+                                    <span
+                                        key={index}
+                                        className={`hud-gauge-notch ${lit ? 'is-lit' : ''}`}
+                                        style={lit ? { backgroundColor: meter.color, boxShadow: `0 0 6px ${meter.color}66` } : undefined}
+                                    />
+                                );
+                            })}
+                        </div>
+                        <span className="fs-label tabular-nums text-slate-300">{Math.round(meter.value)}{meter.suffix}</span>
+                    </div>
+                ))}
+            </div>
         </div>
         <div className="flex items-center gap-3 w-full">
-             <span className={`text-[9px] uppercase tracking-[0.18em] whitespace-nowrap w-24 ${tracePercent > 80 ? 'text-rose-500 animate-pulse' : 'text-slate-500'}`}>{UI.security}</span>
-            <div className="engine-meter-track flex-1 h-1.5 bg-white/[0.05] overflow-hidden relative">
-                <div className={`h-full transition-all duration-100 ease-linear ${getTraceColor()}`} style={{ width: `${tracePercent}%` }}></div>
+             <span className={`fs-micro uppercase tracking-[0.18em] whitespace-nowrap w-24 ${tracePercent > 80 ? 'text-rose-500 animate-pulse' : 'text-slate-500'}`}>{UI.security}</span>
+            {/* The same segmented instrument as the mission gauges. This is the
+                meter the whole run is about, and it was the one still drawn as a
+                web progress bar. */}
+            <div className="hud-gauge flex-1" role="img" aria-label={`${UI.security} ${Math.floor(tracePercent)}%`}>
+                {Array.from({ length: TRACE_GAUGE_SEGMENTS }).map((_, index) => {
+                    const lit = index < Math.round((clamp(tracePercent) / 100) * TRACE_GAUGE_SEGMENTS);
+                    return <span key={index} className={`hud-gauge-notch ${lit ? `is-lit ${getTraceColor()}` : ''}`} />;
+                })}
             </div>
-             <span className="w-10 text-right text-[10px] tabular-nums text-slate-400 font-mono">{Math.floor(tracePercent)}%</span>
-            <div className={`flex items-center gap-2 border-l border-white/[0.06] pl-3 ml-1 text-[9px] uppercase tracking-[0.18em] ${mistakesInSegment >= 7 ? 'text-rose-500 animate-pulse' : mistakesInSegment >= 4 ? 'text-amber-400' : 'text-slate-500'}`}>
+             <span className="w-10 text-right fs-micro tabular-nums text-slate-400 font-mono">{Math.floor(tracePercent)}%</span>
+            <div className={`flex items-center gap-2 border-l border-white/[0.06] pl-3 ml-1 fs-micro uppercase tracking-[0.18em] ${mistakesInSegment >= 7 ? 'text-rose-500 animate-pulse' : mistakesInSegment >= 4 ? 'text-amber-400' : 'text-slate-500'}`}>
                 <span>{UI.err}</span>
-                <span className="font-display text-sm tabular-nums tracking-normal text-slate-200">{mistakesInSegment}<span className="font-mono text-[9px] text-slate-600">/10</span></span>
+                <span className="font-display fs-body tabular-nums tracking-normal text-slate-200">{mistakesInSegment}<span className="font-mono fs-micro text-slate-600">/10</span></span>
             </div>
         </div>
       </div>
       {/* Scene wants 56% of the deck, but never at the expense of the typing panel:
           cap it so HUD + at least ~5 lines of text always fit on short windows. */}
-      <div className="engine-scene-bezel relative h-[52%] min-h-[130px] max-h-[calc(100%-360px)] w-full bg-black overflow-hidden border border-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+      <div className="engine-scene-bezel relative h-[34%] min-h-[120px] max-h-[300px] w-full bg-black overflow-hidden border border-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
         <div className="absolute left-2 top-2 z-[55] h-5 w-5 border-l border-t border-emerald-400/80 pointer-events-none"></div>
         <div className="absolute right-2 top-2 z-[55] h-5 w-5 border-r border-t border-emerald-400/80 pointer-events-none"></div>
         <div className="absolute bottom-2 left-2 z-[55] h-5 w-5 border-b border-l border-emerald-400/80 pointer-events-none"></div>
@@ -1367,15 +1664,15 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                         >
                             {combo}
                         </span>
-                        <span className={`block mt-1 text-[10px] font-bold tracking-[0.18em] ${comboAccent().text}`}>
-                            COMBO{comboMultiplier > 1 ? ` ·${comboMultiplier}×` : ''}
+                        <span className={`block mt-1 fs-micro font-bold tracking-[0.18em] ${comboAccent().text}`}>
+                            COMBO{comboMultiplier > 1 ? ` ·${comboMultiplier}× ${UI.score_word}` : ''}
                         </span>
                         <span className="block my-1.5 h-px bg-white/10"></span>
                     </div>
                 )}
                 <div className="flex items-baseline justify-center gap-1">
-                    <span className="font-display font-bold tabular-nums text-slate-100 text-lg leading-none">{currentWPM}</span>
-                    <span className="text-[9px] uppercase tracking-[0.15em] text-slate-500">{UI.wpm}</span>
+                    <span className="font-display font-bold tabular-nums text-slate-100 fs-lead leading-none">{currentWPM}</span>
+                    <span className="fs-micro uppercase tracking-[0.15em] text-slate-500">{UI.wpm}</span>
                 </div>
             </div>
         </div>
@@ -1393,7 +1690,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
              <div className="w-full h-full flex items-center justify-center bg-slate-900 text-slate-700">
                 <div className="flex flex-col items-center gap-2">
                      <div className="w-8 h-8 border-2 border-slate-700 border-t-slate-400 rounded-full animate-spin"></div>
-                     <span className="text-xs tracking-widest">{UI.init_visual}</span>
+                     <span className="fs-label tracking-widest">{UI.init_visual}</span>
                 </div>
              </div>
         )}
@@ -1418,17 +1715,37 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
             {deltaPopups.map(p => (
                 <span
                     key={p.id}
-                    className="delta-float absolute top-1/2 font-bold text-sm md:text-base drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]"
+                    className="delta-float absolute top-1/2 font-bold fs-body md:text-base drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]"
                     style={{ left: `${p.left}%`, color: p.color }}
                 >
                     {p.value > 0 ? '+' : ''}{p.value}{p.suffix} {p.label}
                 </span>
             ))}
         </div>
+        {forkReveal && (() => {
+            const copy = describeFork(forkReveal, language);
+            return (
+                <div className={`engine-fork-reveal engine-fork-reveal--${forkReveal.performance} absolute inset-x-4 top-4 z-40 pointer-events-none`}>
+                    <div className="flex items-baseline gap-2">
+                        <span className="engine-fork-verdict">{copy.verdict}</span>
+                        <span className="engine-fork-errors">
+                            {forkReveal.errors} {forkReveal.errors === 1 ? UI.fork_error_one : UI.fork_error_many}
+                        </span>
+                    </div>
+                    <p className="engine-fork-detail">{copy.detail}</p>
+                    {forkReveal.missedText && (
+                        <div className="engine-fork-missed">
+                            <span className="engine-fork-missed-label">{copy.missedLabel}</span>
+                            <span className="engine-fork-missed-text">{forkReveal.missedText}</span>
+                        </div>
+                    )}
+                </div>
+            );
+        })()}
         <div className="absolute left-4 bottom-4 right-4 z-30 flex flex-wrap items-center gap-2">
-            <span className="engine-chip engine-chip--skill bg-[#0b101a]/90 border border-white/[0.08] px-2.5 py-1 text-[9px] text-slate-300 uppercase tracking-[0.18em]">{skillIcon[activeSegment.skill || 'flow']} {activeSegment.skill || 'flow'}</span>
-            <span className="engine-chip engine-chip--objective bg-[#0b101a]/90 border border-white/[0.08] px-2.5 py-1 text-[9px] text-slate-300 uppercase tracking-[0.18em]">{UI.objective}: <span className="normal-case tracking-normal text-slate-200">{activeSegment.objective}</span></span>
-            {activeSegment.consequenceHint && <span className="engine-chip engine-chip--consequence bg-[#0b101a]/90 border border-white/[0.08] px-2.5 py-1 text-[9px] text-slate-300 uppercase tracking-[0.18em]">{UI.consequence}: <span className="normal-case tracking-normal text-slate-200">{activeSegment.consequenceHint}</span></span>}
+            <span className="engine-chip engine-chip--skill bg-[#0b101a]/90 border border-white/[0.08] px-2.5 py-1 fs-micro text-slate-300 uppercase tracking-[0.18em]">{skillIcon[activeSegment.skill || 'flow']} {activeSegment.skill || 'flow'}</span>
+            <span className="engine-chip engine-chip--objective bg-[#0b101a]/90 border border-white/[0.08] px-2.5 py-1 fs-micro text-slate-300 uppercase tracking-[0.18em]">{UI.objective}: <span className="normal-case tracking-normal text-slate-200">{activeSegment.objective}</span></span>
+            {activeSegment.consequenceHint && <span className="engine-chip engine-chip--consequence bg-[#0b101a]/90 border border-white/[0.08] px-2.5 py-1 fs-micro text-slate-300 uppercase tracking-[0.18em]">{UI.consequence}: <span className="normal-case tracking-normal text-slate-200">{activeSegment.consequenceHint}</span></span>}
         </div>
       </div>
       <div className={getContainerStyles()}>
@@ -1458,7 +1775,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
             ></div>
           )}
         </div>
-        <div ref={textContainerRef} onClick={() => inputRef.current?.focus()} className="engine-type-scroll no-scrollbar absolute inset-0 overflow-y-auto px-8 md:px-10 py-6 md:py-8 leading-relaxed cursor-text font-mono text-xl md:text-2xl">
+        <div ref={textContainerRef} onClick={() => inputRef.current?.focus()} className="engine-type-scroll no-scrollbar absolute inset-0 flex flex-col justify-center overflow-y-auto px-8 md:px-10 py-6 md:py-8 leading-relaxed cursor-text font-mono text-2xl md:fs-title">
         {isOverclockActive && <div className="absolute inset-0 pointer-events-none shadow-[inset_0_0_100px_rgba(52,211,153,0.2)]"></div>}
         {typeCueActive && !isDecisionActive && (
             <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-slate-950/45 backdrop-blur-[1px]">
@@ -1469,10 +1786,13 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                 </div>
             </div>
         )}
-        <div className={`whitespace-pre-wrap break-words min-h-full pb-24 max-w-4xl mx-auto relative z-10 transition-all duration-300 ${typeCueActive ? 'opacity-0 translate-y-3' : 'opacity-100 translate-y-0'}`}>
-            {activeSegment.type === SegmentType.BREACH && <div className="text-emerald-400 text-[10px] mb-4 font-bold uppercase tracking-[0.2em] border-b border-emerald-400/30 pb-2">{UI.breach_init}</div>}
-            {activeSegment.type === SegmentType.DIALOG && <div className="text-sky-400 text-[10px] mb-4 font-bold uppercase tracking-[0.2em] border-b border-sky-400/30 pb-2">{UI.dialog_init}</div>}
-            {activeSegment.type === SegmentType.SIGNAL && <div className="text-amber-400 text-[10px] mb-4 font-bold uppercase tracking-[0.2em] border-b border-amber-400/30 pb-2">{UI.signal_init}</div>}
+        {/* my-auto rather than centring the parent: a short line sits in the middle
+            of the panel, and once the sector's history has grown past the panel
+            the margin collapses and it scrolls normally instead of clipping. */}
+        <div className={`whitespace-pre-wrap break-words my-auto pb-10 max-w-5xl mx-auto relative z-10 transition-all duration-300 ${typeCueActive ? 'opacity-0 translate-y-3' : 'opacity-100 translate-y-0'}`}>
+            {activeSegment.type === SegmentType.BREACH && <div className="text-emerald-400 fs-micro mb-4 font-bold uppercase tracking-[0.2em] border-b border-emerald-400/30 pb-2">{UI.breach_init}</div>}
+            {activeSegment.type === SegmentType.DIALOG && <div className="text-sky-400 fs-micro mb-4 font-bold uppercase tracking-[0.2em] border-b border-sky-400/30 pb-2">{UI.dialog_init}</div>}
+            {activeSegment.type === SegmentType.SIGNAL && <div className="text-amber-400 fs-micro mb-4 font-bold uppercase tracking-[0.2em] border-b border-amber-400/30 pb-2">{UI.signal_init}</div>}
             {history.map((seg, i) => (
                 <span key={i} className={`mr-2 transition-colors duration-500 ${seg.performance === 'good' ? 'text-emerald-400' : seg.performance === 'average' ? 'text-amber-400' : 'text-rose-400'}`}>
                     {seg.text}
@@ -1494,7 +1814,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         </div>
       </div>
 
-      <input ref={inputRef} type="text" value={inputValue} onChange={handleInput} onPaste={(event) => event.preventDefault()} onDrop={(event) => event.preventDefault()} aria-label={language === 'ru' ? 'Поле тренировки печати' : 'Typing practice input'} className="fixed opacity-0 top-0 left-0 w-px h-px overflow-hidden -z-10 pointer-events-none" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} autoFocus disabled={isWaitingForAi || isCriticalHack || isDecisionActive || showSkillBriefing} />
+      <input ref={inputRef} type="text" value={inputValue} onChange={handleInput} onPaste={(event) => event.preventDefault()} onDrop={(event) => event.preventDefault()} aria-label={language === 'ru' ? 'Поле тренировки печати' : 'Typing practice input'} className="fixed opacity-0 top-0 left-0 w-px h-px overflow-hidden -z-10 pointer-events-none" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} autoFocus disabled={isWaitingForAi || isDecisionActive || showSkillBriefing} />
     </div>
   );
 };

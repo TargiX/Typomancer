@@ -31,8 +31,6 @@ const normalizeMission = (value: unknown): MissionState | null => {
     !isFiniteNumber(mission.heat)
     || !isFiniteNumber(mission.trust)
     || !isFiniteNumber(mission.evidence)
-    || !isFiniteNumber(mission.corruption)
-    || !isFiniteNumber(mission.signal)
     || !['balanced', 'silent', 'loud'].includes(mission.route || '')
   ) return null;
 
@@ -40,8 +38,6 @@ const normalizeMission = (value: unknown): MissionState | null => {
     heat: mission.heat,
     trust: mission.trust,
     evidence: mission.evidence,
-    corruption: mission.corruption,
-    signal: mission.signal,
     route: mission.route as MissionState['route'],
     flags: Array.isArray(mission.flags) ? mission.flags.filter((flag): flag is string => typeof flag === 'string') : [],
     consequenceLog: Array.isArray(mission.consequenceLog)

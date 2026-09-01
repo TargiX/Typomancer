@@ -8,6 +8,7 @@ import {
   getWeakPatterns,
   normalizeTypingTraining,
   recordTypingSession,
+  getTrainingFocusTokens,
   snapshotTypingObservations
 } from '../services/typingTraining.ts';
 
@@ -88,4 +89,78 @@ test('run observation snapshot cannot be emptied or mutated through the live ref
   live.length = 0;
 
   assert.deepEqual(snapshot, [{ expected: 'a', correct: true, latencyMs: 120 }]);
+});
+
+test('training focus tokens keep only letter patterns with real evidence behind them', () => {
+  const profile = {
+    ...EMPTY_TYPING_TRAINING,
+    samples: 200,
+    keys: [
+      { token: 'q', attempts: 20, errors: 9, totalLatencyMs: 6000, timedAttempts: 20 },
+      { token: '7', attempts: 30, errors: 20, totalLatencyMs: 9000, timedAttempts: 30 },
+      { token: ',', attempts: 30, errors: 22, totalLatencyMs: 9000, timedAttempts: 30 },
+      { token: 'k', attempts: 2, errors: 2, totalLatencyMs: 900, timedAttempts: 2 }
+    ],
+    bigrams: [
+      { token: 'th', attempts: 40, errors: 14, totalLatencyMs: 12000, timedAttempts: 40 },
+      { token: 'br', attempts: 12, errors: 5, totalLatencyMs: 4000, timedAttempts: 12 }
+    ]
+  };
+
+  const tokens = getTrainingFocusTokens(profile);
+
+  // Digits and punctuation are excluded: bending prose around them distorts the
+  // sentence far more than it trains anything.
+  assert.ok(!tokens.includes('7'));
+  assert.ok(!tokens.includes(','));
+  // Two unlucky keystrokes must not reshape the campaign.
+  assert.ok(!tokens.includes('k'));
+  assert.ok(tokens.includes('th'));
+  assert.ok(tokens.includes('q'));
+});
+
+test('training focus is bounded, deduplicated and lowercase', () => {
+  const profile = {
+    ...EMPTY_TYPING_TRAINING,
+    samples: 300,
+    keys: Array.from({ length: 12 }, (_, index) => ({
+      token: String.fromCharCode(97 + index).toUpperCase(),
+      attempts: 30,
+      errors: 20 - index,
+      totalLatencyMs: 9000,
+      timedAttempts: 30
+    })),
+    bigrams: []
+  };
+
+  const tokens = getTrainingFocusTokens(profile, 4);
+  assert.equal(tokens.length, 4);
+  assert.deepEqual(tokens, [...new Set(tokens)]);
+  tokens.forEach((token) => assert.equal(token, token.toLowerCase()));
+});
+
+test('an untrained player produces no focus tokens at all', () => {
+  assert.deepEqual(getTrainingFocusTokens(EMPTY_TYPING_TRAINING), []);
+});
+
+test('low-sample noise cannot crowd out the real weak patterns', () => {
+  // Twelve one-attempt misses used to fill every candidate slot before the
+  // evidence filter ran, leaving no qualifying token at all.
+  const noise = Array.from({ length: 12 }, (_, i) => ({
+    token: String.fromCharCode(945 + i),
+    attempts: 1,
+    errors: 1,
+    totalLatencyMs: 900,
+    timedAttempts: 1
+  }));
+  const profile = {
+    ...EMPTY_TYPING_TRAINING,
+    samples: 400,
+    keys: [...noise, { token: 'q', attempts: 40, errors: 18, totalLatencyMs: 16000, timedAttempts: 40 }],
+    bigrams: [{ token: 'br', attempts: 50, errors: 20, totalLatencyMs: 18000, timedAttempts: 50 }]
+  };
+
+  const tokens = getTrainingFocusTokens(profile);
+  assert.ok(tokens.includes('q'), `expected q among ${JSON.stringify(tokens)}`);
+  assert.ok(tokens.includes('br'), `expected br among ${JSON.stringify(tokens)}`);
 });

@@ -1,7 +1,11 @@
 import React, { useMemo } from 'react';
+import OperatorTelemetry from './OperatorTelemetry';
+import { getPactRewardMultiplier } from '../services/pact';
 
 import type { Language, StoryGenreId } from '../types';
-import { getAdaptiveDifficulty, summarizeProgress, type PlayerProgress, type RunRecord } from '../services/playerProgress';
+import { getAdaptiveDifficulty, summarizeProgress, type PlayerProgress, type RunRecord,
+  MAX_RUN_HISTORY
+} from '../services/playerProgress';
 import { getBenchmarkDelta, getWeakPatterns, type TypingTrainingProfile } from '../services/typingTraining';
 
 interface OperatorRecordProps {
@@ -17,7 +21,7 @@ const COPY = {
   en: {
     eyebrow: 'LOCAL FLIGHT RECORDER',
     title: 'Operator Record',
-    subtitle: 'Your last 20 operations stay on this device.',
+    subtitle: `Your last ${MAX_RUN_HISTORY} operations stay on this device.`,
     runs: 'RUNS',
     best: 'PEAK WPM',
     average: 'RECENT AVG',
@@ -30,6 +34,7 @@ const COPY = {
     defeat: 'SEVERED',
     banked: 'BANKED',
     daily: 'DAILY',
+    pact: 'PACT',
     level: 'LVL',
     target: 'NEXT TRANSMISSION',
     targets: {
@@ -58,7 +63,7 @@ const COPY = {
   ru: {
     eyebrow: 'ЛОКАЛЬНЫЙ ЧЁРНЫЙ ЯЩИК',
     title: 'Досье оператора',
-    subtitle: 'Последние 20 операций остаются на этом устройстве.',
+    subtitle: `Последние ${MAX_RUN_HISTORY} операций остаются на этом устройстве.`,
     runs: 'ЗАБЕГИ',
     best: 'ПИК СЛ/М',
     average: 'СРЕДНЯЯ',
@@ -71,6 +76,7 @@ const COPY = {
     defeat: 'ОБРЫВ',
     banked: 'СОХРАНЕНО',
     daily: 'ДНЕВНОЙ',
+    pact: 'ПАКТ',
     level: 'УР',
     target: 'СЛЕДУЮЩАЯ ПЕРЕДАЧА',
     targets: {
@@ -143,6 +149,8 @@ const OperatorRecord: React.FC<OperatorRecordProps> = ({ language, progress, tra
         </div>
       </header>
 
+      <OperatorTelemetry language={language} progress={progress} training={training} />
+
       <div className="operator-record-stats">
         <div><strong>{summary.totalRuns}</strong><span>{ui.runs}</span></div>
         <div><strong>{summary.bestWpm}</strong><span>{ui.best}</span></div>
@@ -212,7 +220,16 @@ const OperatorRecord: React.FC<OperatorRecordProps> = ({ language, progress, tra
               <article key={run.id} className={`operator-record-run is-${run.outcome}`}>
                 <time dateTime={run.endedAt}>{new Intl.DateTimeFormat(language, { month: 'short', day: 'numeric' }).format(new Date(run.endedAt))}</time>
                 <div>
-                  <strong>{GENRES[run.genre][language]}</strong>
+                  <strong>
+                    {GENRES[run.genre][language]}
+                    {/* A full-Pact clear and a default clear should not read as
+                        the same row. */}
+                    {run.pact.length > 0 && (
+                      <span className="operator-record-pact" title={run.pact.join(', ')}>
+                        {ui.pact} x{getPactRewardMultiplier(run.pact).toFixed(2)}
+                      </span>
+                    )}
+                  </strong>
                   <span>{run.daily ? `${ui.daily} · ` : ''}{ui.level} {run.level} · {run.outcome === 'victory' ? ui.victory : run.outcome === 'banked' ? ui.banked : ui.defeat}</span>
                 </div>
                 <b>{run.wpm} <small>WPM</small></b>

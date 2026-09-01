@@ -91,7 +91,7 @@
 }
 
 .screens-death-copy span {
-  font-family: 'Rajdhani', sans-serif;
+  font-family: Rajdhani, sans-serif;
   font-size: clamp(2.4rem, 8vw, 6rem);
   font-weight: 800;
   line-height: 0.9;
@@ -134,14 +134,14 @@
 
 .screens-debrief-primary strong,
 .screens-debrief-metric strong {
-  font-family: 'Rajdhani', sans-serif;
+  font-family: Rajdhani, sans-serif;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   line-height: 0.9;
 }
 
 .screens-debrief-primary strong {
-  font-size: 3.25rem;
+  font-size: var(--fs-hero);
   color: #fff;
 }
 
@@ -154,13 +154,13 @@
 
 .screens-debrief-primary span {
   margin-top: 8px;
-  font-size: 0.58rem;
+  font-size: var(--fs-micro);
   color: #fb7185;
 }
 
 .screens-debrief-primary small {
   margin-top: 5px;
-  font-size: 0.52rem;
+  font-size: var(--fs-micro);
   color: #64748b;
 }
 
@@ -175,12 +175,12 @@
 }
 
 .screens-debrief-metric strong {
-  font-size: 2rem;
+  font-size: var(--fs-display);
   color: #e2e8f0;
 }
 
 .screens-debrief-metric span {
-  font-size: 0.52rem;
+  font-size: var(--fs-micro);
   color: #64748b;
 }
 
@@ -202,7 +202,7 @@
 
 .screens-next-drill span {
   display: block;
-  font-size: 0.52rem;
+  font-size: var(--fs-micro);
   font-weight: 700;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -211,7 +211,7 @@
 
 .screens-next-drill p {
   margin-top: 5px;
-  font-size: 0.76rem;
+  font-size: var(--fs-body);
   line-height: 1.45;
   color: #cbd5e1;
 }
@@ -255,7 +255,7 @@
 .operator-record-section-label > span,
 .operator-record-target > span,
 .operator-record-calibration > span {
-  font-size: 0.56rem;
+  font-size: var(--fs-micro);
   font-weight: 700;
   letter-spacing: 0.24em;
   text-transform: uppercase;
@@ -265,7 +265,7 @@
 .calibration-header h2,
 .operator-record-header h2 {
   margin-top: 8px;
-  font-family: 'Rajdhani', sans-serif;
+  font-family: Rajdhani, sans-serif;
   font-size: clamp(2.2rem, 6vw, 3.75rem);
   font-weight: 800;
   line-height: 0.95;
@@ -277,7 +277,7 @@
 .operator-record-header p {
   max-width: 620px;
   margin-top: 12px;
-  font-size: 0.78rem;
+  font-size: var(--fs-body);
   line-height: 1.55;
   color: #94a3b8;
 }
@@ -301,14 +301,14 @@
 }
 
 .calibration-readout strong {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 1.6rem;
+  font-family: Rajdhani, sans-serif;
+  font-size: var(--fs-title);
   line-height: 1;
   color: #e0f2fe;
 }
 
 .calibration-readout span {
-  font-size: 0.48rem;
+  font-size: var(--fs-micro);
   letter-spacing: 0.14em;
   color: #64748b;
 }
@@ -361,7 +361,7 @@
   position: absolute;
   right: 0;
   bottom: 0;
-  font-size: 0.52rem;
+  font-size: var(--fs-micro);
   font-weight: 700;
   letter-spacing: 0.22em;
   color: rgba(56, 189, 248, 0.55);
@@ -396,7 +396,7 @@
 
 .calibration-footer p {
   max-width: 450px;
-  font-size: 0.62rem;
+  font-size: var(--fs-micro);
   line-height: 1.5;
   color: #475569;
 }
@@ -404,7 +404,7 @@
 .calibration-footer button {
   flex: 0 0 auto;
   padding: 10px 14px;
-  font-size: 0.58rem;
+  font-size: var(--fs-micro);
   font-weight: 700;
   letter-spacing: 0.14em;
   color: #64748b;
@@ -435,15 +435,15 @@
 }
 
 .operator-record-calibration strong {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 1.25rem;
+  font-family: Rajdhani, sans-serif;
+  font-size: var(--fs-title);
   text-transform: uppercase;
   color: #e0f2fe;
 }
 
 .operator-record-calibration button {
   border-bottom: 1px solid rgba(56, 189, 248, 0.34);
-  font-size: 0.52rem;
+  font-size: var(--fs-micro);
   letter-spacing: 0.15em;
   color: #64748b;
 }
@@ -470,15 +470,15 @@
 }
 
 .operator-record-stats strong {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 1.8rem;
+  font-family: Rajdhani, sans-serif;
+  font-size: var(--fs-display);
   line-height: 1;
   color: #f8fafc;
 }
 
 .operator-record-stats span {
   overflow: hidden;
-  font-size: 0.48rem;
+  font-size: var(--fs-micro);
   letter-spacing: 0.14em;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -504,7 +504,7 @@
 }
 
 .operator-record-section-label b {
-  font-size: 0.55rem;
+  font-size: var(--fs-micro);
   letter-spacing: 0.14em;
   color: #94a3b8;
 }
@@ -541,7 +541,7 @@
 
 .operator-record-empty {
   padding: 28px 0 24px;
-  font-size: 0.7rem;
+  font-size: var(--fs-label);
   line-height: 1.5;
   color: #64748b;
 }
@@ -558,14 +558,14 @@
 
 .operator-record-target p {
   margin-top: 5px;
-  font-size: 0.78rem;
+  font-size: var(--fs-body);
   color: #cbd5e1;
 }
 
 .operator-record-target small {
   display: block;
   margin-top: 4px;
-  font-size: 0.58rem;
+  font-size: var(--fs-micro);
   color: #64748b;
 }
 
@@ -587,14 +587,14 @@
 .operator-record-training-grid > div > small {
   display: block;
   margin-bottom: 7px;
-  font-size: 0.5rem;
+  font-size: var(--fs-micro);
   font-weight: 700;
   letter-spacing: 0.16em;
   color: #a78bfa;
 }
 
 .operator-record-training-grid p {
-  font-size: 0.64rem;
+  font-size: var(--fs-micro);
   line-height: 1.45;
   color: #64748b;
 }
@@ -611,20 +611,20 @@
   border: 1px solid rgba(167, 139, 250, 0.2);
   padding: 5px 8px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.68rem;
+  font-size: var(--fs-label);
   color: #ddd6fe;
   background: rgba(124, 58, 237, 0.08);
 }
 
 .operator-record-patterns > b small {
   margin-left: 3px;
-  font-size: 0.46rem;
+  font-size: var(--fs-micro);
   color: #fb7185;
 }
 
 .operator-record-training-grid > button {
   padding: 10px 13px;
-  font-size: 0.55rem;
+  font-size: var(--fs-micro);
   font-weight: 800;
   letter-spacing: 0.09em;
   white-space: nowrap;
@@ -660,7 +660,7 @@
 
 .operator-record-run time,
 .operator-record-run div span {
-  font-size: 0.52rem;
+  font-size: var(--fs-micro);
   text-transform: uppercase;
   color: #64748b;
 }
@@ -678,13 +678,13 @@
 }
 
 .operator-record-run div strong {
-  font-size: 0.68rem;
+  font-size: var(--fs-label);
   color: #cbd5e1;
 }
 
 .operator-record-run > b {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 1.15rem;
+  font-family: Rajdhani, sans-serif;
+  font-size: var(--fs-lead);
   text-align: right;
   color: #e2e8f0;
 }
@@ -692,7 +692,7 @@
 .operator-record-run > b small {
   margin-left: 2px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.43rem;
+  font-size: var(--fs-micro);
   color: #64748b;
 }
 
@@ -707,7 +707,7 @@
   align-items: center;
   gap: 10px;
   padding: 11px 18px;
-  font-size: 0.62rem;
+  font-size: var(--fs-micro);
   font-weight: 700;
   letter-spacing: 0.12em;
   color: #04120b;
@@ -1285,4 +1285,471 @@
   .calibration-progress span {
     transition: none;
   }
+}
+
+/* THE ACCURACY HERO — the sector debrief's headline.
+   This is an accuracy trainer, so accuracy is the number the screen opens with;
+   speed is one tile among the rest. The tint tracks the next training target,
+   so a player can read where they stand before reading any figure. */
+.screens-accuracy-hero {
+  padding: 18px 20px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-left-width: 3px;
+  background: rgba(255, 255, 255, 0.02);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+
+.screens-accuracy-hero--accuracy { border-left-color: rgba(251, 146, 60, 0.9); }
+.screens-accuracy-hero--consistency { border-left-color: rgba(167, 139, 250, 0.9); }
+.screens-accuracy-hero--speed { border-left-color: rgba(56, 189, 248, 0.9); }
+.screens-accuracy-hero--mastery { border-left-color: rgba(52, 211, 153, 0.9); }
+
+.screens-accuracy-value {
+  font-size: var(--fs-hero);
+  font-weight: 800;
+  line-height: 1;
+  color: #fff;
+}
+
+.screens-accuracy-hero--accuracy .screens-accuracy-value { color: #fdba74; }
+.screens-accuracy-hero--consistency .screens-accuracy-value { color: #c4b5fd; }
+.screens-accuracy-hero--speed .screens-accuracy-value { color: #7dd3fc; }
+.screens-accuracy-hero--mastery .screens-accuracy-value { color: #6ee7b7; }
+
+.screens-accuracy-coach {
+  margin-top: 3px;
+  max-width: 30ch;
+  font-size: var(--fs-label);
+  line-height: 1.45;
+  color: #cbd5e1;
+}
+
+.screens-accuracy-bar {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.screens-accuracy-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: currentcolor;
+  transition: width 600ms ease-out;
+}
+
+.screens-accuracy-hero--accuracy .screens-accuracy-bar-fill { background: #fb923c; }
+.screens-accuracy-hero--consistency .screens-accuracy-bar-fill { background: #a78bfa; }
+.screens-accuracy-hero--speed .screens-accuracy-bar-fill { background: #38bdf8; }
+.screens-accuracy-hero--mastery .screens-accuracy-bar-fill { background: #34d399; }
+
+/* THE PACT — opt-in difficulty, the one progression axis that raises the bar. */
+.screens-pact {
+  width: 100%;
+  max-width: 34rem;
+  padding: 14px 16px;
+  border: 1px solid rgba(251, 146, 60, 0.22);
+  background: rgba(251, 146, 60, 0.03);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  text-align: left;
+}
+
+.screens-pact-title {
+  font-size: var(--fs-micro);
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  color: #fdba74;
+}
+
+.screens-pact-reward {
+  font-size: var(--fs-micro);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  font-variant-numeric: tabular-nums;
+  color: rgba(148, 163, 184, 0.7);
+}
+
+.screens-pact-reward.is-active {
+  color: #6ee7b7;
+}
+
+.screens-pact-hint {
+  margin-top: 4px;
+  font-size: var(--fs-micro);
+  line-height: 1.45;
+  color: rgba(148, 163, 184, 0.85);
+}
+
+.screens-pact-clauses {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.screens-pact-clause {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "name reward" "desc reward";
+  align-items: center;
+  gap: 0 10px;
+  padding: 6px 9px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(255, 255, 255, 0.015);
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.screens-pact-clause:hover,
+.screens-pact-clause:focus-visible {
+  border-color: rgba(251, 146, 60, 0.4);
+  outline: none;
+}
+
+.screens-pact-clause.is-active {
+  border-color: rgba(251, 146, 60, 0.55);
+  background: rgba(251, 146, 60, 0.07);
+}
+
+.screens-pact-clause-name {
+  grid-area: name;
+  font-size: var(--fs-micro);
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: rgba(148, 163, 184, 0.9);
+}
+
+.screens-pact-clause.is-active .screens-pact-clause-name {
+  color: #fdba74;
+}
+
+.screens-pact-clause-desc {
+  grid-area: desc;
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+  color: rgba(148, 163, 184, 0.6);
+}
+
+.screens-pact-clause-reward {
+  grid-area: reward;
+  font-size: var(--fs-micro);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: rgba(148, 163, 184, 0.5);
+}
+
+.screens-pact-clause.is-active .screens-pact-clause-reward {
+  color: #6ee7b7;
+}
+
+/* A Pact-taken run should be legible as one at a glance in the record. */
+.operator-record-pact {
+  display: inline-block;
+  margin-left: 7px;
+  padding: 1px 5px;
+  border: 1px solid rgba(251, 146, 60, 0.45);
+  font-size: var(--fs-micro);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  font-variant-numeric: tabular-nums;
+  color: #fdba74;
+  vertical-align: middle;
+}
+
+/* HUD GAUGE — a segmented instrument rather than a rounded progress bar.
+   A filled rounded bar is what a web page shows while it loads something. */
+.hud-gauge {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.hud-gauge-notch {
+  flex: 1;
+  height: 7px;
+  background: rgba(255, 255, 255, 0.07);
+  transform: skewX(-18deg);
+  transition: background-color 320ms ease, box-shadow 320ms ease;
+}
+
+.hud-gauge-notch.is-lit {
+  background: currentcolor;
+}
+
+.screens-pact-toggle {
+  margin-left: 8px;
+  font-size: var(--fs-label);
+  color: rgba(148, 163, 184, 0.7);
+}
+
+/* STATUS STRIP — replaces the document column. One angular rail across the top
+   carrying only what no other screen already shows. */
+.hud-strip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(7, 10, 17, 0.92);
+  backdrop-filter: blur(4px);
+}
+
+.hud-strip-button {
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.02);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+  transition: color 160ms ease, border-color 160ms ease;
+}
+
+.hud-strip-button:hover {
+  color: #fff;
+  border-color: rgba(52, 211, 153, 0.5);
+}
+
+/* OPERATOR TELEMETRY — an instrument reporting on the player, not a dashboard.
+   Ruled grid, stepped trace, segmented latency bars, no rounded anything. */
+.telemetry {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-left-width: 3px;
+  border-left-color: rgba(148, 163, 184, 0.5);
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.014) 0 1px,
+      transparent 1px 3px
+    ),
+    rgba(255, 255, 255, 0.015);
+  padding: 16px 18px;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+}
+
+.telemetry--up { border-left-color: #34d399; }
+.telemetry--down { border-left-color: #fb923c; }
+
+.telemetry-eyebrow {
+  font-size: var(--fs-micro);
+  font-weight: 800;
+  letter-spacing: 0.24em;
+  color: rgba(148, 163, 184, 0.75);
+}
+
+.telemetry-headline {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-top: 6px;
+}
+
+.telemetry-delta {
+  font-family: var(--font-display, inherit);
+  font-size: var(--fs-hero);
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: #e2e8f0;
+}
+
+.telemetry--up .telemetry-delta { color: #6ee7b7; }
+.telemetry--down .telemetry-delta { color: #fdba74; }
+
+.telemetry-delta-unit {
+  margin-left: 8px;
+  font-size: var(--fs-label);
+  letter-spacing: 0.18em;
+  color: rgba(148, 163, 184, 0.8);
+}
+
+.telemetry-verdict span {
+  display: block;
+  font-size: var(--fs-label);
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: #cbd5e1;
+}
+
+.telemetry-verdict small {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.12em;
+  color: rgba(148, 163, 184, 0.7);
+}
+
+.telemetry-note {
+  margin-top: 8px;
+  font-size: var(--fs-micro);
+  line-height: 1.5;
+  color: rgba(148, 163, 184, 0.7);
+}
+
+.telemetry-chart,
+.telemetry-reflex {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.telemetry-chart-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.2em;
+  color: rgba(148, 163, 184, 0.7);
+}
+
+.telemetry-chart-label b {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.1em;
+  color: #cbd5e1;
+}
+
+.telemetry-chart svg {
+  width: 100%;
+  height: 118px;
+  margin-top: 8px;
+  overflow: visible;
+}
+
+.telemetry-grid {
+  stroke: rgba(148, 163, 184, 0.12);
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+}
+
+.telemetry-line {
+  fill: none;
+  stroke: #34d399;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.telemetry-accuracy {
+  fill: none;
+  stroke: rgba(56, 189, 248, 0.55);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.telemetry-chart-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.16em;
+  color: rgba(148, 163, 184, 0.55);
+}
+
+.telemetry-accuracy-key { color: rgba(56, 189, 248, 0.8); }
+
+.telemetry-group-label {
+  margin: 12px 0 6px;
+  font-size: var(--fs-micro);
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  color: rgba(148, 163, 184, 0.6);
+}
+
+.telemetry-pattern {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) 62px 44px;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 0;
+}
+
+.telemetry-pattern-token {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--fs-body);
+  color: #e2e8f0;
+}
+
+.telemetry-pattern-bar { min-width: 60px; }
+
+.telemetry-pattern-latency,
+.telemetry-pattern-errors {
+  font-size: var(--fs-label);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: #94a3b8;
+}
+
+.telemetry-pattern-latency small,
+.telemetry-pattern-errors small {
+  margin-left: 2px;
+  font-size: var(--fs-micro);
+  color: rgba(148, 163, 184, 0.6);
+}
+
+.telemetry-pattern-errors.is-hot { color: #fda4af; }
+
+/* RETURN READOUT — the first thing a returning player should meet. */
+.screens-return {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 34rem;
+  padding: 10px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-left-width: 3px;
+  border-left-color: rgba(148, 163, 184, 0.5);
+  background: rgba(255, 255, 255, 0.015);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  text-align: left;
+}
+
+.screens-return--up { border-left-color: #34d399; }
+.screens-return--down { border-left-color: #fb923c; }
+
+.screens-return-figure {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.screens-return-figure strong {
+  font-size: var(--fs-display);
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: #cbd5e1;
+}
+
+.screens-return--up .screens-return-figure strong { color: #6ee7b7; }
+.screens-return--down .screens-return-figure strong { color: #fdba74; }
+
+.screens-return-figure span {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.18em;
+  color: rgba(148, 163, 184, 0.75);
+}
+
+.screens-return-body span {
+  display: block;
+  font-size: var(--fs-label);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #cbd5e1;
+}
+
+.screens-return-body small {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.12em;
+  color: rgba(148, 163, 184, 0.7);
 }

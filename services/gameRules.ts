@@ -50,6 +50,56 @@ export const getTypingFocus = ({ avgWpm, accuracy, consistency }: SectorSummary)
   return 'mastery';
 };
 
+export type BranchPerformance = 'good' | 'average' | 'bad';
+
+/**
+ * Which of the three written continuations the player earned.
+ *
+ * This used to be an absolute error count — 1 for good, 4 for average — which
+ * gave an eight-word line and a twenty-word line the same budget, and put the
+ * "bad" branch out of practical reach: 5 typos in a hundred characters is 95%
+ * accuracy, so most players ping-ponged between two of the three branches and
+ * the third was written for nobody.
+ *
+ * It is now proportional, which tightens short lines and makes the bad branch
+ * reachable, with a flat allowance so a single typo never costs the good branch
+ * on any length. The bands sit in the 96-100% range because that is where the
+ * skill this game trains actually lives.
+ */
+export const GOOD_BRANCH_ACCURACY = 98.5;
+export const AVERAGE_BRANCH_ACCURACY = 96;
+export const FORGIVEN_ERRORS_PER_LINE = 1;
+
+export interface BranchThresholds {
+  good: number;
+  average: number;
+  /** Errors that never cost the good branch. The Exacting clause spends this. */
+  forgiven: number;
+}
+
+export const DEFAULT_BRANCH_THRESHOLDS: BranchThresholds = {
+  good: GOOD_BRANCH_ACCURACY,
+  average: AVERAGE_BRANCH_ACCURACY,
+  forgiven: FORGIVEN_ERRORS_PER_LINE
+};
+
+export const getBranchPerformance = (
+  mistakes: number,
+  characters: number,
+  thresholds: BranchThresholds = DEFAULT_BRANCH_THRESHOLDS
+): BranchPerformance => {
+  const errors = Math.max(0, mistakes);
+  if (errors <= thresholds.forgiven) return 'good';
+  // Accuracy is undefined without a line to measure against, and getTypingAccuracy
+  // reports a perfect 100 for it — which would turn any error count into a clean
+  // branch. Past the flat allowance, the errors are real and the excuse is not.
+  if (characters <= 0) return 'bad';
+  const accuracy = getTypingAccuracy(errors, characters);
+  if (accuracy >= thresholds.good) return 'good';
+  if (accuracy >= thresholds.average) return 'average';
+  return 'bad';
+};
+
 export const getTypingAccuracy = (mistakes: number, characters: number): number => (
   characters > 0 ? clamp(100 - ((Math.max(0, mistakes) / characters) * 100)) : 100
 );
@@ -67,6 +117,25 @@ export const getReadyActiveSkills = (
   return ready;
 };
 
+/**
+ * Only the skills the player can actually spend Energy on right now. A key you
+ * cannot press is noise next to the caret, and the Energy rail already shows
+ * what is coming.
+ *
+ * Rendered top-to-bottom, so this is reversed against the cost order: the
+ * cheapest unlock sits nearest the caret and every later unlock stacks above
+ * it. Nothing below a new arrival ever moves, which is the layout stability the
+ * old permanent Focus anchor was there to provide.
+ */
+export const getCursorSkillStack = (
+  charge: number,
+  maxCharge: number,
+  focusActive = false
+): ActiveTypingSkill[] => {
+  if (maxCharge <= 0) return [];
+  return [...getReadyActiveSkills(charge, maxCharge, focusActive)].reverse();
+};
+
 type SegmentKind = 'NARRATIVE' | 'BREACH' | 'DIALOG' | 'SIGNAL';
 
 interface SegmentRewardInput {
@@ -76,20 +145,36 @@ interface SegmentRewardInput {
   overclock?: boolean;
   breachMultiplier?: number;
   creditMultiplier?: number;
+  comboMultiplier?: number;
 }
+
+/**
+ * Combo counts unbroken correct keystrokes and survives across segments, so this
+ * ladder rewards sustained clean typing rather than one lucky line. It scales
+ * score (and through it XP and Stealth Level) but deliberately not credits —
+ * the shop economy is already generous and a 3x on top would flatten it.
+ */
+export const getComboMultiplier = (combo: number): number => {
+  if (combo >= 50) return 3;
+  if (combo >= 25) return 2;
+  if (combo >= 10) return 1.5;
+  return 1;
+};
 
 export const calculateSegmentScore = ({
   errors,
   type,
   wpm = 0,
   overclock = false,
-  breachMultiplier = 1
+  breachMultiplier = 1,
+  comboMultiplier = 1
 }: SegmentRewardInput): number => {
   let score = Math.max(0, 12 - (errors * 2));
   if (type === 'BREACH' && errors <= 2) score += Math.round(5 * breachMultiplier);
   if (type === 'SIGNAL' && errors <= 1) score += 3;
   if (wpm > 70 && errors <= 1) score += 4;
-  return overclock ? score * 2 : score;
+  if (overclock) score *= 2;
+  return Math.round(score * Math.max(1, comboMultiplier));
 };
 
 export const calculateSegmentCredits = ({

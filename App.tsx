@@ -1,16 +1,32 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback} from 'react';
 import { GameState, StorySegment, GameStats, StoryLogItem, UserProfile, Perk, GameModifiers, LevelReport, UserUpgrades, StoryMood, SegmentType, Language, MissionState, ComicFrame, StoryGenreId } from './types';
 import { generateStoryStart, generateCharacterProfile, generateLevelSummary, generateNextLevelStart } from './services/geminiService';
 import { GENRE_ORDER, getGenrePack } from './services/genreConfig';
 import { getGenreSkin, PerkGroupId, UpgradeId } from './services/genreSkin';
 import { DAILY_MAX_ATTEMPTS, DailyBrief, getDailyBrief, getDailyState, pickDailyItems, recordDailyAttempt } from './services/dailyMode';
-import { CAMPAIGN_SECTORS, getStealthLevel, getTypingAccuracy, getTypingFocus, summarizeSector } from './services/gameRules';
+import { CAMPAIGN_SECTORS, DEFAULT_BRANCH_THRESHOLDS, getStealthLevel, getTypingAccuracy, getTypingFocus, summarizeSector } from './services/gameRules';
+import { clampTraceSpeed, getComfortCreditMultiplier } from './services/riskReward';
+import { getSkillHeadline } from './services/progressAnalytics';
+import {
+  EXACTING_AVERAGE_ACCURACY,
+  EXACTING_GOOD_ACCURACY,
+  HOT_START_HEAT,
+  HUNTED_TRACE_MULTIPLIER,
+  PACT_CLAUSES,
+  getPactRewardMultiplier,
+  isPactClauseActive,
+  normalizePact,
+  togglePactClause,
+  type PactClauseId
+} from './services/pact';
 import { RunCheckpoint, clearRunCheckpoint, loadRunCheckpoint, saveRunCheckpoint } from './services/runCheckpoint';
 import {
   createBalancedCalibration,
   getAdaptiveDifficulty,
+  getEffectiveBaseline,
   getLocalDateKey,
   loadPlayerProgress,
+  summarizeProgress,
   recordRun,
   savePlayerProgress,
   setCalibration,
@@ -30,6 +46,7 @@ import {
 } from './services/productAnalytics';
 import {
   buildTargetedDrill,
+  getTrainingFocusTokens,
   getWeakPatterns,
   loadTypingTraining,
   recordTypingSession,
@@ -49,13 +66,14 @@ const TRANSLATIONS = {
         audio_active: "AUDIO ACTIVE",
         audio_muted: "AUDIO MUTED",
         empty_log: "Mission log is empty.\nAwaiting system initialization...",
+        mission_log: "MISSION LOG",
         speed: "SPEED",
         system_online: "SYSTEM ONLINE",
         main_title: "Operation Black Ledger",
         intro_desc: "Type to move, decide to bend the city, survive to publish the proof.",
         mistakes_warn: "Every typo changes heat, trust, evidence, and the ending.",
         init_link: "[1] INITIALIZE LINK",
-        quick_session: "A complete sector takes about 5–7 minutes. Continue only when you want a longer training run.",
+        quick_session: "A sector runs about 4–6 minutes depending on your pace. Continue only when you want a longer training run.",
         resume_run: "RESUME OPERATION",
         resume_sector: "Sector",
         daily_sector: "DAILY SECTOR",
@@ -96,7 +114,6 @@ const TRANSLATIONS = {
         health: "Health",
         trust: "Trust",
         evidence: "Evidence",
-        corruption: "Corruption",
         route: "Route",
         select_upgrade: "SELECT NEURAL UPGRADE",
         continue_hint: "Choose one upgrade to continue deeper.",
@@ -108,6 +125,27 @@ const TRANSLATIONS = {
         typing_debrief: "Typing debrief",
         next_drill: "Next run target",
         signal_lost: "SIGNAL LOST",
+        mistake_one: "uncorrected mistake this sector",
+        mistake_many: "uncorrected mistakes this sector",
+        return_faster: "FASTER THAN WHEN YOU STARTED",
+        return_slower: "SLOWER THAN WHEN YOU STARTED",
+        return_holding: "HOLDING YOUR PACE",
+        return_early: "STILL MEASURING YOUR PACE",
+        return_sessions: "sessions",
+        return_streak: "day streak",
+        pact_title: "THE PACT",
+        pact_reward: "REWARDS",
+        pact_hint: "Ask for a harder run and it pays for itself. Nothing here is required.",
+        pact_hot_start: "HOT START",
+        pact_hot_start_desc: "Every sector opens already hunted.",
+        pact_no_grace: "NO GRACE",
+        pact_no_grace_desc: "No typo is forgiven, whatever your difficulty preset.",
+        pact_exacting: "EXACTING",
+        pact_exacting_desc: "The clean branch demands near-perfect accuracy.",
+        pact_strict_case: "PERFECTIONIST",
+        pact_strict_case_desc: "Case-sensitive typing.",
+        pact_hunted: "HUNTED",
+        pact_hunted_desc: "The trace runs 35% faster all run.",
         focus_accuracy: "Slow down slightly and keep accuracy above 96%.",
         focus_consistency: "Hold one rhythm instead of sprinting between pauses.",
         focus_speed: "Accuracy is stable. Push your average speed by 5 WPM.",
@@ -122,7 +160,7 @@ const TRANSLATIONS = {
         level: "Level",
         wpm: "WPM",
         operation_dossier: "OPERATION DOSSIER",
-        campaign_goal: "Finish one sector in 5–7 minutes, then bank the result or continue through four.",
+        campaign_goal: "Finish one sector in about 5 minutes, then bank the result or continue through four.",
         focus_hint: "TAB activates Focus Mode when charged: trace pauses, mistakes hurt less, rewards double.",
         victory_title: "LEDGER PUBLISHED",
         victory_subtitle: "You won the run. The ending reflects your typing and choices.",
@@ -156,13 +194,14 @@ const TRANSLATIONS = {
         audio_active: "ЗВУК ВКЛ",
         audio_muted: "ЗВУК ВЫКЛ",
         empty_log: "Журнал миссии пуст.\nОжидание инициализации системы...",
+        mission_log: "ЖУРНАЛ МИССИИ",
         speed: "СКОРОСТЬ",
         system_online: "СИСТЕМА В СЕТИ",
         main_title: "Операция Черный Реестр",
         intro_desc: "Печатай, чтобы двигаться; выбирай, чтобы менять город; выживи, чтобы опубликовать улики.",
         mistakes_warn: "Каждая опечатка меняет угрозу, доверие, улики и финал.",
         init_link: "[1] ИНИЦИАЛИЗАЦИЯ",
-        quick_session: "Полный сектор занимает около 5–7 минут. Продолжай только если хочешь длинную тренировку.",
+        quick_session: "Сектор занимает 4–6 минут в зависимости от твоего темпа. Продолжай только если хочешь длинную тренировку.",
         resume_run: "ПРОДОЛЖИТЬ ОПЕРАЦИЮ",
         resume_sector: "Сектор",
         daily_sector: "ДНЕВНОЙ СЕКТОР",
@@ -203,7 +242,6 @@ const TRANSLATIONS = {
         health: "Здоровье",
         trust: "Доверие",
         evidence: "Улики",
-        corruption: "Коррупция",
         route: "Маршрут",
         select_upgrade: "ВЫБОР НЕЙРО-АПГРЕЙДА",
         continue_hint: "Выбери один апгрейд, чтобы идти глубже.",
@@ -215,6 +253,27 @@ const TRANSLATIONS = {
         typing_debrief: "Разбор печати",
         next_drill: "Цель следующего забега",
         signal_lost: "СИГНАЛ ПОТЕРЯН",
+        mistake_one: "неисправленная ошибка за сектор",
+        mistake_many: "неисправленных ошибок за сектор",
+        return_faster: "БЫСТРЕЕ, ЧЕМ В НАЧАЛЕ",
+        return_slower: "МЕДЛЕННЕЕ, ЧЕМ В НАЧАЛЕ",
+        return_holding: "ТЕМП ДЕРЖИТСЯ",
+        return_early: "ЕЩЁ ЗАМЕРЯЮ ТВОЙ ТЕМП",
+        return_sessions: "сессий",
+        return_streak: "дней подряд",
+        pact_title: "ПАКТ",
+        pact_reward: "К НАГРАДАМ",
+        pact_hint: "Попроси забег потруднее — он окупит себя. Ничего из этого не обязательно.",
+        pact_hot_start: "ГОРЯЧИЙ СТАРТ",
+        pact_hot_start_desc: "Каждый сектор начинается, когда тебя уже ищут.",
+        pact_no_grace: "БЕЗ ПОБЛАЖЕК",
+        pact_no_grace_desc: "Ни одна опечатка не прощается, какой бы ни был пресет.",
+        pact_exacting: "ТРЕБОВАТЕЛЬНОСТЬ",
+        pact_exacting_desc: "Чистая ветка требует почти безупречной точности.",
+        pact_strict_case: "ПЕРФЕКЦИОНИСТ",
+        pact_strict_case_desc: "Регистр имеет значение.",
+        pact_hunted: "ОХОТА",
+        pact_hunted_desc: "След бежит на 35% быстрее весь забег.",
         focus_accuracy: "Чуть сбавь темп и удерживай точность выше 96%.",
         focus_consistency: "Держи один ритм вместо рывков между паузами.",
         focus_speed: "Точность стабильна. Подними среднюю скорость на 5 СЛ/М.",
@@ -229,7 +288,7 @@ const TRANSLATIONS = {
         level: "Уровень",
         wpm: "СЛ/М",
         operation_dossier: "ДОСЬЕ ОПЕРАЦИИ",
-        campaign_goal: "Пройди сектор за 5–7 минут, затем сохрани результат или продолжай до четырёх.",
+        campaign_goal: "Пройди сектор примерно за 5 минут, затем сохрани результат или продолжай до четырёх.",
         focus_hint: "TAB включает Фокус-Мод при полном заряде: след заморожен, ошибки мягче, награды удвоены.",
         victory_title: "РЕЕСТР ОПУБЛИКОВАН",
         victory_subtitle: "Ты выиграл забег. Финал зависит от печати и решений.",
@@ -260,21 +319,26 @@ const TRANSLATIONS = {
 // --- TIERED PERK DEFINITIONS (mechanics only; display names come from genre skins) ---
 const PERK_DEFINITIONS = [
     {
+        // Was: forgive N mistakes outright. Now a mistake keeps your streak alive
+        // but bills you the Energy you would have spent on a protocol — a trade,
+        // not a free pass.
         groupId: 'neural_buffer' as PerkGroupId,
         type: 'defense',
         tiers: [
-            { grace: 1 },
-            { grace: 2 },
-            { grace: 3 }
+            { shields: 1, cost: 30 },
+            { shields: 2, cost: 25 },
+            { shields: 3, cost: 20 }
         ]
     },
     {
+        // Was: a flat trace slowdown you kept whatever you did. Now the stealth
+        // has to be held with a clean streak.
         groupId: 'ghost_protocol' as PerkGroupId,
         type: 'stealth',
         tiers: [
-            { mult: 0.8 },
-            { mult: 0.65 },
-            { mult: 0.5 }
+            { streakMult: 0.85, threshold: 25 },
+            { streakMult: 0.75, threshold: 20 },
+            { streakMult: 0.65, threshold: 15 }
         ]
     },
     {
@@ -287,21 +351,25 @@ const PERK_DEFINITIONS = [
         ]
     },
     {
+        // Was: a bigger health pool, which is just room to fail more. Now health
+        // comes back for lines typed perfectly.
         groupId: 'titanium_firewall' as PerkGroupId,
         type: 'defense',
         tiers: [
-            { maxHp: 35 },
-            { maxHp: 50 },
-            { maxHp: 75 }
+            { perfectHeal: 2 },
+            { perfectHeal: 3 },
+            { perfectHeal: 5 }
         ]
     },
     {
+        // Was: a chance the line typed itself. In a typing game that is not a
+        // perk, it is an opt-out. Now a long clean streak shoves the tracer back.
         groupId: 'critical_override' as PerkGroupId,
         type: 'utility',
         tiers: [
-            { chance: 0.05 },
-            { chance: 0.12 },
-            { chance: 0.20 }
+            { interval: 50, characters: 14 },
+            { interval: 35, characters: 18 },
+            { interval: 25, characters: 22 }
         ]
     },
     {
@@ -338,7 +406,6 @@ const DEFAULT_MODIFIERS: GameModifiers = {
     mistakeGraceCount: 0,
     healthRegenWpmThreshold: 0,
     healthRegenAmount: 0,
-    criticalHackChance: 0,
     maxHealth: 20,
     maxOverclock: 50,
     creditMultiplier: 1.0,
@@ -346,15 +413,59 @@ const DEFAULT_MODIFIERS: GameModifiers = {
     focusMistakeForgiveness: 2,
     errorChargeGain: 0,
     breachRewardMultiplier: 1,
-    evidenceMultiplier: 1
+    evidenceMultiplier: 1,
+    streakPurgeInterval: 0,
+    streakPurgeCharacters: 0,
+    streakTraceMultiplier: 1,
+    streakTraceThreshold: 0,
+    perfectLineHealth: 0,
+    comboShields: 0,
+    comboShieldCost: 0
 };
+
+/**
+ * Reads the stored profile synchronously, the way every other saved slice of this
+ * app is read. It used to load in an effect, which left a render in which state
+ * was still the default while the save effect was already running — see the note
+ * on the save effect.
+ */
+const loadStoredProfile = (): { profile: UserProfile; language?: Language; lastGenre?: StoryGenreId } => {
+    try {
+        const saved = localStorage.getItem('narrativeFlowProfile');
+        if (!saved) return { profile: DEFAULT_PROFILE };
+        const parsed = JSON.parse(saved);
+        const totalXp = Number.isFinite(parsed.totalXp) ? Math.max(0, parsed.totalXp) : 0;
+        // Perfectionist predates the Pact and was the same idea with one clause,
+        // so an existing player keeps it as the clause it always was.
+        const pact = parsed.pact === undefined && parsed.strictCase
+            ? (['strict_case'] as PactClauseId[])
+            : normalizePact(parsed.pact);
+        return {
+            profile: {
+                ...DEFAULT_PROFILE,
+                ...parsed,
+                totalXp,
+                stealthLevel: getStealthLevel(totalXp),
+                upgrades: { ...DEFAULT_PROFILE.upgrades, ...parsed.upgrades },
+                pact,
+                strictCase: pact.includes('strict_case')
+            },
+            language: parsed.language,
+            lastGenre: GENRE_ORDER.includes(parsed.lastGenre) ? parsed.lastGenre : undefined
+        };
+    } catch (e) {
+        console.error("Profile load fail", e);
+        return { profile: DEFAULT_PROFILE };
+    }
+};
+
+/** Notches in a HUD gauge. Enough to read a trend, few enough to count. */
+const HUD_GAUGE_SEGMENTS = 16;
 
 const DEFAULT_MISSION_STATE: MissionState = {
     heat: 18,
     trust: 44,
     evidence: 0,
-    corruption: 0,
-    signal: 55,
     route: 'balanced',
     flags: [],
     consequenceLog: []
@@ -374,11 +485,11 @@ const DEFAULT_PROFILE: UserProfile = {
         patternScanner: 0
     },
     language: 'en',
-    strictCase: false
+    strictCase: false,
+    pact: []
 };
 
 // Perfectionist (strict-case) mode grants +30% XP as the "ultimate accuracy" reward.
-const STRICT_CASE_XP_MULTIPLIER = 1.3;
 
 const META_UPGRADES: Record<UpgradeId, { baseCost: number; effectPerLevel: number; maxLevel: number }> = {
     synapticWeave: { baseCost: 100, effectPerLevel: 2, maxLevel: 10 },
@@ -463,7 +574,7 @@ const SystemBeacon: React.FC<{ label: string }> = ({ label }) => {
             </span>
 
             {/* decoding label */}
-            <span className="relative z-20 beacon-flicker font-mono text-[11px] font-bold tracking-[0.22em] text-emerald-300 whitespace-nowrap" style={{ textShadow: '0 0 8px rgba(52,211,153,0.45)' }}>
+            <span className="relative z-20 beacon-flicker font-mono fs-label font-bold tracking-[0.22em] text-emerald-300 whitespace-nowrap" style={{ textShadow: '0 0 8px rgba(52,211,153,0.45)' }}>
                 {text}
             </span>
 
@@ -475,7 +586,7 @@ const SystemBeacon: React.FC<{ label: string }> = ({ label }) => {
             </div>
 
             {/* drifting ping */}
-            <span className="relative z-20 font-mono text-[9px] tracking-[0.15em] text-emerald-500/70 tabular-nums whitespace-nowrap">
+            <span className="relative z-20 font-mono fs-micro tracking-[0.15em] text-emerald-500/70 tabular-nums whitespace-nowrap">
                 {ping}ms
             </span>
         </div>
@@ -604,10 +715,13 @@ const App: React.FC = () => {
   const [totalScore, setTotalScore] = useState(0);
   const [currentLevel, setCurrentLevel] = useState(1);
   const [currentHealth, setCurrentHealth] = useState(20);
-  const [musicActive, setMusicActive] = useState(false);
-  const [language, setLanguage] = useState<Language>('en'); // Global Language State
+  const [musicActive, setMusicActive] = useState(() => audioEngine.isEnabled());
+  const [storedBoot] = useState(loadStoredProfile);
+  const [pactOpen, setPactOpen] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
+  const [language, setLanguage] = useState<Language>(storedBoot.language ?? 'en'); // Global Language State
   
-  const [userProfile, setUserProfile] = useState<UserProfile>(DEFAULT_PROFILE);
+  const [userProfile, setUserProfile] = useState<UserProfile>(storedBoot.profile);
   const [activePerks, setActivePerks] = useState<Perk[]>([]);
   const [currentModifiers, setCurrentModifiers] = useState<GameModifiers>(DEFAULT_MODIFIERS);
   const [offeredPerks, setOfferedPerks] = useState<Perk[]>([]);
@@ -621,7 +735,7 @@ const App: React.FC = () => {
   const [comicFrames, setComicFrames] = useState<ComicFrame[]>([]);
   const [showComic, setShowComic] = useState(false);
   const [deathSequenceActive, setDeathSequenceActive] = useState(false);
-  const [selectedGenre, setSelectedGenre] = useState<StoryGenreId>('cyberpunk');
+  const [selectedGenre, setSelectedGenre] = useState<StoryGenreId>(storedBoot.lastGenre ?? 'cyberpunk');
   const [dailyState, setDailyState] = useState(() => getDailyState(dailyBrief.dailyId));
   const [isDailyRun, setIsDailyRun] = useState(false);
   const [currentDailyId, setCurrentDailyId] = useState<string | null>(null);
@@ -631,7 +745,7 @@ const App: React.FC = () => {
   const [typingTraining, setTypingTraining] = useState(() => loadTypingTraining());
   const [incomingChallenge] = useState(() => parseChallenge(typeof location !== 'undefined' ? location.search : ''));
   const [challengeShareStatus, setChallengeShareStatus] = useState(false);
-  const runGenreRef = useRef<StoryGenreId>('cyberpunk');
+  const runGenreRef = useRef<StoryGenreId>(storedBoot.lastGenre ?? 'cyberpunk');
   const isDailyRunRef = useRef(false);
   const currentDailyIdRef = useRef<string | null>(null);
   const activeDailyBriefRef = useRef<DailyBrief>(dailyBrief);
@@ -664,6 +778,12 @@ const App: React.FC = () => {
   const hubSkin = getGenreSkin('cyberpunk');
   /** World behind the glass — endings/sim readout only. */
   const worldSkin = getGenreSkin(selectedGenre);
+  /**
+   * The typing screen only. Menus and debriefs keep the shell column — a sidebar
+   * is fine on a menu; it is the game itself that should not look like a page.
+   */
+  const isTyping = gameState === GameState.PLAYING;
+
   const inSimulation =
     gameState === GameState.PLAYING ||
     gameState === GameState.LOADING ||
@@ -710,8 +830,48 @@ const App: React.FC = () => {
         ? UI.challenge_missed
         : UI.challenge_tied
     : '';
+  // The player's weak letter pairs, handed to the story generator so the campaign
+  // doubles as their drill.
+  const trainingFocusTokens = useMemo(
+    () => getTrainingFocusTokens(typingTraining),
+    [typingTraining]
+  );
+
+  const skillHeadline = useMemo(() => getSkillHeadline(playerProgress), [playerProgress]);
+  const progressSummary = useMemo(() => summarizeProgress(playerProgress), [playerProgress]);
+
+  const activePact = useMemo(() => normalizePact(userProfile.pact), [userProfile.pact]);
+  /**
+   * The Pact the current run is being played under. Held in a ref and frozen at
+   * launch: toggling a clause mid-run must not rewrite what the finished run is
+   * recorded as having demanded.
+   */
+  const activePactRef = useRef<PactClauseId[]>([]);
+  const openingMission = useMemo((): MissionState => (
+      isPactClauseActive(activePact, 'hot_start')
+          ? { ...DEFAULT_MISSION_STATE, heat: HOT_START_HEAT }
+          : DEFAULT_MISSION_STATE
+  ), [activePact]);
+  const pactRewardMultiplier = useMemo(() => getPactRewardMultiplier(activePact), [activePact]);
+  const branchThresholds = useMemo(() => (
+      isPactClauseActive(activePact, 'exacting')
+          ? { good: EXACTING_GOOD_ACCURACY, average: EXACTING_AVERAGE_ACCURACY, forgiven: 0 }
+          : DEFAULT_BRANCH_THRESHOLDS
+  ), [activePact]);
+
+  const handleTogglePactClause = useCallback((id: PactClauseId) => {
+      setUserProfile(prev => {
+          const pact = togglePactClause(normalizePact(prev.pact), id);
+          return { ...prev, pact, strictCase: pact.includes('strict_case') };
+      });
+  }, []);
+
+  // The pace the game measures the player at, tracking real runs rather than the
+  // one calibration prompt they typed on their first day.
+  const effectiveBaseline = useMemo(() => getEffectiveBaseline(playerProgress), [playerProgress]);
+
   const adaptiveDifficulty = useMemo(
-    () => getAdaptiveDifficulty(playerProgress.calibration),
+    () => getAdaptiveDifficulty(playerProgress.calibration, playerProgress),
     [playerProgress.calibration]
   );
 
@@ -737,28 +897,13 @@ const App: React.FC = () => {
   }, [incomingChallenge]);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('narrativeFlowProfile');
-      if (saved) {
-            const parsed = JSON.parse(saved);
-            const totalXp = Number.isFinite(parsed.totalXp) ? Math.max(0, parsed.totalXp) : 0;
-            setUserProfile({ 
-                ...DEFAULT_PROFILE, 
-                ...parsed, 
-                totalXp,
-                stealthLevel: getStealthLevel(totalXp),
-                upgrades: { ...DEFAULT_PROFILE.upgrades, ...parsed.upgrades }
-            });
-            if (parsed.language) setLanguage(parsed.language);
-            if (parsed.lastGenre && GENRE_ORDER.includes(parsed.lastGenre)) {
-                setSelectedGenre(parsed.lastGenre);
-                runGenreRef.current = parsed.lastGenre;
-            }
-      }
-    } catch (e) { console.error("Profile load fail", e); }
-  }, []);
-
-  useEffect(() => {
+    // The profile is read synchronously into state, so by the time this runs it
+    // is always the real one. It used to load in an effect, and this save fired
+    // in the same commit while state was still the default — clobbering the
+    // stored profile. Production self-healed on the next render; under
+    // StrictMode's double invoke the second load read the clobbered copy and the
+    // whole profile was gone, so dev and tests could not be trusted with
+    // anything persisted.
     const profileToSave = { ...userProfile, language, lastGenre: selectedGenre };
     try {
       localStorage.setItem('narrativeFlowProfile', JSON.stringify(profileToSave));
@@ -885,7 +1030,8 @@ const App: React.FC = () => {
       mistakes: stats.mistakes,
       characters: stats.characters,
       durationSeconds,
-      focus
+      focus,
+      pact: activePactRef.current
     })));
     const completedObservations = snapshotTypingObservations(runTrainingObservationsRef.current);
     runTrainingObservationsRef.current = [];
@@ -933,13 +1079,24 @@ const App: React.FC = () => {
       mods.breachRewardMultiplier += (u.patternScanner * META_UPGRADES.patternScanner.effectPerLevel);
       mods.evidenceMultiplier += (u.patternScanner * META_UPGRADES.patternScanner.effectPerLevel);
       mods.traceSpeedMultiplier *= adaptiveDifficulty.traceSpeedMultiplier;
-      if (!userProfile.strictCase) mods.mistakeGraceCount += adaptiveDifficulty.mistakeGraceCount;
-      mods.traceSpeedMultiplier = Math.max(0.1, mods.traceSpeedMultiplier);
+      if (!userProfile.strictCase && !isPactClauseActive(activePact, 'no_grace')) {
+          mods.mistakeGraceCount += adaptiveDifficulty.mistakeGraceCount;
+      }
+      if (isPactClauseActive(activePact, 'no_grace')) mods.mistakeGraceCount = 0;
+      if (isPactClauseActive(activePact, 'hunted')) mods.traceSpeedMultiplier *= HUNTED_TRACE_MULTIPLIER;
+      // Permanent trace easing is bought, so it is priced: the calm build keeps
+      // the game quieter for good and earns a quarter less for it. The difficulty
+      // preset is exempt — it is fitted to a measured pace, not purchased.
+      mods.creditMultiplier *= getComfortCreditMultiplier(u.signalDampener, META_UPGRADES.signalDampener.maxLevel);
       activePerks.forEach(perk => {
           mods = perk.apply(mods);
       });
+      // Clamped last. The old clamp sat before perk application, so a Ghost
+      // Protocol tier multiplied straight through it and the floor bounded
+      // nothing: a maxed player faced a tracer at a fifth of its intended pace.
+      mods.traceSpeedMultiplier = clampTraceSpeed(mods.traceSpeedMultiplier);
       setCurrentModifiers(mods);
-  }, [activePerks, adaptiveDifficulty, userProfile.strictCase, userProfile.upgrades]);
+  }, [activePerks, activePact, adaptiveDifficulty, userProfile.strictCase, userProfile.upgrades]);
 
   useEffect(() => {
     return () => {
@@ -950,38 +1107,48 @@ const App: React.FC = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
         if (deathSequenceActive) return;
+        // Consuming a shortcut must also swallow the key. Otherwise the same
+        // keypress that opens a screen is delivered again to whatever input that
+        // screen focuses — pressing [1] on the menu used to type "1" as the first
+        // character of the calibration prompt and score it as a miss.
+        const consume = () => e.preventDefault();
+
         if (gameState === GameState.STARTER_PERK_SELECTION || gameState === GameState.LEVEL_COMPLETE) {
             const index = parseInt(e.key) - 1;
             if (index >= 0 && index < offeredPerks.length) {
                 if (gameState === GameState.STARTER_PERK_SELECTION) {
                     handleStarterPerkSelect(offeredPerks[index]);
+                    consume();
                 } else if (isSectorSummaryReady) {
                     handleSelectPerk(offeredPerks[index]);
+                    consume();
                 }
             }
         } else if (gameState === GameState.GENRE_SELECTION) {
-            if (e.key === 'Escape') setGameState(GameState.MENU);
+            if (e.key === 'Escape') { setGameState(GameState.MENU); consume(); }
             const index = parseInt(e.key) - 1;
             if (index >= 0 && index < GENRE_ORDER.length) {
                 handleGenreSelect(GENRE_ORDER[index]);
+                consume();
             }
         } else if (gameState === GameState.MENU) {
-            if (e.key === '1' || e.key === 'Enter') initializeSession();
-            if (e.key === '2') setGameState(GameState.BLACK_MARKET);
-            if (e.key === '3' && !dailyAttemptsExhausted) initializeDailySession();
-            if (e.key === '4') setGameState(GameState.OPERATOR_RECORD);
-            if (e.key.toLowerCase() === 'r' && runCheckpoint) resumeSession();
+            if (e.key === '1' || e.key === 'Enter') { initializeSession(); consume(); }
+            if (e.key === '2') { setGameState(GameState.BLACK_MARKET); consume(); }
+            if (e.key === '3' && !dailyAttemptsExhausted) { initializeDailySession(); consume(); }
+            if (e.key === '4') { setGameState(GameState.OPERATOR_RECORD); consume(); }
+            if (e.key.toLowerCase() === 'r' && runCheckpoint) { resumeSession(); consume(); }
         } else if (gameState === GameState.OPERATOR_RECORD) {
-            if (e.key === 'Escape') setGameState(GameState.MENU);
+            if (e.key === 'Escape') { setGameState(GameState.MENU); consume(); }
         } else if (gameState === GameState.GAME_OVER || gameState === GameState.VICTORY) {
-            if (e.key === 'Enter' || e.key === ' ') setGameState(GameState.MENU);
+            if (e.key === 'Enter' || e.key === ' ') { setGameState(GameState.MENU); consume(); }
         } else if (gameState === GameState.BLACK_MARKET) {
-            if (e.key === 'Escape') setGameState(GameState.MENU);
-            
+            if (e.key === 'Escape') { setGameState(GameState.MENU); consume(); }
+
             const index = parseInt(e.key) - 1;
             const upgradeKeys = Object.keys(META_UPGRADES) as (keyof UserUpgrades)[];
             if (index >= 0 && index < upgradeKeys.length) {
                 handleBuyUpgrade(upgradeKeys[index]);
+                consume();
             }
         }
     };
@@ -989,6 +1156,19 @@ const App: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [dailyAttemptsExhausted, deathSequenceActive, gameState, isSectorSummaryReady, offeredPerks, playerProgress.calibration, runCheckpoint, userProfile]);
+
+  // Browsers refuse to open an AudioContext outside a user gesture, so the very
+  // first click or keypress is what actually brings audio up — including on the
+  // menu, which used to stay silent until a run started.
+  useEffect(() => {
+      const unlock = () => audioEngine.unlock();
+      window.addEventListener('pointerdown', unlock);
+      window.addEventListener('keydown', unlock);
+      return () => {
+          window.removeEventListener('pointerdown', unlock);
+          window.removeEventListener('keydown', unlock);
+      };
+  }, []);
 
   const handleToggleMusic = () => {
       const active = audioEngine.toggle();
@@ -1000,7 +1180,7 @@ const App: React.FC = () => {
   };
 
   const handleToggleStrictCase = () => {
-      setUserProfile(prev => ({ ...prev, strictCase: !prev.strictCase }));
+      handleTogglePactClause('strict_case');
   };
 
   const generatePerkObject = (def: typeof PERK_DEFINITIONS[number], tierIndex: number, _genreOverride?: StoryGenreId): Perk => {
@@ -1018,14 +1198,23 @@ const App: React.FC = () => {
           maxTier: def.tiers.length,
           apply: (mods) => {
               const newMods = { ...mods };
-              if (def.groupId === 'neural_buffer') newMods.mistakeGraceCount = Math.max(newMods.mistakeGraceCount, tierData.grace);
-              if (def.groupId === 'ghost_protocol') newMods.traceSpeedMultiplier *= tierData.mult;
+              if (def.groupId === 'neural_buffer') {
+                  newMods.comboShields = Math.max(newMods.comboShields, tierData.shields);
+                  newMods.comboShieldCost = tierData.cost;
+              }
+              if (def.groupId === 'ghost_protocol') {
+                  newMods.streakTraceMultiplier = Math.min(newMods.streakTraceMultiplier, tierData.streakMult);
+                  newMods.streakTraceThreshold = tierData.threshold;
+              }
               if (def.groupId === 'adrenaline_spike') {
                   newMods.healthRegenWpmThreshold = tierData.thresh;
                   newMods.healthRegenAmount = tierData.regen;
               }
-              if (def.groupId === 'titanium_firewall') newMods.maxHealth = Math.max(newMods.maxHealth, tierData.maxHp);
-              if (def.groupId === 'critical_override') newMods.criticalHackChance = tierData.chance;
+              if (def.groupId === 'titanium_firewall') newMods.perfectLineHealth = Math.max(newMods.perfectLineHealth, tierData.perfectHeal);
+              if (def.groupId === 'critical_override') {
+                  newMods.streakPurgeInterval = tierData.interval;
+                  newMods.streakPurgeCharacters = tierData.characters;
+              }
               if (def.groupId === 'focus_lattice') { newMods.focusDurationMs += tierData.duration; newMods.focusMistakeForgiveness += tierData.forgiveness; }
               if (def.groupId === 'error_siphon') newMods.errorChargeGain = Math.max(newMods.errorChargeGain, tierData.charge);
               if (def.groupId === 'evidence_lens') newMods.evidenceMultiplier += tierData.evidence;
@@ -1089,6 +1278,7 @@ const App: React.FC = () => {
   const prepareSession = (dailySeed?: string) => {
       runRecordedRef.current = false;
       runStartedAtRef.current = Date.now();
+      activePactRef.current = activePact;
       setStoryLog([]);
       setTotalScore(0);
       totalScoreRef.current = 0;
@@ -1101,7 +1291,7 @@ const App: React.FC = () => {
           window.clearTimeout(deathSequenceTimerRef.current);
           deathSequenceTimerRef.current = null;
       }
-      setCampaignState(DEFAULT_MISSION_STATE);
+      setCampaignState(openingMission);
       setNarrativeContext("");
       setCharacterDesc("");
       setActivePerks([]); 
@@ -1136,17 +1326,13 @@ const App: React.FC = () => {
       setCurrentDailyId(null);
       currentDailyIdRef.current = null;
       setCurrentDailyDateLabel(null);
-      if (!playerProgress.calibration) {
-          calibrationNextRef.current = 'campaign';
-          captureProductEvent('typomancer_calibration_started', {
-              ...getAnalyticsContext(),
-              recalibration: false
-          });
-          setGameState(GameState.CALIBRATION);
-      } else {
-          setGameState(GameState.GENRE_SELECTION);
-      }
-      if (!musicActive) handleToggleMusic();
+      // A newcomer meets the story first. Calibration used to be the very first
+      // thing a stranger saw: a 93-character typing test, before the game had
+      // shown them what it was for. The baseline now tracks real runs, so an
+      // uncalibrated player self-corrects within a few sectors — and the offer to
+      // calibrate lands after the first run, when they know what it tunes.
+      setGameState(GameState.GENRE_SELECTION);
+      audioEngine.unlock();
   };
 
   const resumeSession = async () => {
@@ -1163,6 +1349,7 @@ const App: React.FC = () => {
       setStoryLog([]);
       runRecordedRef.current = false;
       runStartedAtRef.current = Date.now();
+      activePactRef.current = activePact;
       runTrainingObservationsRef.current = [];
       setFinalStats(null);
       setVictoryReport(null);
@@ -1184,7 +1371,7 @@ const App: React.FC = () => {
       currentDailyIdRef.current = null;
       setCurrentDailyDateLabel(null);
       setGameState(GameState.LOADING);
-      if (!musicActive) handleToggleMusic();
+      audioEngine.unlock();
       captureProductEvent('typomancer_run_started', {
           ...getAnalyticsContext(),
           daily: false,
@@ -1229,17 +1416,8 @@ const App: React.FC = () => {
       setCurrentDailyDateLabel(brief.dateLabel);
       setSelectedGenre(brief.genre);
       runGenreRef.current = brief.genre;
-      if (!playerProgress.calibration) {
-          calibrationNextRef.current = 'daily';
-          captureProductEvent('typomancer_calibration_started', {
-              ...getAnalyticsContext(),
-              recalibration: false
-          });
-          setGameState(GameState.CALIBRATION);
-      } else {
-          setGameState(GameState.STARTER_PERK_SELECTION);
-      }
-      if (!musicActive) handleToggleMusic();
+      setGameState(GameState.STARTER_PERK_SELECTION);
+      audioEngine.unlock();
   };
 
   const finishCalibration = (result: CalibrationResult, observations: TypingObservation[] = [], skipped = false) => {
@@ -1378,7 +1556,7 @@ const App: React.FC = () => {
       if (mission.evidence >= 55 && mission.route === 'loud') {
           return worldSkin.endings.loud[language];
       }
-      if (mission.corruption >= 45 || mission.trust < 18) {
+      if (mission.heat >= 75 || mission.trust < 18) {
           return worldSkin.endings.broken[language];
       }
       return worldSkin.endings.survivor[language];
@@ -1396,10 +1574,11 @@ const App: React.FC = () => {
       ];
       const sectorSummary = summarizeSector(allRounds);
       const { avgWpm, totalMistakes, score: levelScore, accuracy, consistency } = sectorSummary;
-      const strictBonus = userProfile.strictCase ? STRICT_CASE_XP_MULTIPLIER : 1;
-      const xp = Math.floor(levelScore * (1 + (finalRoundStats.level * 0.1)) * strictBonus);
+      // One multiplier for both currencies: the Pact is the whole reason to take
+      // a harder run, so it has to pay on every axis the player is tracking.
+      const xp = Math.floor(levelScore * (1 + (finalRoundStats.level * 0.1)) * pactRewardMultiplier);
       setLevelXpGained(xp);
-      const creditsEarned = finalRoundStats.credits || 0;
+      const creditsEarned = Math.floor((finalRoundStats.credits || 0) * pactRewardMultiplier);
       const mission = finalMission || finalRoundStats.mission || campaignState;
       setCampaignState(mission);
       setUserProfile(prev => {
@@ -1413,7 +1592,7 @@ const App: React.FC = () => {
       });
       setCurrentHealth(finalRoundStats.health);
       let performanceRating: 'bad' | 'average' | 'good' | 'legendary' = 'average';
-      if (finalTrace >= 90 || finalRoundStats.health <= 5 || mission.corruption > 55) performanceRating = 'bad';
+      if (finalTrace >= 90 || finalRoundStats.health <= 5 || mission.heat > 80) performanceRating = 'bad';
       else if (avgWpm > 75 && totalMistakes < 3 && mission.heat < 45) performanceRating = 'legendary';
       else if (avgWpm > 55 && totalMistakes < 8) performanceRating = 'good';
 
@@ -1550,7 +1729,8 @@ const App: React.FC = () => {
           mistakes,
           characters,
           durationSeconds,
-          focus
+          focus,
+          pact: activePactRef.current
       })));
 
       const completedObservations = snapshotTypingObservations(runTrainingObservationsRef.current);
@@ -1674,6 +1854,8 @@ const App: React.FC = () => {
 
   const buildComicData = () => {
     const isVictory = gameState === GameState.VICTORY;
+    // The Pact the run was played under, not whatever the menu shows now.
+    const runPact = activePactRef.current;
     const mission = (isVictory ? victoryReport?.mission : finalStats?.mission) || campaignState;
     const campaignTitle = genrePack.ui.mainTitle[language];
     const defeatScore = Math.max(totalScore, finalStats?.score || 0);
@@ -1695,6 +1877,7 @@ const App: React.FC = () => {
           { label: UI.wpm, value: String(Math.round(victoryReport.avgWpm)) },
           { label: UI.evidence, value: String(mission.evidence) },
           { label: UI.heat, value: `${Math.round(mission.heat)}%` },
+          ...(runPact.length ? [{ label: UI.pact_title, value: `x${getPactRewardMultiplier(runPact).toFixed(2)}` }] : []),
           { label: UI.score, value: String(totalScore) }
         ]
       };
@@ -1713,6 +1896,7 @@ const App: React.FC = () => {
         { label: UI.level, value: String(finalStats?.level || 1) },
         { label: UI.evidence, value: String(mission.evidence) },
         { label: UI.heat, value: `${Math.round(mission.heat)}%` },
+        ...(runPact.length ? [{ label: UI.pact_title, value: `x${getPactRewardMultiplier(runPact).toFixed(2)}` }] : []),
         { label: UI.score, value: String(defeatScore) }
       ]
     };
@@ -1765,7 +1949,7 @@ const App: React.FC = () => {
             <div className="screens-perk-meta flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
                     <span className="keycap opacity-70 group-hover:opacity-100">{index + 1}</span>
-                    <span className={`truncate text-[9px] font-bold uppercase tracking-[0.2em] ${rarityColor}`}>{perk.rarity}</span>
+                    <span className={`truncate fs-micro font-bold uppercase tracking-[0.2em] ${rarityColor}`}>{perk.rarity}</span>
                 </div>
                  <div className="flex gap-1" aria-label={`${UI.level} ${perk.tier}`}>
                      {Array.from({ length: perk.maxTier }, (_, tierIndex) => (
@@ -1776,12 +1960,12 @@ const App: React.FC = () => {
                      ))}
                  </div>
             </div>
-            <h4 className="screens-perk-title font-display text-lg font-bold leading-tight text-white transition-colors">{perk.name}</h4>
-            <p className="screens-perk-description text-sm text-slate-400 leading-relaxed">
+            <h4 className="screens-perk-title font-display fs-lead font-bold leading-tight text-white transition-colors">{perk.name}</h4>
+            <p className="screens-perk-description fs-body text-slate-400 leading-relaxed">
                 {perk.description}
             </p>
             {isLegendary && (
-                <div className="screens-perk-legend text-[9px] text-amber-300 font-bold uppercase tracking-[0.2em]">
+                <div className="screens-perk-legend fs-micro text-amber-300 font-bold uppercase tracking-[0.2em]">
                     {stripLeadingGlyph(UI.legendary_drop)}
                 </div>
             )}
@@ -1814,12 +1998,12 @@ const App: React.FC = () => {
             <div className="screens-world-heading flex min-w-0 items-start gap-3">
                 <span className="keycap shrink-0 opacity-70 group-hover:opacity-100">{index + 1}</span>
                 <div className="min-w-0">
-                    <h4 className="font-display text-lg font-bold" style={{ color: pack.accent }}>{pack.name[language]}</h4>
-                    <p className="text-[9px] mt-1 uppercase tracking-[0.18em] text-slate-500">{pack.ui.mainTitle[language]}</p>
+                    <h4 className="font-display fs-lead font-bold" style={{ color: pack.accent }}>{pack.name[language]}</h4>
+                    <p className="fs-micro mt-1 uppercase tracking-[0.18em] text-slate-500">{pack.ui.mainTitle[language]}</p>
                 </div>
             </div>
-            <p className="screens-world-description text-sm text-slate-400 leading-relaxed">{pack.tagline[language]}</p>
-            <p className="screens-world-goal text-[11px] text-slate-500 border-t border-white/[0.06] pt-3">{pack.ui.campaignGoal[language]}</p>
+            <p className="screens-world-description fs-body text-slate-400 leading-relaxed">{pack.tagline[language]}</p>
+            <p className="screens-world-goal fs-label text-slate-500 border-t border-white/[0.06] pt-3">{pack.ui.campaignGoal[language]}</p>
         </button>
       );
   };
@@ -1857,163 +2041,43 @@ const App: React.FC = () => {
         </div>
       )}
       
-      {/* Sidebar — operator console */}
-      <aside className={`relative z-10 w-full md:w-1/3 lg:w-1/4 flex-col h-[30vh] md:h-screen bg-gradient-to-b from-[#0b101a] to-[#070a11] border-r border-white/[0.06] ${inSimulation ? 'hidden md:flex' : 'flex'}`}>
-        <div className="tex-grid absolute inset-0 opacity-40 pointer-events-none"></div>
-        <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent pointer-events-none"></div>
-
-        {/* Header + status */}
-        <div className="relative z-10 px-5 pt-5 pb-4 space-y-4">
-          {/* Wordmark */}
+      {/* Status strip — what the shell column was actually for, minus the parts
+          other screens already show. No document column: the wordmark repeats the
+          title on screen, the mission meters live on the run HUD and in the
+          debrief tiles, and the log moved into the debrief where reading a feed
+          makes sense. */}
+      {!isTyping && (
+        <div className="hud-strip">
           <div className="flex items-center gap-3">
-            <div className="relative h-9 w-9 flex items-center justify-center rounded-md bg-emerald-400/10 border border-emerald-400/25 shadow-[0_0_22px_rgba(52,211,153,0.18)]">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="text-emerald-400">
-                <path d="M2 13h4l2.5-7 4 15 2.5-8H22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
-            <div className="min-w-0">
-              <h1 className="font-display text-[15px] font-bold tracking-[0.12em] text-white leading-none truncate">{UI.game_title}</h1>
-              <p className="mt-1.5 text-[9px] uppercase tracking-[0.22em] text-slate-500 truncate">
-                {inSimulation ? genrePack.ui.mainTitle[language] : UI.subtitle}
-              </p>
-            </div>
+            <span className="fs-micro uppercase tracking-[0.22em] text-slate-500">{UI.wallet}</span>
+            <span className="font-display fs-lead font-bold tabular-nums leading-none text-white">
+              {Math.floor(userProfile.credits || 0)}<span className="fs-body text-emerald-400 ml-1">{UI.currency_suffix}</span>
+            </span>
           </div>
-
-          {inSimulation && (
-            <div
-              className="inline-flex items-center gap-2 self-start px-2.5 py-1 rounded-full border text-[10px] font-bold tracking-widest uppercase"
-              style={{ borderColor: `${genrePack.accent}66`, color: genrePack.accent, background: `${genrePack.accent}14` }}
-              title={language === 'ru' ? 'Активная симуляция за стеклом пульта' : 'Active simulation behind the operator glass'}
-            >
-              <GenreIcon genre={selectedGenre} className="h-3.5 w-3.5" />
-              <span>{UI.sim_badge}</span>
-              <span className="opacity-70">//</span>
-              <span>{genrePack.name[language]}</span>
-            </div>
-          )}
-
-          {/* Status panel */}
-          <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] space-y-4">
-            <div className="flex items-end justify-between">
-              <div>
-                <div className="text-[9px] uppercase tracking-[0.22em] text-slate-500">{UI.wallet}</div>
-                <div className="font-display mt-1 text-2xl font-bold tabular-nums text-white leading-none">
-                  {Math.floor(userProfile.credits || 0)}<span className="text-sm text-emerald-400 ml-1 align-baseline">{UI.currency_suffix}</span>
-                </div>
-              </div>
-              {gameState === GameState.PLAYING && (
-                <div className="text-right">
-                  <div className="text-[9px] uppercase tracking-[0.22em] text-slate-500">{UI.score}</div>
-                  <div className="font-display mt-1 text-lg font-bold tabular-nums text-emerald-400 leading-none">{totalScore}</div>
-                </div>
-              )}
-            </div>
-
-            <div className="h-px bg-white/[0.06]"></div>
-
-            <div className="space-y-2.5">
-              {[
-                { key: 'heat', label: UI.heat, val: campaignState.heat, color: '#fbbf24', suffix: '%' },
-                { key: 'trust', label: UI.trust, val: campaignState.trust, color: '#38bdf8', suffix: '' },
-                { key: 'evidence', label: UI.evidence, val: campaignState.evidence, color: '#34d399', suffix: '' },
-                { key: 'corruption', label: UI.corruption, val: campaignState.corruption, color: '#a78bfa', suffix: '' }
-              ].map(m => (
-                <div key={m.key} className="flex items-center gap-3">
-                  <span className="w-[68px] shrink-0 text-[9px] uppercase tracking-[0.16em] text-slate-500">{m.label}</span>
-                  <div className="flex-1 h-1 rounded-full bg-white/[0.06] overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-700"
-                      style={{ width: `${Math.min(100, Math.max(0, m.val))}%`, backgroundColor: m.color, boxShadow: `0 0 8px ${m.color}55` }}
-                    ></div>
-                  </div>
-                  <span className="w-9 text-right text-[11px] tabular-nums text-slate-300">{Math.round(m.val)}{m.suffix}</span>
-                </div>
-              ))}
-            </div>
+          <div className="flex flex-1 flex-wrap items-center gap-1.5">
+            {activePerks.map((p, i) => (
+              <span key={i} title={p.description} className={`fs-micro px-2 py-0.5 border cursor-help tracking-wide ${
+                p.tier === 3 ? 'border-amber-400/40 text-amber-300 bg-amber-400/10' :
+                p.tier === 2 ? 'border-violet-400/40 text-violet-300 bg-violet-400/10' :
+                'border-white/10 text-slate-300 bg-white/[0.03]'
+              }`}>
+                {p.name}
+              </span>
+            ))}
           </div>
-
-          {activePerks.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {activePerks.map((p, i) => (
-                <span key={i} title={p.description} className={`text-[10px] px-2 py-0.5 rounded-full border cursor-help tracking-wide ${
-                  p.tier === 3 ? 'border-amber-400/40 text-amber-300 bg-amber-400/10' :
-                  p.tier === 2 ? 'border-violet-400/40 text-violet-300 bg-violet-400/10' :
-                  'border-white/10 text-slate-300 bg-white/[0.03]'
-                }`}>
-                  {p.name}
-                </span>
-              ))}
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <button onClick={handleToggleMusic} className="hud-strip-button">
+              {musicActive ? stripLeadingGlyph(UI.audio_active) : UI.audio_muted}
+            </button>
+            <button onClick={handleToggleLanguage} className="hud-strip-button">
+              {language === 'en' ? 'RU' : 'EN'}
+            </button>
+          </div>
         </div>
+      )}
 
-        {/* Mission log */}
-        <div className="relative z-10 flex-1 min-h-0 overflow-y-auto px-5 pb-4">
-          <div className="text-[9px] uppercase tracking-[0.22em] text-slate-600 mb-3 sticky top-0 bg-gradient-to-b from-[#0b101a] to-transparent pb-1">{language === 'ru' ? 'Журнал миссии' : 'Mission Log'}</div>
-          {storyLog.length === 0 ? (
-            <div className="text-slate-600 text-xs italic text-center mt-8 whitespace-pre-wrap">{UI.empty_log}</div>
-          ) : (
-            <div className="relative space-y-5 pl-1">
-              <div className="absolute left-[11px] top-1 bottom-1 w-px bg-white/[0.07]"></div>
-              {storyLog.map((log, idx) => (
-                <div key={idx} className="relative flex items-start gap-3 animate-fade-in-up">
-                  {log.performance !== 'neutral' ? (
-                    <div className={`relative flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold tabular-nums z-10 bg-[#0b101a] ring-1 ${
-                      log.performance === 'good' ? 'ring-emerald-500/60 text-emerald-400' :
-                      log.performance === 'average' ? 'ring-amber-500/60 text-amber-400' :
-                      'ring-rose-500/60 text-rose-400'
-                    }`}>
-                      {log.score}
-                    </div>
-                  ) : (
-                    <div className="flex-shrink-0 w-6 h-6 rounded-full ring-1 ring-white/10 bg-[#0b101a] z-10 flex items-center justify-center">
-                      <span className="block w-1.5 h-1.5 bg-emerald-400/70 rounded-full"></span>
-                    </div>
-                  )}
-                  <div className={`text-[13px] leading-relaxed py-0.5 ${
-                    log.performance === 'neutral' ? 'text-emerald-300/70 italic' :
-                    log.performance === 'bad' ? 'text-rose-200/90' : 'text-slate-300'
-                  }`}>
-                    {log.text}
-                    {log.wpm > 0 && (
-                      <span className="block text-[10px] text-slate-600 mt-1 tracking-wide">{UI.speed}: <span className="tabular-nums">{log.wpm}</span> {UI.wpm}</span>
-                    )}
-                    {log.meta && (
-                      <span className="block text-[10px] text-emerald-500/60 mt-1">{log.meta}</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          <div ref={logEndRef} />
-        </div>
 
-        {/* Footer controls */}
-        <div className="relative z-10 px-5 py-3 border-t border-white/[0.06] flex items-center gap-2">
-          <button
-            onClick={handleToggleMusic}
-            className={`flex-1 h-8 text-[10px] font-bold uppercase tracking-[0.16em] rounded-lg border transition-all flex items-center justify-center gap-2 ${musicActive ? 'border-emerald-400/40 text-emerald-300 bg-emerald-400/10' : 'border-white/10 text-slate-500 bg-white/[0.02] hover:text-slate-300'}`}
-          >
-            <span>{musicActive ? stripLeadingGlyph(UI.audio_active) : UI.audio_muted}</span>
-            {musicActive && (
-              <div className="flex items-end gap-0.5 h-3">
-                <div className="w-0.5 bg-emerald-400 animate-[pulse_0.4s_infinite]"></div>
-                <div className="w-0.5 bg-emerald-400 animate-[pulse_0.6s_infinite]"></div>
-                <div className="w-0.5 bg-emerald-400 animate-[pulse_0.3s_infinite]"></div>
-              </div>
-            )}
-          </button>
-          <button
-            onClick={handleToggleLanguage}
-            className="h-8 px-3 text-[10px] font-bold rounded-lg border border-white/10 bg-white/[0.02] text-slate-400 hover:text-white transition-colors"
-          >
-            {language === 'en' ? 'RU' : 'EN'}
-          </button>
-        </div>
-      </aside>
-
-      <div className={`relative z-10 w-full md:w-2/3 lg:w-3/4 flex flex-col md:h-screen overflow-hidden ${inSimulation ? 'h-[100dvh]' : ''}`}>
+      <div className={`relative z-10 flex w-full flex-col md:h-screen overflow-hidden ${isTyping ? '' : 'pt-10'} ${inSimulation ? 'h-[100dvh]' : ''}`}>
         <div className="absolute inset-0 opacity-5 pointer-events-none"
              style={{ backgroundImage: 'linear-gradient(#334155 1px, transparent 1px), linear-gradient(90deg, #334155 1px, transparent 1px)', backgroundSize: '40px 40px' }}>
         </div>
@@ -2028,21 +2092,17 @@ const App: React.FC = () => {
                             {UI.intro_desc}<br/>
                             <span className="text-amber-400/90">{UI.mistakes_warn}</span>
                         </p>
-                        <div className="text-xs text-slate-400 rounded-xl border border-white/[0.06] bg-white/[0.02] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] p-4 text-left space-y-2">
-                            <div className="flex gap-2.5"><span className="text-emerald-400/70 mt-px">◆</span><span>{UI.campaign_goal}</span></div>
-                            <div className="flex gap-2.5"><span className="text-emerald-400/70 mt-px">◆</span><span>{UI.focus_hint}</span></div>
-                        </div>
                     </div>
                     <div className="flex flex-col gap-3.5">
                         {incomingChallenge && (
                             <div className={`screens-cut-card border p-4 text-left ${isCurrentChallenge ? 'border-amber-400/35 bg-amber-400/[0.06]' : 'border-white/10 bg-white/[0.02]'}`}>
-                                <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-amber-300">{UI.challenge_title}</div>
+                                <div className="fs-micro font-bold uppercase tracking-[0.2em] text-amber-300">{UI.challenge_title}</div>
                                 {isCurrentChallenge ? (
                                     <div className="mt-2 flex items-center justify-between gap-4">
-                                        <div><span className="text-[10px] text-slate-500">{UI.challenge_target}</span><strong className="block text-2xl text-white tabular-nums">{incomingChallenge.targetScore}</strong></div>
-                                        <button type="button" onClick={initializeDailySession} disabled={dailyAttemptsExhausted} className="btn-cyber btn-cyber-primary px-4 py-2.5 text-[10px] font-bold text-[#04120b]">{UI.challenge_accept}</button>
+                                        <div><span className="fs-micro text-slate-500">{UI.challenge_target}</span><strong className="block text-2xl text-white tabular-nums">{incomingChallenge.targetScore}</strong></div>
+                                        <button type="button" onClick={initializeDailySession} disabled={dailyAttemptsExhausted} className="btn-cyber btn-cyber-primary px-4 py-2.5 fs-micro font-bold text-[#04120b]">{UI.challenge_accept}</button>
                                     </div>
-                                ) : <p className="mt-2 text-xs leading-relaxed text-slate-400">{UI.challenge_expired}</p>}
+                                ) : <p className="mt-2 fs-label leading-relaxed text-slate-400">{UI.challenge_expired}</p>}
                             </div>
                         )}
                         {runCheckpoint && (
@@ -2061,7 +2121,7 @@ const App: React.FC = () => {
                             <span className="keycap">1</span>
                             <span>{stripKeyHint(UI.init_link)}</span>
                         </button>
-                        <p className="px-3 text-[10px] leading-relaxed text-slate-500">{UI.quick_session}</p>
+                        <p className="px-3 fs-micro leading-relaxed text-slate-500">{UI.quick_session}</p>
                         <button
                             onClick={initializeDailySession}
                             disabled={dailyAttemptsExhausted}
@@ -2078,15 +2138,15 @@ const App: React.FC = () => {
                                 <span className="tracking-[0.06em]">{UI.daily_sector}</span>
                                 {dailyAttemptsExhausted ? (
                                     <>
-                                        <span className="mt-1 max-w-full truncate font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-300/75 tabular-nums">
+                                        <span className="mt-1 max-w-full truncate font-mono fs-micro font-bold uppercase tracking-[0.12em] text-emerald-300/75 tabular-nums">
                                             {UI.daily_best}: {dailyState.bestScore} · {dailyState.bestEnding || UI.daily_severed}
                                         </span>
-                                        <span className="mt-0.5 font-mono text-[8px] font-bold uppercase tracking-[0.16em] text-slate-500">
+                                        <span className="mt-0.5 font-mono fs-micro font-bold uppercase tracking-[0.16em] text-slate-500">
                                             {UI.daily_tomorrow}
                                         </span>
                                     </>
                                 ) : (
-                                    <span className="mt-1 max-w-full truncate font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-300/75 tabular-nums">
+                                    <span className="mt-1 max-w-full truncate font-mono fs-micro font-bold uppercase tracking-[0.12em] text-emerald-300/75 tabular-nums">
                                         {dailyGenrePack.name[language]} · {dailyAttemptsLeft}/{DAILY_MAX_ATTEMPTS} {UI.daily_left}
                                     </span>
                                 )}
@@ -2108,30 +2168,84 @@ const App: React.FC = () => {
                         </button>
                     </div>
 
-                    <button
-                        type="button"
-                        onClick={handleToggleStrictCase}
-                        aria-pressed={!!userProfile.strictCase}
-                        className="mx-auto flex items-center gap-3 rounded-lg border bg-white/[0.02] px-4 py-2 transition-colors"
-                        style={{ borderColor: userProfile.strictCase ? 'rgba(251,191,36,0.4)' : 'rgba(255,255,255,0.1)' }}
-                    >
-                        <span className={`relative h-4 w-7 rounded-full transition-colors ${userProfile.strictCase ? 'bg-amber-400/80' : 'bg-white/15'}`}>
-                            <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all duration-200 ${userProfile.strictCase ? 'left-3.5' : 'left-0.5'}`}></span>
-                        </span>
-                        <span className="text-left">
-                            <span className={`block text-[11px] font-bold uppercase tracking-[0.16em] ${userProfile.strictCase ? 'text-amber-300' : 'text-slate-400'}`}>{UI.perfectionist}</span>
-                            <span className="block text-[9px] text-slate-500 tracking-wide">{UI.perfectionist_desc}</span>
-                        </span>
-                    </button>
+                    {/* What a returning player should be met by. The wallet is the
+                        game's internal currency; this is the only reward that
+                        leaves with them, and it used to be filed behind menu
+                        item four. */}
+                    {skillHeadline.sessions > 0 && (
+                        <div className={`screens-return screens-return--${skillHeadline.deltaWpm > 0 ? 'up' : skillHeadline.deltaWpm < 0 ? 'down' : 'flat'} mx-auto`}>
+                            <div className="screens-return-figure">
+                                <strong>{skillHeadline.deltaWpm > 0 ? '+' : ''}{skillHeadline.deltaWpm}</strong>
+                                <span>{UI.wpm}</span>
+                            </div>
+                            <div className="screens-return-body">
+                                <span>{skillHeadline.hasEnoughHistory
+                                    ? (skillHeadline.deltaWpm > 0 ? UI.return_faster : skillHeadline.deltaWpm < 0 ? UI.return_slower : UI.return_holding)
+                                    : UI.return_early}</span>
+                                <small>
+                                    {skillHeadline.sessions} {UI.return_sessions}
+                                    {progressSummary.currentStreak > 1 ? ` · ${progressSummary.currentStreak} ${UI.return_streak}` : ''}
+                                </small>
+                            </div>
+                        </div>
+                    )}
 
-                    <p className="text-[11px] leading-relaxed text-slate-500 max-w-sm mx-auto">
+                    {/* THE PACT — the only progression that raises the bar instead of
+                        lowering it. Perfectionist used to sit here alone; it is now
+                        one clause among five. */}
+                    {/* Collapsed by default. Five clauses expanded is a wall of text on
+                        the first screen a newcomer sees, and it pushed the menu past the
+                        fold on a laptop. A returning player opens it deliberately. */}
+                    <div className="screens-pact mx-auto">
+                        <button
+                            type="button"
+                            onClick={() => setPactOpen(open => !open)}
+                            aria-expanded={pactOpen}
+                            className="flex w-full items-baseline justify-between gap-3 text-left"
+                        >
+                            <span className="screens-pact-title">
+                                {UI.pact_title}
+                                <span className="screens-pact-toggle">{pactOpen ? '−' : '+'}</span>
+                            </span>
+                            <span className={`screens-pact-reward ${pactRewardMultiplier > 1 ? 'is-active' : ''}`}>
+                                x{pactRewardMultiplier.toFixed(2)} {UI.pact_reward}
+                            </span>
+                        </button>
+                        {pactOpen && <p className="screens-pact-hint">{UI.pact_hint}</p>}
+                        {pactOpen && (
+                        <div className="screens-pact-clauses">
+                            {PACT_CLAUSES.map((clause) => {
+                                const active = isPactClauseActive(activePact, clause.id);
+                                return (
+                                    <button
+                                        key={clause.id}
+                                        type="button"
+                                        onClick={() => handleTogglePactClause(clause.id)}
+                                        aria-pressed={active}
+                                        className={`screens-pact-clause ${active ? 'is-active' : ''}`}
+                                    >
+                                        <span className="screens-pact-clause-name">
+                                            {UI[`pact_${clause.id}` as keyof typeof UI]}
+                                        </span>
+                                        <span className="screens-pact-clause-desc">
+                                            {UI[`pact_${clause.id}_desc` as keyof typeof UI]}
+                                        </span>
+                                        <span className="screens-pact-clause-reward">+{Math.round(clause.reward * 100)}%</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        )}
+                    </div>
+
+                    <p className="fs-label leading-relaxed text-slate-500 max-w-sm mx-auto">
                         <span className="text-emerald-400/80">◆</span> {UI.accuracy_hook}
                     </p>
 
-                    <div className="text-[11px] text-slate-600 pt-2">
+                    <div className="fs-label text-slate-600 pt-2">
                         {UI.powered_by}
                     </div>
-                    <div className="text-[9px] leading-relaxed text-slate-700">
+                    <div className="fs-micro leading-relaxed text-slate-700">
                         {UI.privacy_note}
                     </div>
                 </div>
@@ -2163,11 +2277,11 @@ const App: React.FC = () => {
                     <div className="p-6 border-b border-white/[0.06] bg-white/[0.015] flex justify-between items-end gap-6">
                         <div>
                             <h2 className="font-display text-3xl font-bold text-white tracking-tight">{UI.market_title}</h2>
-                            <p className="text-slate-500 text-sm mt-1">{UI.market_subtitle}</p>
+                            <p className="text-slate-500 fs-body mt-1">{UI.market_subtitle}</p>
                         </div>
                         <div className="text-right">
-                            <div className="text-[9px] text-slate-500 uppercase tracking-[0.2em]">{UI.avail_credits}</div>
-                            <div className="font-display text-4xl font-bold text-white tabular-nums leading-none mt-1">{Math.floor(userProfile.credits)} <span className="text-sm text-emerald-400">{UI.currency_suffix}</span></div>
+                            <div className="fs-micro text-slate-500 uppercase tracking-[0.2em]">{UI.avail_credits}</div>
+                            <div className="font-display text-4xl font-bold text-white tabular-nums leading-none mt-1">{Math.floor(userProfile.credits)} <span className="fs-body text-emerald-400">{UI.currency_suffix}</span></div>
                         </div>
                     </div>
                     <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2190,27 +2304,27 @@ const App: React.FC = () => {
                                     <span className="keycap absolute top-3 right-3 opacity-60 group-hover:opacity-100">{idx + 1}</span>
                                     <div className="screens-upgrade-content">
                                         <div className="screens-upgrade-heading mb-3 pr-9">
-                                            <h3 className="min-w-0 font-display text-lg font-bold text-slate-100 leading-tight">{copy.name[language]}</h3>
+                                            <h3 className="min-w-0 font-display fs-lead font-bold text-slate-100 leading-tight">{copy.name[language]}</h3>
                                             <div className="flex shrink-0 gap-1 pt-1" aria-label={`${UI.level} ${currentLvl}/${def.maxLevel}`}>
                                                 {Array.from({ length: 10 }, (_, levelIndex) => (
                                                     <span key={levelIndex} className={`h-2 w-2 border ${levelIndex < Math.round((currentLvl / def.maxLevel) * 10) ? 'border-emerald-300 bg-emerald-300 shadow-[0_0_5px_rgba(52,211,153,0.35)]' : 'border-white/10 bg-white/[0.025]'}`} />
                                                 ))}
                                             </div>
                                         </div>
-                                        <p className="text-slate-400 text-sm mb-5 flex-1">{copy.desc[language]}</p>
+                                        <p className="text-slate-400 fs-body mb-5 flex-1">{copy.desc[language]}</p>
                                         <div className="screens-upgrade-footer flex flex-col items-start gap-3 mt-auto">
-                                            <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">
+                                            <div className="fs-micro uppercase tracking-[0.14em] text-slate-500">
                                                 {UI.effect}: <span className="text-emerald-400">{describeUpgradeEffect(key, currentLvl)}</span>
                                             </div>
                                             {isMaxed ? (
-                                                <button disabled className="btn-cyber btn-cyber-ghost self-end px-4 py-2 text-[10px] font-bold tracking-[0.14em] text-slate-600 cursor-not-allowed opacity-50">
+                                                <button disabled className="btn-cyber btn-cyber-ghost self-end px-4 py-2 fs-micro font-bold tracking-[0.14em] text-slate-600 cursor-not-allowed opacity-50">
                                                     {UI.maxed_out}
                                                 </button>
                                             ) : (
                                                 <button
                                                     onClick={() => handleBuyUpgrade(key)}
                                                     disabled={!canAfford}
-                                                    className={`btn-cyber btn-cyber-ghost self-end px-4 py-2 text-[10px] font-bold tracking-[0.12em] flex items-center gap-2 transition-all ${canAfford ? 'text-emerald-200 hover:text-white hover:shadow-[0_0_22px_rgba(52,211,153,0.12)]' : 'text-slate-600 cursor-not-allowed opacity-45'}`}
+                                                    className={`btn-cyber btn-cyber-ghost self-end px-4 py-2 fs-micro font-bold tracking-[0.12em] flex items-center gap-2 transition-all ${canAfford ? 'text-emerald-200 hover:text-white hover:shadow-[0_0_22px_rgba(52,211,153,0.12)]' : 'text-slate-600 cursor-not-allowed opacity-45'}`}
                                                 >
                                                     <span>{UI.install}</span>
                                                     <span className={canAfford ? 'text-emerald-400 tabular-nums' : 'tabular-nums'}>{nextCost} {UI.currency_suffix}</span>
@@ -2226,10 +2340,10 @@ const App: React.FC = () => {
                         })}
                     </div>
                     <div className="p-4 border-t border-white/[0.06] bg-black/10 flex flex-col items-center gap-3">
-                        <p className="text-[11px] text-slate-600 text-center max-w-xl">{UI.genre_persists_note}</p>
+                        <p className="fs-label text-slate-600 text-center max-w-xl">{UI.genre_persists_note}</p>
                         <button 
                             onClick={() => setGameState(GameState.MENU)}
-                            className="btn-cyber btn-cyber-ghost px-6 py-2 text-slate-400 hover:text-white transition-colors uppercase tracking-[0.16em] text-[10px] font-bold flex items-center gap-2"
+                            className="btn-cyber btn-cyber-ghost px-6 py-2 text-slate-400 hover:text-white transition-colors uppercase tracking-[0.16em] fs-micro font-bold flex items-center gap-2"
                         >
                             <span className="keycap">ESC</span>
                             <span>{stripKeyHint(UI.return_menu)}</span>
@@ -2242,8 +2356,8 @@ const App: React.FC = () => {
                 <div className="screens-cut-panel w-full max-w-4xl max-h-[calc(100vh-3rem)] bg-[#0b101a]/95 border border-white/[0.07] p-8 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_80px_rgba(0,0,0,0.4)] animate-fade-in-up flex flex-col overflow-hidden">
                     <div className="shrink-0 border-b border-white/[0.06] pb-5 mb-6 text-center">
                         <h2 className="font-display text-3xl font-bold text-white mb-2 tracking-tight">{UI.genre_title}</h2>
-                        <p className="text-slate-400 text-sm">{UI.genre_subtitle}</p>
-                        <p className="text-slate-600 text-[10px] uppercase tracking-[0.14em] mt-3">{UI.genre_persists_note}</p>
+                        <p className="text-slate-400 fs-body">{UI.genre_subtitle}</p>
+                        <p className="text-slate-600 fs-micro uppercase tracking-[0.14em] mt-3">{UI.genre_persists_note}</p>
                     </div>
                     <div className="min-h-0 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-4 pr-1">
                         {GENRE_ORDER.map((genreId, index) => renderGenreCard(genreId, index))}
@@ -2251,7 +2365,7 @@ const App: React.FC = () => {
                     <button
                         type="button"
                         onClick={() => setGameState(GameState.MENU)}
-                        className="btn-cyber btn-cyber-ghost mt-6 shrink-0 w-full py-2.5 text-slate-500 hover:text-white transition-colors uppercase tracking-[0.16em] text-[10px] font-bold flex items-center justify-center gap-2"
+                        className="btn-cyber btn-cyber-ghost mt-6 shrink-0 w-full py-2.5 text-slate-500 hover:text-white transition-colors uppercase tracking-[0.16em] fs-micro font-bold flex items-center justify-center gap-2"
                     >
                         <span className="keycap">ESC</span>
                         <span>{stripKeyHint(UI.genre_back)}</span>
@@ -2262,7 +2376,7 @@ const App: React.FC = () => {
             {gameState === GameState.STARTER_PERK_SELECTION && (
                  <div className="screens-cut-panel w-full max-w-4xl max-h-[calc(100vh-3rem)] overflow-y-auto bg-[#0b101a]/95 border border-white/[0.07] p-8 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_80px_rgba(0,0,0,0.4)] animate-fade-in-up">
                     <div className="border-b border-white/[0.06] pb-5 mb-6 text-center">
-                        <div className="inline-flex items-center gap-2 px-3 py-1 mb-3 border text-[9px] font-bold tracking-[0.2em] uppercase screens-cut-chip"
+                        <div className="inline-flex items-center gap-2 px-3 py-1 mb-3 border fs-micro font-bold tracking-[0.2em] uppercase screens-cut-chip"
                              style={{ borderColor: `${genrePack.accent}66`, color: genrePack.accent, background: `${genrePack.accent}14` }}>
                             <GenreIcon genre={selectedGenre} className="h-3.5 w-3.5" />
                             <span>{UI.sim_badge}</span>
@@ -2270,7 +2384,7 @@ const App: React.FC = () => {
                             <span>{genrePack.name[language]}</span>
                         </div>
                         <h2 className="font-display text-3xl font-bold text-white mb-2 tracking-tight">{UI.loadout_title}</h2>
-                        <p className="text-slate-400 text-sm">{UI.loadout_subtitle}</p>
+                        <p className="text-slate-400 fs-body">{UI.loadout_subtitle}</p>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         {offeredPerks.map((perk, index) => renderPerkCard(perk, index, true))}
@@ -2284,7 +2398,7 @@ const App: React.FC = () => {
                         <div className="flex justify-between items-start mb-2">
                             <h2 className="font-display text-3xl font-bold text-white">{UI.seq_complete}</h2>
                             <div className="text-right">
-                                <span className="text-[9px] text-slate-500 uppercase tracking-[0.2em] block">{UI.xp_gained}</span>
+                                <span className="fs-micro text-slate-500 uppercase tracking-[0.2em] block">{UI.xp_gained}</span>
                                 <span className="font-display text-2xl font-bold text-emerald-300 tabular-nums">+{levelXpGained} XP</span>
                             </div>
                         </div>
@@ -2292,50 +2406,119 @@ const App: React.FC = () => {
                             "{lastLevelReport.narrativeSummary}"
                         </p>
                     </div>
+                    {/* Accuracy leads the debrief. This is an accuracy trainer, and the
+                        screen used to open with a speed number, which taught the
+                        opposite of what the game rewards. */}
+                    {(() => {
+                        const accuracy = Math.round(lastLevelReport.accuracy ?? 100);
+                        const focus = getTypingFocus({
+                            avgWpm: lastLevelReport.avgWpm,
+                            accuracy: lastLevelReport.accuracy ?? 100,
+                            consistency: lastLevelReport.consistency ?? 100,
+                            totalMistakes: lastLevelReport.totalMistakes,
+                            score: 0
+                        });
+                        const coach = { accuracy: UI.focus_accuracy, consistency: UI.focus_consistency, speed: UI.focus_speed, mastery: UI.focus_mastery }[focus];
+                        return (
+                            <div className={`screens-accuracy-hero screens-accuracy-hero--${focus} mb-3`}>
+                                <div className="flex items-end justify-between gap-4">
+                                    <div>
+                                        <div className="fs-micro uppercase tracking-[0.22em] text-slate-500">{UI.accuracy}</div>
+                                        <div className="screens-accuracy-value font-display tabular-nums">{accuracy}%</div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="fs-micro uppercase tracking-[0.22em] text-slate-500">{UI.next_drill}</div>
+                                        <p className="screens-accuracy-coach">{coach}</p>
+                                    </div>
+                                </div>
+                                <div className="screens-accuracy-bar mt-3" aria-hidden="true">
+                                    <div className="screens-accuracy-bar-fill" style={{ width: `${Math.max(0, Math.min(100, accuracy))}%` }} />
+                                </div>
+                                <div className="mt-2 fs-micro text-slate-500 tabular-nums">
+                                    {lastLevelReport.totalMistakes} {lastLevelReport.totalMistakes === 1 ? UI.mistake_one : UI.mistake_many}
+                                </div>
+                            </div>
+                        );
+                    })()}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-8">
                         <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]">
                             <div className="font-display text-3xl font-bold text-white tabular-nums leading-none">{Math.round(lastLevelReport.avgWpm)}</div>
-                            <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.avg_speed} · {UI.wpm}</div>
+                            <div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.avg_speed} · {UI.wpm}</div>
                         </div>
-                        <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]">
-                             <div className="font-display text-3xl font-bold text-white tabular-nums leading-none">+{lastLevelReport.creditsEarned}</div>
-                             <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.credits}</div>
+                        <div className={`screens-stat-tile p-4 text-center border ${activePactRef.current.length ? 'border-amber-400/25 bg-amber-400/[0.03]' : 'border-white/[0.07] bg-white/[0.02]'}`}>
+                             <div className={`font-display text-3xl font-bold tabular-nums leading-none ${activePactRef.current.length ? 'text-amber-300' : 'text-white'}`}>+{lastLevelReport.creditsEarned}</div>
+                             <div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">
+                                {UI.credits}
+                                {/* The payout and the reason for it, side by side. */}
+                                {activePactRef.current.length > 0 && (
+                                    <span className="ml-1 text-amber-300/90">
+                                        {UI.pact_title} x{getPactRewardMultiplier(activePactRef.current).toFixed(2)}
+                                    </span>
+                                )}
+                             </div>
                         </div>
                         <div className="screens-stat-tile p-4 text-center border border-amber-400/15 bg-amber-400/[0.025]">
-                             <div className="font-display text-3xl font-bold text-amber-300 tabular-nums leading-none">{Math.floor(lastLevelReport.traceLevel)}%</div>
-                             <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.heat}</div>
+                             <div className="font-display text-3xl font-bold text-amber-300 tabular-nums leading-none">{Math.round(lastLevelReport.mission?.heat ?? campaignState.heat)}%</div>
+                             <div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.heat}</div>
                         </div>
                         <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]">
                              <div className="font-display text-3xl font-bold text-white tabular-nums leading-none">{lastLevelReport.finalHealth}</div>
-                             <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.health}</div>
+                             <div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.health}</div>
                         </div>
                         <div className="screens-stat-tile p-4 text-center border border-emerald-400/15 bg-emerald-400/[0.025]">
                              <div className="font-display text-3xl font-bold text-emerald-300 tabular-nums leading-none">{lastLevelReport.mission?.evidence ?? campaignState.evidence}</div>
-                             <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.evidence}</div>
+                             <div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.evidence}</div>
                         </div>
                         <div className="screens-stat-tile p-4 text-center border border-sky-400/15 bg-sky-400/[0.025]">
                              <div className="font-display text-3xl font-bold text-sky-300 tabular-nums leading-none">{lastLevelReport.mission?.trust ?? campaignState.trust}</div>
-                             <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.trust}</div>
-                        </div>
-                        <div className="screens-stat-tile p-4 text-center border border-emerald-400/15 bg-emerald-400/[0.025]">
-                            <div className="font-display text-3xl font-bold text-emerald-300 tabular-nums leading-none">{Math.round(lastLevelReport.accuracy ?? 100)}%</div>
-                            <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.accuracy}</div>
+                             <div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.trust}</div>
                         </div>
                         <div className="screens-stat-tile p-4 text-center border border-violet-400/15 bg-violet-400/[0.025]">
                             <div className="font-display text-3xl font-bold text-violet-300 tabular-nums leading-none">{Math.round(lastLevelReport.consistency ?? 100)}%</div>
-                            <div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.consistency}</div>
+                            <div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.consistency}</div>
                         </div>
                     </div>
+                    {/* The mission log used to live in the shell column, where it was
+                        a feed nobody reads while typing. Between sectors it is the
+                        right thing to look at, so it lands here instead. */}
+                    {storyLog.length > 0 && (
+                        <div className="screens-cut-card border border-white/[0.06] bg-black/20 p-4 mb-6">
+                            <button
+                                type="button"
+                                onClick={() => setLogOpen(open => !open)}
+                                aria-expanded={logOpen}
+                                className="flex w-full items-center justify-between gap-3 text-left"
+                            >
+                                <span className="fs-micro uppercase tracking-[0.2em] text-slate-500">{UI.mission_log}</span>
+                                <span className="fs-label text-slate-400">{logOpen ? '−' : `+${storyLog.length}`}</span>
+                            </button>
+                            {logOpen && (
+                                <div className="mt-3 max-h-56 space-y-2 overflow-y-auto no-scrollbar">
+                                    {storyLog.slice().reverse().map((log, idx) => (
+                                        <div key={idx} className="border-l border-emerald-500/25 pl-3">
+                                            <p className="fs-label text-slate-300">{log.text}</p>
+                                            {log.wpm > 0 && (
+                                                <span className="fs-micro text-slate-600">
+                                                    {UI.speed}: <span className="tabular-nums">{log.wpm}</span> {UI.wpm}
+                                                    {log.meta ? ` · ${log.meta}` : ''}
+                                                </span>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
                     <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                         <div>
-                            <h3 className="font-display text-lg font-bold text-white tracking-[0.04em]">{UI.select_upgrade}</h3>
-                            <p className="mt-1 text-[10px] text-slate-500">{UI.continue_hint}</p>
+                            <h3 className="font-display fs-lead font-bold text-white tracking-[0.04em]">{UI.select_upgrade}</h3>
+                            <p className="mt-1 fs-micro text-slate-500">{UI.continue_hint}</p>
                         </div>
                         <button
                             type="button"
                             onClick={handleBankExit}
                             disabled={!isSectorSummaryReady}
-                            className="btn-cyber btn-cyber-ghost px-5 py-2.5 text-[10px] font-bold tracking-[0.12em] text-slate-300 hover:text-white disabled:cursor-wait disabled:opacity-45"
+                            className="btn-cyber btn-cyber-ghost px-5 py-2.5 fs-micro font-bold tracking-[0.12em] text-slate-300 hover:text-white disabled:cursor-wait disabled:opacity-45"
                         >
                             {UI.bank_exit}
                         </button>
@@ -2349,7 +2532,7 @@ const App: React.FC = () => {
             {gameState === GameState.LOADING && (
                 <div className="flex flex-col items-center justify-center space-y-4">
                     <div className="w-12 h-12 border-4 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin"></div>
-                    <p className="text-emerald-400 animate-pulse tracking-widest text-sm">
+                    <p className="text-emerald-400 animate-pulse tracking-widest fs-body">
                         {currentLevel > 1 ? UI.generating_sector : UI.generating_scenario}
                     </p>
                 </div>
@@ -2376,6 +2559,9 @@ const App: React.FC = () => {
                     genre={selectedGenre}
                     strictCase={!!userProfile.strictCase}
                     deterministicStory={isDailyRun}
+                    baselineWpm={effectiveBaseline.wpm}
+                    trainingFocus={trainingFocusTokens}
+                    branchThresholds={branchThresholds}
                     onTypingObservation={(observation) => runTrainingObservationsRef.current.push(observation)}
                 />
             )}
@@ -2383,22 +2569,22 @@ const App: React.FC = () => {
             {gameState === GameState.VICTORY && victoryReport && (
                 <div className="screens-cut-panel w-full max-w-3xl bg-[#0b101a]/95 p-10 border border-emerald-400/35 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_60px_rgba(16,185,129,0.12)] animate-fade-in-up">
                     <div className="text-center border-b border-white/[0.07] pb-6 mb-6">
-                        <div className="screens-cut-chip inline-block px-3 py-1 bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 text-[9px] uppercase tracking-[0.2em] mb-4">
+                        <div className="screens-cut-chip inline-block px-3 py-1 bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 fs-micro uppercase tracking-[0.2em] mb-4">
                             {genrePack.ui.victoryTitle[language]}
                         </div>
                         <h2 className="font-display text-4xl font-bold text-white mb-3 tracking-tight">{victoryReport.endingTitle}</h2>
-                        <p className="text-slate-300 text-lg italic">"{victoryReport.narrativeSummary}"</p>
-                        <p className="text-slate-500 text-sm mt-3">{UI.victory_subtitle}</p>
+                        <p className="text-slate-300 fs-lead italic">"{victoryReport.narrativeSummary}"</p>
+                        <p className="text-slate-500 fs-body mt-3">{UI.victory_subtitle}</p>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6">
-                        <div className="screens-stat-tile p-4 text-center border border-emerald-400/15 bg-emerald-400/[0.025]"><div className="font-display text-3xl font-bold text-emerald-300 tabular-nums leading-none">{victoryReport.mission?.evidence ?? campaignState.evidence}</div><div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.evidence}</div></div>
-                        <div className="screens-stat-tile p-4 text-center border border-amber-400/15 bg-amber-400/[0.025]"><div className="font-display text-3xl font-bold text-amber-300 tabular-nums leading-none">{victoryReport.mission?.heat ?? campaignState.heat}%</div><div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.heat}</div></div>
-                        <div className="screens-stat-tile p-4 text-center border border-sky-400/15 bg-sky-400/[0.025]"><div className="font-display text-3xl font-bold text-sky-300 tabular-nums leading-none">{victoryReport.mission?.trust ?? campaignState.trust}</div><div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.trust}</div></div>
-                        <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]"><div className="font-display text-xl font-bold text-white uppercase leading-tight">{victoryReport.route}</div><div className="mt-2 text-[9px] text-slate-500 uppercase tracking-[0.18em]">{UI.route}</div></div>
+                        <div className="screens-stat-tile p-4 text-center border border-emerald-400/15 bg-emerald-400/[0.025]"><div className="font-display text-3xl font-bold text-emerald-300 tabular-nums leading-none">{victoryReport.mission?.evidence ?? campaignState.evidence}</div><div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.evidence}</div></div>
+                        <div className="screens-stat-tile p-4 text-center border border-amber-400/15 bg-amber-400/[0.025]"><div className="font-display text-3xl font-bold text-amber-300 tabular-nums leading-none">{victoryReport.mission?.heat ?? campaignState.heat}%</div><div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.heat}</div></div>
+                        <div className="screens-stat-tile p-4 text-center border border-sky-400/15 bg-sky-400/[0.025]"><div className="font-display text-3xl font-bold text-sky-300 tabular-nums leading-none">{victoryReport.mission?.trust ?? campaignState.trust}</div><div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.trust}</div></div>
+                        <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]"><div className="font-display text-xl font-bold text-white uppercase leading-tight">{victoryReport.route}</div><div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.route}</div></div>
                     </div>
                     <div className="screens-cut-card bg-black/20 border border-white/[0.07] p-4 mb-6">
-                        <div className="text-[9px] text-slate-500 uppercase tracking-[0.2em] mb-3">{UI.operation_dossier}</div>
-                        <div className="space-y-1 text-sm text-slate-400">
+                        <div className="fs-micro text-slate-500 uppercase tracking-[0.2em] mb-3">{UI.operation_dossier}</div>
+                        <div className="space-y-1 fs-body text-slate-400">
                             {(victoryReport.mission?.consequenceLog || campaignState.consequenceLog).slice(0, 4).map((line, index) => (
                                 <div key={index} className="border-l border-emerald-500/30 pl-3">{line}</div>
                             ))}
@@ -2407,16 +2593,16 @@ const App: React.FC = () => {
                     {challengeVerdict && incomingChallenge && (
                         <div className={`screens-cut-card mb-6 flex items-center justify-between gap-4 border p-4 ${challengeVerdict.outcome === 'beaten' ? 'border-emerald-400/35 bg-emerald-400/[0.06]' : 'border-amber-400/35 bg-amber-400/[0.06]'}`}>
                             <div>
-                                <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400">{challengeVerdictLabel}</div>
-                                <div className="mt-1 text-xs text-slate-400">
+                                <div className="fs-micro font-bold uppercase tracking-[0.2em] text-slate-400">{challengeVerdictLabel}</div>
+                                <div className="mt-1 fs-label text-slate-400">
                                     {challengeVerdict.outcome === 'tied'
                                         ? (language === 'ru' ? 'Точно в цель — попробуй ещё раз и выйди вперёд.' : 'Exactly on target — run it again to take the lead.')
                                         : `${Math.abs(challengeVerdict.delta)} ${language === 'ru' ? (challengeVerdict.delta > 0 ? 'очков сверху' : 'очков не хватило') : (challengeVerdict.delta > 0 ? 'points ahead' : 'points short')}`}
                                 </div>
                             </div>
                             <div className="flex gap-5 text-right">
-                                <div><span className="block text-[8px] uppercase tracking-[0.16em] text-slate-500">{UI.challenge_target}</span><strong className="text-xl text-white tabular-nums">{incomingChallenge.targetScore}</strong></div>
-                                <div><span className="block text-[8px] uppercase tracking-[0.16em] text-slate-500">{UI.challenge_you}</span><strong className="text-xl text-emerald-300 tabular-nums">{completedChallengeScore}</strong></div>
+                                <div><span className="block fs-micro uppercase tracking-[0.16em] text-slate-500">{UI.challenge_target}</span><strong className="text-xl text-white tabular-nums">{incomingChallenge.targetScore}</strong></div>
+                                <div><span className="block fs-micro uppercase tracking-[0.16em] text-slate-500">{UI.challenge_you}</span><strong className="text-xl text-emerald-300 tabular-nums">{completedChallengeScore}</strong></div>
                             </div>
                         </div>
                     )}
@@ -2451,9 +2637,9 @@ const App: React.FC = () => {
             {gameState === GameState.GAME_OVER && (
                 <div className="screens-cut-panel screens-death-report bg-[#0b101a]/95 p-6 sm:p-8 border border-rose-500/40 backdrop-blur-xl max-w-3xl w-full shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_60px_rgba(244,63,94,0.12)] animate-fade-in-up">
                     <div className="text-center">
-                        <div className="text-[9px] font-bold uppercase tracking-[0.3em] text-rose-400/70">{UI.typing_debrief}</div>
+                        <div className="fs-micro font-bold uppercase tracking-[0.3em] text-rose-400/70">{UI.typing_debrief}</div>
                         <h2 className="mt-2 font-display text-4xl sm:text-5xl font-bold text-rose-500 tracking-tight">{UI.critical_failure}</h2>
-                        <p className="mt-3 text-sm text-slate-400">{genrePack.ui.connectionSevered[language]}</p>
+                        <p className="mt-3 fs-body text-slate-400">{genrePack.ui.connectionSevered[language]}</p>
                     </div>
 
                     <div className="screens-debrief-grid mt-6" aria-label={UI.typing_debrief}>
@@ -2484,21 +2670,21 @@ const App: React.FC = () => {
                     {challengeVerdict && incomingChallenge && (
                         <div className={`screens-cut-card mt-4 flex items-center justify-between gap-4 border p-4 ${challengeVerdict.outcome === 'beaten' ? 'border-emerald-400/35 bg-emerald-400/[0.06]' : 'border-amber-400/35 bg-amber-400/[0.06]'}`}>
                             <div>
-                                <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-300">{challengeVerdictLabel}</div>
-                                <div className="mt-1 text-xs text-slate-400">
+                                <div className="fs-micro font-bold uppercase tracking-[0.2em] text-slate-300">{challengeVerdictLabel}</div>
+                                <div className="mt-1 fs-label text-slate-400">
                                     {challengeVerdict.outcome === 'tied'
                                         ? (language === 'ru' ? 'Точно в цель — попробуй ещё раз и выйди вперёд.' : 'Exactly on target — run it again to take the lead.')
                                         : `${Math.abs(challengeVerdict.delta)} ${language === 'ru' ? (challengeVerdict.delta > 0 ? 'очков сверху' : 'очков не хватило') : (challengeVerdict.delta > 0 ? 'points ahead' : 'points short')}`}
                                 </div>
                             </div>
                             <div className="flex gap-5 text-right">
-                                <div><span className="block text-[8px] uppercase tracking-[0.16em] text-slate-500">{UI.challenge_target}</span><strong className="text-xl text-white tabular-nums">{incomingChallenge.targetScore}</strong></div>
-                                <div><span className="block text-[8px] uppercase tracking-[0.16em] text-slate-500">{UI.challenge_you}</span><strong className="text-xl text-rose-200 tabular-nums">{completedChallengeScore}</strong></div>
+                                <div><span className="block fs-micro uppercase tracking-[0.16em] text-slate-500">{UI.challenge_target}</span><strong className="text-xl text-white tabular-nums">{incomingChallenge.targetScore}</strong></div>
+                                <div><span className="block fs-micro uppercase tracking-[0.16em] text-slate-500">{UI.challenge_you}</span><strong className="text-xl text-rose-200 tabular-nums">{completedChallengeScore}</strong></div>
                             </div>
                         </div>
                     )}
 
-                    <div className="mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 border-y border-white/[0.06] py-3 text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                    <div className="mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 border-y border-white/[0.06] py-3 fs-micro uppercase tracking-[0.16em] text-slate-500">
                         <span>{UI.reached}: <b className="text-slate-200">{UI.level} {finalStats?.level || 1}</b></span>
                         <span>{UI.score}: <b className="text-slate-200">{finalStats?.score || 0}</b></span>
                         <span>{UI.characters_typed}: <b className="text-slate-200">{finalStats?.characters || 0}</b></span>

@@ -34,7 +34,6 @@ export interface GenreSkin {
     heat: L;
     trust: L;
     evidence: L;
-    corruption: L;
     route: L;
     security: L;
     health: L;
@@ -107,7 +106,6 @@ const CYBERPUNK: GenreSkin = {
     heat: enRu('Heat', 'Угроза'),
     trust: enRu('Trust', 'Доверие'),
     evidence: enRu('Evidence', 'Улики'),
-    corruption: enRu('Corruption', 'Коррупция'),
     route: enRu('Route', 'Маршрут'),
     security: enRu('Security Trace', 'Трассировка'),
     health: enRu('Health', 'Здоровье'),
@@ -172,7 +170,7 @@ const CYBERPUNK: GenreSkin = {
     },
     signalDampener: {
       name: enRu('Signal Dampener', 'Глушитель Сигнала'),
-      desc: enRu('Slows down Security Trace accumulation.', 'Замедляет накопление уровня угрозы.')
+      desc: enRu('Slows Security Trace. Comfort costs income: fully invested, runs pay 25% fewer credits.', 'Замедляет трассировку. Комфорт стоит дохода: при полной прокачке забеги приносят на 25% меньше кредитов.')
     },
     bufferExpansion: {
       name: enRu('Buffer Expansion', 'Расширение Буфера'),
@@ -191,17 +189,17 @@ const CYBERPUNK: GenreSkin = {
     neural_buffer: {
       name: enRu('Neural Buffer', 'Нейро-Буфер'),
       tiers: [
-        enRu('First mistake per round is ignored.', 'Первая ошибка в раунде игнорируется.'),
-        enRu('First 2 mistakes per round are ignored.', 'Первые 2 ошибки в раунде игнорируются.'),
-        enRu('First 3 mistakes per round are ignored.', 'Первые 3 ошибки в раунде игнорируются.')
+        enRu('1 mistake per round keeps your streak alive, for 30 Energy.', '1 ошибка за раунд сохраняет серию за 30 Energy.'),
+        enRu('2 mistakes per round keep your streak alive, for 25 Energy each.', '2 ошибки за раунд сохраняют серию, по 25 Energy за каждую.'),
+        enRu('3 mistakes per round keep your streak alive, for 20 Energy each.', '3 ошибки за раунд сохраняют серию, по 20 Energy за каждую.')
       ]
     },
     ghost_protocol: {
       name: enRu('Ghost Protocol', 'Протокол Призрак'),
       tiers: [
-        enRu('Security Trace grows 20% slower.', 'Трассировка угрозы растет на 20% медленнее.'),
-        enRu('Security Trace grows 35% slower.', 'Трассировка угрозы растет на 35% медленнее.'),
-        enRu('Security Trace grows 50% slower.', 'Трассировка угрозы растет на 50% медленнее.')
+        enRu('Security Trace grows 15% slower while your combo is 25 or higher.', 'Трассировка угрозы растёт на 15% медленнее, пока комбо не ниже 25.'),
+        enRu('Security Trace grows 25% slower while your combo is 20 or higher.', 'Трассировка угрозы растёт на 25% медленнее, пока комбо не ниже 20.'),
+        enRu('Security Trace grows 35% slower while your combo is 15 or higher.', 'Трассировка угрозы растёт на 35% медленнее, пока комбо не ниже 15.')
       ]
     },
     adrenaline_spike: {
@@ -215,17 +213,17 @@ const CYBERPUNK: GenreSkin = {
     titanium_firewall: {
       name: enRu('Titanium Firewall', 'Титановый Файрвол'),
       tiers: [
-        enRu('Max Health floor increased to 35.', 'Минимум макс. здоровья увеличен до 35.'),
-        enRu('Max Health floor increased to 50.', 'Минимум макс. здоровья увеличен до 50.'),
-        enRu('Max Health floor increased to 75.', 'Минимум макс. здоровья увеличен до 75.')
+        enRu('A line typed with zero mistakes restores 2 Health.', 'Строка без единой ошибки восстанавливает 2 здоровья.'),
+        enRu('A line typed with zero mistakes restores 3 Health.', 'Строка без единой ошибки восстанавливает 3 здоровья.'),
+        enRu('A line typed with zero mistakes restores 5 Health.', 'Строка без единой ошибки восстанавливает 5 здоровья.')
       ]
     },
     critical_override: {
       name: enRu('Critical Override', 'Критический Взлом'),
       tiers: [
-        enRu('5% chance to auto-hack a segment instantly.', '5% шанс мгновенно взломать сегмент.'),
-        enRu('12% chance to auto-hack a segment instantly.', '12% шанс мгновенно взломать сегмент.'),
-        enRu('20% chance to auto-hack a segment instantly.', '20% шанс мгновенно взломать сегмент.')
+        enRu('Every 50 unbroken correct keystrokes throw the trace back 14 characters.', 'Каждые 50 верных нажатий подряд отбрасывают след на 14 символов.'),
+        enRu('Every 35 unbroken correct keystrokes throw the trace back 18 characters.', 'Каждые 35 верных нажатий подряд отбрасывают след на 18 символов.'),
+        enRu('Every 25 unbroken correct keystrokes throw the trace back 22 characters.', 'Каждые 25 верных нажатий подряд отбрасывают след на 22 символа.')
       ]
     },
     focus_lattice: {
@@ -268,7 +266,6 @@ const SPACE_HORROR: GenreSkin = {
     heat: enRu('Contagion', 'Зараза'),
     trust: enRu('Crew Trust', 'Доверие экипажа'),
     evidence: enRu('Blackbox', 'Черный ящик'),
-    corruption: enRu('Hull Rot', 'Гниль корпуса'),
     route: enRu('Deck Route', 'Маршрут палуб'),
     security: enRu('Proximity Alarm', 'Сенсор приближения'),
     health: enRu('Suit Integrity', 'Целостность скафандра'),
@@ -333,7 +330,7 @@ const SPACE_HORROR: GenreSkin = {
     },
     signalDampener: {
       name: enRu('Soft-Foot Pads', 'Мягкие Подошвы'),
-      desc: enRu('Slows Proximity Alarm buildup.', 'Замедляет рост сенсора приближения.')
+      desc: enRu('Slows the Proximity Alarm. Comfort costs income: fully invested, runs pay 25% fewer credits.', 'Замедляет сенсор приближения. Комфорт стоит дохода: при полной прокачке забеги приносят на 25% меньше кредитов.')
     },
     bufferExpansion: {
       name: enRu('Pressure Reserve', 'Запас Давления'),
@@ -352,17 +349,17 @@ const SPACE_HORROR: GenreSkin = {
     neural_buffer: {
       name: enRu('Foam Liner', 'Пенолайнер'),
       tiers: [
-        enRu('First mistake per round is ignored.', 'Первая ошибка в раунде игнорируется.'),
-        enRu('First 2 mistakes per round are ignored.', 'Первые 2 ошибки в раунде игнорируются.'),
-        enRu('First 3 mistakes per round are ignored.', 'Первые 3 ошибки в раунде игнорируются.')
+        enRu('1 mistake per round keeps your streak alive, for 30 Energy.', '1 ошибка за раунд сохраняет серию за 30 Energy.'),
+        enRu('2 mistakes per round keep your streak alive, for 25 Energy each.', '2 ошибки за раунд сохраняют серию, по 25 Energy за каждую.'),
+        enRu('3 mistakes per round keep your streak alive, for 20 Energy each.', '3 ошибки за раунд сохраняют серию, по 20 Energy за каждую.')
       ]
     },
     ghost_protocol: {
       name: enRu('Mute Boots', 'Немые Сапоги'),
       tiers: [
-        enRu('Proximity Alarm grows 20% slower.', 'Сенсор приближения растет на 20% медленнее.'),
-        enRu('Proximity Alarm grows 35% slower.', 'Сенсор приближения растет на 35% медленнее.'),
-        enRu('Proximity Alarm grows 50% slower.', 'Сенсор приближения растет на 50% медленнее.')
+        enRu('Proximity Alarm grows 15% slower while your combo is 25 or higher.', 'Сенсор приближения растёт на 15% медленнее, пока комбо не ниже 25.'),
+        enRu('Proximity Alarm grows 25% slower while your combo is 20 or higher.', 'Сенсор приближения растёт на 25% медленнее, пока комбо не ниже 20.'),
+        enRu('Proximity Alarm grows 35% slower while your combo is 15 or higher.', 'Сенсор приближения растёт на 35% медленнее, пока комбо не ниже 15.')
       ]
     },
     adrenaline_spike: {
@@ -376,17 +373,17 @@ const SPACE_HORROR: GenreSkin = {
     titanium_firewall: {
       name: enRu('Hardened Plates', 'Усиленные Плиты'),
       tiers: [
-        enRu('Max Suit Integrity floor increased to 35.', 'Минимум макс. целостности увеличен до 35.'),
-        enRu('Max Suit Integrity floor increased to 50.', 'Минимум макс. целостности увеличен до 50.'),
-        enRu('Max Suit Integrity floor increased to 75.', 'Минимум макс. целостности увеличен до 75.')
+        enRu('A line typed with zero mistakes restores 2 Suit Integrity.', 'Строка без единой ошибки восстанавливает 2 целостности.'),
+        enRu('A line typed with zero mistakes restores 3 Suit Integrity.', 'Строка без единой ошибки восстанавливает 3 целостности.'),
+        enRu('A line typed with zero mistakes restores 5 Suit Integrity.', 'Строка без единой ошибки восстанавливает 5 целостности.')
       ]
     },
     critical_override: {
       name: enRu('Panic Latch', 'Паническая Защелка'),
       tiers: [
-        enRu('5% chance to auto-clear a segment instantly.', '5% шанс мгновенно закрыть сегмент.'),
-        enRu('12% chance to auto-clear a segment instantly.', '12% шанс мгновенно закрыть сегмент.'),
-        enRu('20% chance to auto-clear a segment instantly.', '20% шанс мгновенно закрыть сегмент.')
+        enRu('Every 50 unbroken correct keystrokes throw the trace back 14 characters.', 'Каждые 50 верных нажатий подряд отбрасывают след на 14 символов.'),
+        enRu('Every 35 unbroken correct keystrokes throw the trace back 18 characters.', 'Каждые 35 верных нажатий подряд отбрасывают след на 18 символов.'),
+        enRu('Every 25 unbroken correct keystrokes throw the trace back 22 characters.', 'Каждые 25 верных нажатий подряд отбрасывают след на 22 символа.')
       ]
     },
     focus_lattice: {
@@ -429,7 +426,6 @@ const NOIR: GenreSkin = {
     heat: enRu('Heat', 'Жар'),
     trust: enRu('Favor', 'Блат'),
     evidence: enRu('Ledger', 'Реестр'),
-    corruption: enRu('Dirty Hands', 'Грязные руки'),
     route: enRu('Case Route', 'Линия дела'),
     security: enRu('Tail Pressure', 'Давление хвоста'),
     health: enRu('Grit', 'Живучесть'),
@@ -494,7 +490,7 @@ const NOIR: GenreSkin = {
     },
     signalDampener: {
       name: enRu('Soft Hat', 'Мягкая Шляпа'),
-      desc: enRu('Slows Tail Pressure buildup.', 'Замедляет рост давления хвоста.')
+      desc: enRu('Slows Tail Pressure. Comfort costs income: fully invested, runs pay 25% fewer credits.', 'Замедляет давление хвоста. Комфорт стоит дохода: при полной прокачке забеги приносят на 25% меньше кредитов.')
     },
     bufferExpansion: {
       name: enRu('Notebook Depth', 'Глубина Блокнота'),
@@ -513,17 +509,17 @@ const NOIR: GenreSkin = {
     neural_buffer: {
       name: enRu('Thick Skin', 'Толстая Кожа'),
       tiers: [
-        enRu('First mistake per round is ignored.', 'Первая ошибка в раунде игнорируется.'),
-        enRu('First 2 mistakes per round are ignored.', 'Первые 2 ошибки в раунде игнорируются.'),
-        enRu('First 3 mistakes per round are ignored.', 'Первые 3 ошибки в раунде игнорируются.')
+        enRu('1 mistake per round keeps your streak alive, for 30 Energy.', '1 ошибка за раунд сохраняет серию за 30 Energy.'),
+        enRu('2 mistakes per round keep your streak alive, for 25 Energy each.', '2 ошибки за раунд сохраняют серию, по 25 Energy за каждую.'),
+        enRu('3 mistakes per round keep your streak alive, for 20 Energy each.', '3 ошибки за раунд сохраняют серию, по 20 Energy за каждую.')
       ]
     },
     ghost_protocol: {
       name: enRu('Alley Ghost', 'Призрак Переулка'),
       tiers: [
-        enRu('Tail Pressure grows 20% slower.', 'Давление хвоста растет на 20% медленнее.'),
-        enRu('Tail Pressure grows 35% slower.', 'Давление хвоста растет на 35% медленнее.'),
-        enRu('Tail Pressure grows 50% slower.', 'Давление хвоста растет на 50% медленнее.')
+        enRu('Tail Pressure grows 15% slower while your combo is 25 or higher.', 'Давление хвоста растёт на 15% медленнее, пока комбо не ниже 25.'),
+        enRu('Tail Pressure grows 25% slower while your combo is 20 or higher.', 'Давление хвоста растёт на 25% медленнее, пока комбо не ниже 20.'),
+        enRu('Tail Pressure grows 35% slower while your combo is 15 or higher.', 'Давление хвоста растёт на 35% медленнее, пока комбо не ниже 15.')
       ]
     },
     adrenaline_spike: {
@@ -537,17 +533,17 @@ const NOIR: GenreSkin = {
     titanium_firewall: {
       name: enRu('Bullet Habit', 'Привычка к Пулям'),
       tiers: [
-        enRu('Max Grit floor increased to 35.', 'Минимум макс. живучести увеличен до 35.'),
-        enRu('Max Grit floor increased to 50.', 'Минимум макс. живучести увеличен до 50.'),
-        enRu('Max Grit floor increased to 75.', 'Минимум макс. живучести увеличен до 75.')
+        enRu('A line typed with zero mistakes restores 2 Grit.', 'Строка без единой ошибки восстанавливает 2 живучести.'),
+        enRu('A line typed with zero mistakes restores 3 Grit.', 'Строка без единой ошибки восстанавливает 3 живучести.'),
+        enRu('A line typed with zero mistakes restores 5 Grit.', 'Строка без единой ошибки восстанавливает 5 живучести.')
       ]
     },
     critical_override: {
       name: enRu('Gut Instinct', 'Нутро'),
       tiers: [
-        enRu('5% chance to auto-crack a segment instantly.', '5% шанс мгновенно закрыть сегмент.'),
-        enRu('12% chance to auto-crack a segment instantly.', '12% шанс мгновенно закрыть сегмент.'),
-        enRu('20% chance to auto-crack a segment instantly.', '20% шанс мгновенно закрыть сегмент.')
+        enRu('Every 50 unbroken correct keystrokes throw the trace back 14 characters.', 'Каждые 50 верных нажатий подряд отбрасывают след на 14 символов.'),
+        enRu('Every 35 unbroken correct keystrokes throw the trace back 18 characters.', 'Каждые 35 верных нажатий подряд отбрасывают след на 18 символов.'),
+        enRu('Every 25 unbroken correct keystrokes throw the trace back 22 characters.', 'Каждые 25 верных нажатий подряд отбрасывают след на 22 символа.')
       ]
     },
     focus_lattice: {
@@ -590,7 +586,6 @@ const DARK_FABLE: GenreSkin = {
     heat: enRu('Curse', 'Проклятие'),
     trust: enRu('Wood Favor', 'Милость леса'),
     evidence: enRu('Names', 'Имена'),
-    corruption: enRu('Thorn-Debt', 'Шиповой долг'),
     route: enRu('Path', 'Тропа'),
     security: enRu("Forest's Ear", 'Слух леса'),
     health: enRu('Vitality', 'Живость'),
@@ -655,7 +650,7 @@ const DARK_FABLE: GenreSkin = {
     },
     signalDampener: {
       name: enRu('Quiet Bell', 'Тихий Колокольчик'),
-      desc: enRu("Slows the Forest's Ear.", 'Замедляет Слух леса.')
+      desc: enRu("Slows the Forest's Ear. Comfort costs income: fully invested, runs pay 25% fewer credits.", 'Замедляет Слух леса. Комфорт стоит дохода: при полной прокачке забеги приносят на 25% меньше кредитов.')
     },
     bufferExpansion: {
       name: enRu('Name Well', 'Колодец Имен'),
@@ -674,17 +669,17 @@ const DARK_FABLE: GenreSkin = {
     neural_buffer: {
       name: enRu('Soft Binding', 'Мягкий Переплет'),
       tiers: [
-        enRu('First mistake per round is ignored.', 'Первая ошибка в раунде игнорируется.'),
-        enRu('First 2 mistakes per round are ignored.', 'Первые 2 ошибки в раунде игнорируются.'),
-        enRu('First 3 mistakes per round are ignored.', 'Первые 3 ошибки в раунде игнорируются.')
+        enRu('1 mistake per round keeps your streak alive, for 30 Energy.', '1 ошибка за раунд сохраняет серию за 30 Energy.'),
+        enRu('2 mistakes per round keep your streak alive, for 25 Energy each.', '2 ошибки за раунд сохраняют серию, по 25 Energy за каждую.'),
+        enRu('3 mistakes per round keep your streak alive, for 20 Energy each.', '3 ошибки за раунд сохраняют серию, по 20 Energy за каждую.')
       ]
     },
     ghost_protocol: {
       name: enRu('Leaf Silence', 'Тишина Листьев'),
       tiers: [
-        enRu("Forest's Ear grows 20% slower.", 'Слух леса растет на 20% медленнее.'),
-        enRu("Forest's Ear grows 35% slower.", 'Слух леса растет на 35% медленнее.'),
-        enRu("Forest's Ear grows 50% slower.", 'Слух леса растет на 50% медленнее.')
+        enRu("Forest's Ear grows 15% slower while your combo is 25 or higher.", 'Слух леса растёт на 15% медленнее, пока комбо не ниже 25.'),
+        enRu("Forest's Ear grows 25% slower while your combo is 20 or higher.", 'Слух леса растёт на 25% медленнее, пока комбо не ниже 20.'),
+        enRu("Forest's Ear grows 35% slower while your combo is 15 or higher.", 'Слух леса растёт на 35% медленнее, пока комбо не ниже 15.')
       ]
     },
     adrenaline_spike: {
@@ -698,17 +693,17 @@ const DARK_FABLE: GenreSkin = {
     titanium_firewall: {
       name: enRu('Thorn Mail', 'Шиповая Кольчуга'),
       tiers: [
-        enRu('Max Vitality floor increased to 35.', 'Минимум макс. живости увеличен до 35.'),
-        enRu('Max Vitality floor increased to 50.', 'Минимум макс. живости увеличен до 50.'),
-        enRu('Max Vitality floor increased to 75.', 'Минимум макс. живости увеличен до 75.')
+        enRu('A line typed with zero mistakes restores 2 Vitality.', 'Строка без единой ошибки восстанавливает 2 живости.'),
+        enRu('A line typed with zero mistakes restores 3 Vitality.', 'Строка без единой ошибки восстанавливает 3 живости.'),
+        enRu('A line typed with zero mistakes restores 5 Vitality.', 'Строка без единой ошибки восстанавливает 5 живости.')
       ]
     },
     critical_override: {
       name: enRu("Story's Mercy", 'Милость Сюжета'),
       tiers: [
-        enRu('5% chance to auto-resolve a segment instantly.', '5% шанс мгновенно закрыть сегмент.'),
-        enRu('12% chance to auto-resolve a segment instantly.', '12% шанс мгновенно закрыть сегмент.'),
-        enRu('20% chance to auto-resolve a segment instantly.', '20% шанс мгновенно закрыть сегмент.')
+        enRu('Every 50 unbroken correct keystrokes throw the trace back 14 characters.', 'Каждые 50 верных нажатий подряд отбрасывают след на 14 символов.'),
+        enRu('Every 35 unbroken correct keystrokes throw the trace back 18 characters.', 'Каждые 35 верных нажатий подряд отбрасывают след на 18 символов.'),
+        enRu('Every 25 unbroken correct keystrokes throw the trace back 22 characters.', 'Каждые 25 верных нажатий подряд отбрасывают след на 22 символа.')
       ]
     },
     focus_lattice: {

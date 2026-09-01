@@ -1,9 +1,15 @@
 import type { StoryGenreId } from '../types.ts';
 import type { TypingFocus } from './gameRules.ts';
+import { normalizePact, type PactClauseId } from './pact.ts';
 
 export const PLAYER_PROGRESS_STORAGE_KEY = 'typomancerPlayerProgress';
 export const PLAYER_PROGRESS_VERSION = 1;
-export const MAX_RUN_HISTORY = 20;
+/**
+ * Twenty runs is a fortnight of daily play, which is too short a memory for a
+ * game whose real reward is watching yourself improve. Sixty costs a few
+ * kilobytes of local storage and covers a couple of months.
+ */
+export const MAX_RUN_HISTORY = 60;
 
 export type DifficultyPreset = 'guided' | 'balanced' | 'intense';
 
@@ -38,6 +44,12 @@ export interface RunRecord {
   characters: number;
   durationSeconds: number;
   focus: TypingFocus;
+  /**
+   * Clauses the player took on for this run. Recorded so a hard-won run reads as
+   * one afterwards: without it, a full-Pact clear and a default clear are the
+   * same row.
+   */
+  pact: PactClauseId[];
 }
 
 export interface PlayerProgress {
@@ -103,8 +115,59 @@ export const createBalancedCalibration = (completedAt = new Date().toISOString()
   createCalibrationResult(50, 97, 1, completedAt)
 );
 
-export const getAdaptiveDifficulty = (calibration: CalibrationResult | null): AdaptiveDifficulty => {
-  const preset = calibration?.preset || 'balanced';
+/** Runs blended into the live baseline. Enough to be robust, few enough to track. */
+export const BASELINE_RUN_WINDOW = 5;
+
+const median = (values: number[]): number => {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+};
+
+/**
+ * The pace the game actually measures the player at.
+ *
+ * Calibration is one 30-second prompt on day one, and it never used to move. The
+ * tracer chases at a fraction of it, so a player who improved from 40 to 70 WPM
+ * was still being hunted at 40 — the game got permanently easier purely because
+ * they got better, which is backwards for a trainer.
+ *
+ * This tracks real runs instead. Median rather than mean, so one bad session
+ * cannot swing it, and it ratchets upward only: run speed is measured under
+ * chase pressure and mid-line hesitation counts against it, so letting it drag
+ * the baseline down would let a rough patch quietly lower the bar. Coming back
+ * down is deliberate — recalibrating from Operator Record resets it.
+ */
+export const getEffectiveBaseline = (progress: PlayerProgress): { wpm: number; accuracy: number } => {
+  const calibration = progress.calibration;
+  const base = {
+    wpm: calibration?.wpm ?? 0,
+    // No calibration means no floor to hold. Defaulting to 100 pinned the ratchet
+    // at its maximum and discarded every recorded run's accuracy, so a fast but
+    // inaccurate uncalibrated player was graded on speed alone.
+    accuracy: calibration?.accuracy ?? 0
+  };
+  const recent = progress.runs.slice(0, BASELINE_RUN_WINDOW).filter((run) => run.wpm > 0);
+  if (!recent.length) return base;
+
+  return {
+    wpm: Math.max(base.wpm, Math.round(median(recent.map((run) => run.wpm)))),
+    accuracy: Math.max(base.accuracy, Math.round(median(recent.map((run) => run.accuracy))))
+  };
+};
+
+/**
+ * Difficulty follows the live baseline, so a player graduates out of the guided
+ * preset by actually improving rather than by remembering to recalibrate.
+ */
+export const getAdaptiveDifficulty = (
+  calibration: CalibrationResult | null,
+  progress?: PlayerProgress
+): AdaptiveDifficulty => {
+  const live = progress ? getEffectiveBaseline(progress) : null;
+  const preset = live && live.wpm > 0
+    ? getDifficultyPreset(live.wpm, live.accuracy)
+    : calibration?.preset || 'balanced';
   if (preset === 'guided') {
     return { preset, traceSpeedMultiplier: 0.72, mistakeGraceCount: 2 };
   }
@@ -167,7 +230,8 @@ const normalizeRun = (value: unknown): RunRecord | null => {
     mistakes: Math.max(0, Math.round(finite(run.mistakes))),
     characters: Math.max(0, Math.round(finite(run.characters))),
     durationSeconds: Math.max(0, Math.round(finite(run.durationSeconds))),
-    focus: run.focus
+    focus: run.focus,
+    pact: normalizePact(run.pact)
   };
 };
 

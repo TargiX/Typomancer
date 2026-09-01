@@ -14,6 +14,10 @@ import type {
 } from "../types.ts";
 import { getGenrePack, type LocalBranchTemplate } from "./genreConfig.ts";
 import { SECTOR_ROUNDS } from "./gameRules.ts";
+import { getRecentConsequences } from "./missionLog.ts";
+import { isProseSegmentType, repairProseLine } from "./proseRepair.ts";
+import { clampDecisionImpact } from "./decisionImpact.ts";
+import { getBeatDirection, getRoundShape } from "./sectorRhythm.ts";
 
 type Schema = Record<string, unknown>;
 
@@ -125,9 +129,24 @@ const sanitizeSegment = (segment: StorySegment | undefined, fallbackSkill: Typin
   }
   const type = segment.type || SegmentType.NARRATIVE;
   const defaultSkill: TypingSkill = type === SegmentType.BREACH ? 'symbols' : type === SegmentType.SIGNAL ? 'numbers' : type === SegmentType.DIALOG ? 'punctuation' : fallbackSkill;
+  // The player reproduces this text keystroke by keystroke, so prose is repaired
+  // before it can become something they are asked to type. Drills are exact by
+  // definition and pass through untouched.
+  const text = isProseSegmentType(type)
+    ? repairProseLine(segment.text)
+    : segment.text.trim().replace(/\s+/g, ' ');
+  if (!text) {
+    return {
+      text: "Signal interference corrupts the feed; stabilize the link before moving.",
+      mood: segment.mood || StoryMood.TENSE,
+      type: SegmentType.NARRATIVE,
+      skill: fallbackSkill,
+      objective: "Recover signal"
+    };
+  }
   return {
     ...segment,
-    text: segment.text.trim().replace(/\s+/g, ' '),
+    text,
     type,
     skill: segment.skill || defaultSkill,
     objective: segment.objective || getDefaultObjective(type, segment.skill || defaultSkill),
@@ -135,11 +154,19 @@ const sanitizeSegment = (segment: StorySegment | undefined, fallbackSkill: Typin
   };
 };
 
-const sanitizeBranch = (branch: BranchingStory): BranchingStory => ({
-  goodPath: sanitizeSegment(branch.goodPath, 'precision'),
-  mediumPath: sanitizeSegment(branch.mediumPath || branch.goodPath, 'flow'),
-  badPath: sanitizeSegment(branch.badPath, 'flow')
-});
+const sanitizeBranch = (branch: BranchingStory, pressure?: number): BranchingStory => {
+  // Pressure is authored by the sector curve, not chosen by the generator, so the
+  // sector tightens on schedule instead of on the model's mood. The worse branches
+  // sit a step above the beat, since a fumbled line should also hurt more.
+  const withPressure = (segment: StorySegment, step: number): StorySegment => (
+    typeof pressure === 'number' ? { ...segment, pressure: clamp(pressure + step, 0, 5) } : segment
+  );
+  return {
+    goodPath: withPressure(sanitizeSegment(branch.goodPath, 'precision'), 0),
+    mediumPath: withPressure(sanitizeSegment(branch.mediumPath || branch.goodPath, 'flow'), 1),
+    badPath: withPressure(sanitizeSegment(branch.badPath, 'flow'), 2)
+  };
+};
 
 const withTimeout = <T,>(promise: Promise<T>, ms: number, fallback: T): Promise<T> => {
   return Promise.race([
@@ -180,20 +207,42 @@ const getLocalBranch = (
   // the opening rounds, where the player should just read and type the story.
   const isDrill = (t: LocalBranchTemplate) => t.type === SegmentType.BREACH || t.type === SegmentType.SIGNAL;
   const proseTemplates = allTemplates.filter(t => !isDrill(t));
-  const drillsAllowed = level >= FINAL_LEVEL || round >= SECTOR_ROUNDS - 1 || (round >= 4 && ((level * 7 + round * 3) % 3 === 0));
-  const templates = drillsAllowed && proseTemplates.length ? allTemplates : (proseTemplates.length ? proseTemplates : allTemplates);
-  const template = pick(templates, (level * 17) + (round * 5) + (mission?.heat || 0) + (mission?.evidence || 0));
+  const templatesFor = (r: number) => {
+    const drillsAllowed = r >= 4 && (level >= FINAL_LEVEL || r >= SECTOR_ROUNDS - 1 || ((level * 7 + r * 3) % 3 === 0));
+    return drillsAllowed && proseTemplates.length ? allTemplates : (proseTemplates.length ? proseTemplates : allTemplates);
+  };
+
+  // The round must advance the pool by exactly one. The old seed added round * 5
+  // to a mission term that drifts by roughly zero on a clean run (evidence up 3,
+  // heat down 3), and 5 % 5 === 0 against a five-template pool — so sector four
+  // served the identical line all seven rounds.
+  // Resolved from round 1 forward, because the step-off below changes what the
+  // previous round actually served — comparing against the raw pick would let a
+  // corrected round collide with the next one.
+  const resolveTemplate = (r: number): LocalBranchTemplate => {
+    const pool = templatesFor(r);
+    const candidate = pool[Math.abs((level * 3) + r) % pool.length];
+    if (r <= 1) return candidate;
+    // The pool widens once mid-sector when drills unlock, and the wider pool can
+    // land back on the line we just used. Step off it.
+    if (candidate !== resolveTemplate(r - 1)) return candidate;
+    return pool[(pool.indexOf(candidate) + 1) % pool.length];
+  };
+
+  const template = resolveTemplate(round);
   const type = template.type || SegmentType.NARRATIVE;
-  const heat = mission?.heat || 0;
-  const pressure = clamp(Math.round((heat / 25) + (round / 4)), 1, 5);
+  // Pressure comes from the authored sector curve rather than from Heat: a player
+  // running clean keeps Heat low, so the better they played the flatter the
+  // sector used to get.
+  const pressure = getRoundShape(round, SECTOR_ROUNDS, level).pressure;
   const goodHint = language === 'ru' ? '+улики, -угроза' : '+evidence, -heat';
   const mediumHint = language === 'ru' ? '+след, путь сохранен' : '+trace, route intact';
-  const badHint = language === 'ru' ? '+коррупция, мир запоминает ошибку' : '+corruption, world remembers';
+  const badHint = language === 'ru' ? '+угроза, мир запоминает ошибку' : '+heat, world remembers';
 
   return sanitizeBranch({
     goodPath: makeSegment(template.good, StoryMood.HOPEFUL, type, template.skill, template.objective, pressure, goodHint),
-    mediumPath: makeSegment(template.medium, StoryMood.TENSE, type, template.skill, template.objective, pressure + 1, mediumHint),
-    badPath: makeSegment(template.bad, StoryMood.DARK, type === SegmentType.BREACH ? SegmentType.SIGNAL : type, template.skill, template.objective, pressure + 2, badHint)
+    mediumPath: makeSegment(template.medium, StoryMood.TENSE, type, template.skill, template.objective, clamp(pressure + 1, 0, 5), mediumHint),
+    badPath: makeSegment(template.bad, StoryMood.DARK, type === SegmentType.BREACH ? SegmentType.SIGNAL : type, template.skill, template.objective, clamp(pressure + 2, 0, 5), badHint)
   });
 };
 
@@ -212,7 +261,7 @@ const getLocalDecision = (genre: StoryGenreId, language: Language, level: number
         text: copy.aggressive,
         type: 'aggressive',
         preview: aggressivePreview,
-        impact: { heat: 14, evidence: 8, corruption: 2, route: 'loud', flag: `loud_level_${level}`, trace: 10, credits: 18 },
+        impact: { heat: 16, evidence: 8, route: 'loud', flag: `loud_level_${level}`, trace: 10, credits: 18 },
         outcome: makeSegment(copy.aggressiveOutcome, StoryMood.TENSE, SegmentType.NARRATIVE, 'flow', language === 'ru' ? 'Рискованный длинный набор' : 'Risky long-form typing', 4)
       },
       {
@@ -364,7 +413,7 @@ export const generateNextLevelStart = async (
     });
   }
   const model = TEXT_MODEL;
-  const prompt = `CONTEXT: The player is starting Level ${nextLevel} of a ${pack.storyGenre}. WORLD RULES (follow strictly): ${pack.worldRules} HERO: ${pack.heroName}. PREVIOUS OUTCOME: "${prevSummary}" MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, corruption=${mission?.corruption ?? 0}, route=${mission?.route ?? 'balanced'}. TASK: Write the first sentence of Level ${nextLevel}. Establish the new location/danger and reflect the meters. Immediate action. 10-16 words. OUTPUT LANGUAGE: ${language === 'ru' ? 'Russian' : 'English'}. Return ONLY text.`;
+  const prompt = `CONTEXT: The player is starting Level ${nextLevel} of a ${pack.storyGenre}. WORLD RULES (follow strictly): ${pack.worldRules} HERO: ${pack.heroName}. PREVIOUS OUTCOME: "${prevSummary}" MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, route=${mission?.route ?? 'balanced'}. TASK: Write the first sentence of Level ${nextLevel}. Establish the new location/danger and reflect the meters. Immediate action. 10-16 words. OUTPUT LANGUAGE: ${language === 'ru' ? 'Russian' : 'English'}. Return ONLY text.`;
 
   try {
     const response = await ai.models.generateContent({ model, contents: prompt, config: { temperature: 1.0 } });
@@ -392,11 +441,14 @@ export const generateLevelSummary = async (
   else if (stats.traceLevel > 50) performanceDesc = "messy and loud";
 
   const mission = stats.mission;
-  const prompt = `CONTEXT: The player finished Level ${level} of a ${pack.storyGenre}. WORLD RULES (follow strictly): ${pack.worldRules} HERO: ${pack.heroName}. STORY SO FAR: ${prevStoryContext.slice(-360)}... PLAYER PERFORMANCE: speed=${Math.round(stats.avgWpm)} WPM, mistakes=${stats.totalMistakes}, status=${performanceDesc}. MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, corruption=${mission?.corruption ?? 0}, route=${mission?.route ?? 'balanced'}, flags=${(mission?.flags || []).slice(-5).join(',')}. TASK: Write a punchy 2-sentence summary. Sentence 1: consequences of this level based on typing and choices. Sentence 2: setup for ${level >= FINAL_LEVEL ? 'the ending' : `Level ${level + 1}`}. OUTPUT LANGUAGE: ${language === 'ru' ? 'Russian' : 'English'}. Return ONLY text.`;
+  const prompt = `CONTEXT: The player finished Level ${level} of a ${pack.storyGenre}. WORLD RULES (follow strictly): ${pack.worldRules} HERO: ${pack.heroName}. STORY SO FAR: ${prevStoryContext.slice(-360)}... PLAYER PERFORMANCE: speed=${Math.round(stats.avgWpm)} WPM, mistakes=${stats.totalMistakes}, status=${performanceDesc}. MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, route=${mission?.route ?? 'balanced'}, flags=${(mission?.flags || []).slice(-5).join(',')}. BEATS THE PLAYER LIVED (oldest to newest, tagged by how cleanly they typed them)=${getRecentConsequences(mission?.consequenceLog || [], 4).join(' | ')}. TASK: Write a punchy 2-sentence summary. Sentence 1: consequences of this level, naming at least one specific beat above rather than describing performance in the abstract. Sentence 2: setup for ${level >= FINAL_LEVEL ? 'the ending' : `Level ${level + 1}`}. OUTPUT LANGUAGE: ${language === 'ru' ? 'Russian' : 'English'}. Return ONLY text.`;
 
   try {
     const response = await ai.models.generateContent({ model, contents: prompt, config: { temperature: 1.0 } });
-    return response.text?.trim() || localSummary(genre, level, stats, language);
+    const summary = response.text?.trim();
+    // Read rather than typed, but it headlines the debrief screen, so it gets the
+    // same mechanical repair as anything else the player is shown.
+    return summary ? repairProseLine(summary) : localSummary(genre, level, stats, language);
   } catch (e) {
     return localSummary(genre, level, stats, language);
   }
@@ -409,7 +461,9 @@ export const generateNextSegments = async (
   language: Language,
   prevLevelSummary?: string,
   mission?: MissionState,
-  genre: StoryGenreId = 'cyberpunk'
+  genre: StoryGenreId = 'cyberpunk',
+  /** Letter pairs this player fumbles, so the campaign itself becomes the drill. */
+  trainingFocus: string[] = []
 ): Promise<BranchingStory> => {
   const pack = getGenrePack(genre);
   const fallback = getLocalBranch(genre, level, round, language, mission);
@@ -419,9 +473,11 @@ export const generateNextSegments = async (
   const recentHistory = fullHistory.slice(-6).join(" ");
   const lastSentence = fullHistory[fullHistory.length - 1] || "The mission begins.";
 
-  let narrativeInstruction = "Advance the narrative naturally and show consequences.";
-  if (round <= 2 && prevLevelSummary) narrativeInstruction = `Continue from previous level outcome: "${prevLevelSummary}".`;
-  else if (round >= SECTOR_ROUNDS - 1) narrativeInstruction = "Climax of the current scene. Raise stakes before the escape.";
+  const shape = getRoundShape(round, SECTOR_ROUNDS, level);
+  let narrativeInstruction = getBeatDirection(shape.beat);
+  if (round <= 2 && prevLevelSummary) {
+    narrativeInstruction = `${narrativeInstruction} Continue from the previous sector outcome: "${prevLevelSummary}".`;
+  }
 
   // PACING: the core loop is typing readable STORY prose whose branch reflects how
   // cleanly the player typed. Code/number drills (BREACH/SIGNAL) are rare tension
@@ -436,7 +492,14 @@ export const generateNextSegments = async (
     typeRule = "TYPE RULE: keep it mostly NARRATIVE/DIALOG prose; a single BREACH or SIGNAL drill is allowed only occasionally and never in more than one of the three paths.";
   }
 
-  const prompt = `SETTING: ${pack.storyGenre}. WORLD RULES (follow strictly, never drift into another genre): ${pack.worldRules} HERO: ${pack.heroName}. CURRENT STATUS: Level ${level} | Round ${round}/${SECTOR_ROUNDS}. RECENT CONTEXT: "...${recentHistory}" LAST EVENT: "${lastSentence}" MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, corruption=${mission?.corruption ?? 0}, signal=${mission?.signal ?? 0}, route=${mission?.route ?? 'balanced'}, recent consequences=${(mission?.consequenceLog || []).slice(-3).join(' | ')}. TASK: Generate the next story segment options. CORE LOOP: the player TYPES the sentence you write and the branch reflects their typing — so the main content is readable story prose, NOT puzzles. INSTRUCTION: ${narrativeInstruction} ${typeRule} RULES: 1. No repeated events. 2. NARRATIVE/DIALOG: 8-18 words, ordinary sentence case (do NOT write in all-caps). 3. If (and only if) a BREACH/SIGNAL drill is allowed here: 2-6 short tokens whose content matches the WORLD RULES for this world (never terminal/hex code unless the world is cyberpunk). 4. goodPath rewards clean play with control/evidence/trust. mediumPath shows messy survival. badPath shows concrete consequences that can echo later. 5. Include objective, skill, and a short consequenceHint. 6. Every sentence must stay strictly inside the SETTING's world and era — respect the FORBIDDEN vocabulary. 7. OUTPUT LANGUAGE FOR NARRATIVE/DIALOG: ${language === 'ru' ? 'Russian' : 'English'}. Keep BREACH/SIGNAL tokens in English. Return JSON only.`;
+  // The player's own weak patterns, worked into the prose they are about to type.
+  // Framed as a preference rather than a requirement: a sentence contorted to hit
+  // a letter pair stops being a story, and the story is the reason anyone types.
+  const focusRule = trainingFocus.length
+    ? ` TYPING FOCUS: this player fumbles these letters and letter pairs — ${trainingFocus.join(', ')}. Prefer ordinary words that happen to contain them. This is a soft preference and must never bend a sentence, invent an odd word, or repeat one: if a beat has no natural home for them, ignore it entirely.`
+    : '';
+
+  const prompt = `SETTING: ${pack.storyGenre}. WORLD RULES (follow strictly, never drift into another genre): ${pack.worldRules} HERO: ${pack.heroName}.${focusRule} CURRENT STATUS: Level ${level} | Round ${round}/${SECTOR_ROUNDS}. RECENT CONTEXT: "...${recentHistory}" LAST EVENT: "${lastSentence}" MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, route=${mission?.route ?? 'balanced'}, recent consequences (oldest to newest)=${getRecentConsequences(mission?.consequenceLog || [], 3).join(' | ')}. TASK: Generate the next story segment options. CORE LOOP: the player TYPES the sentence you write and the branch reflects their typing — so the main content is readable story prose, NOT puzzles. INSTRUCTION: ${narrativeInstruction} ${typeRule} RULES: 1. No repeated events. 2. NARRATIVE/DIALOG: ${shape.minWords}-${shape.maxWords} words${shape.isClimax ? ' (this is the sector climax, so use the upper end of that range)' : ''}, and a complete grammatical sentence — it must begin with a capital letter and end with . ? or !. Ordinary sentence case; never all-caps, never a bare fragment, never open with a lowercase pronoun. The player types this text character by character, so an ungrammatical line is a defect they are forced to copy. 3. If (and only if) a BREACH/SIGNAL drill is allowed here: 2-6 short tokens whose content matches the WORLD RULES for this world (never terminal/hex code unless the world is cyberpunk). 4. goodPath rewards clean play with control/evidence/trust. mediumPath shows messy survival. badPath shows concrete consequences that can echo later. 5. Include objective, skill, and a short consequenceHint. 6. Every sentence must stay strictly inside the SETTING's world and era — respect the FORBIDDEN vocabulary. 7. RECENT CONSEQUENCES are beats the player already lived, tagged CLEAN, MESSY or BLOWN by how they typed them. If the newest is MESSY or BLOWN, this segment must show its aftermath concretely — a guard who is now looking, a door that no longer opens — instead of resetting the scene. If it is CLEAN, let the player feel the advantage they earned. 8. OUTPUT LANGUAGE FOR NARRATIVE/DIALOG: ${language === 'ru' ? 'Russian' : 'English'}. Keep BREACH/SIGNAL tokens in English. Return JSON only.`;
 
   try {
     const apiCall = ai.models.generateContent({
@@ -454,7 +517,7 @@ export const generateNextSegments = async (
     const response = await withTimeout(apiCall, 10000, null as any);
     if (!response || !response.text) return fallback;
     const data = cleanAndParseJSON<BranchingStory>(response.text);
-    return sanitizeBranch(data);
+    return sanitizeBranch(data, shape.pressure);
   } catch (error) {
     console.error("Gemini API Error:", error);
     return fallback;
@@ -475,7 +538,7 @@ export const generateStrategicDecision = async (
   const recentHistory = fullHistory.slice(-6).join(" ");
   const lastSentence = fullHistory[fullHistory.length - 1] || "You encounter a new obstacle.";
 
-  const prompt = `SETTING: ${pack.storyGenre}. WORLD RULES (follow strictly, never drift into another genre): ${pack.worldRules} HERO: ${pack.heroName}. STATUS: Level ${level} | Mid-Level Branching Point. RECENT CONTEXT: "${recentHistory}" LAST EVENT: "${lastSentence}" MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, corruption=${mission?.corruption ?? 0}, route=${mission?.route ?? 'balanced'}. TASK: Create a major tactical decision with two approaches. Aggressive: loud, risky, stronger evidence/credits, raises heat/corruption. Stealth: quiet, technical, lowers heat, raises trust, usually less loot. OUTCOMES: text they must type next. Aggressive outcome is action text. Stealth outcome can be code/BREACH. Include preview and impact numbers. OUTPUT LANGUAGE: ${language === 'ru' ? 'Russian' : 'English'}. Keep code in English. JSON schema: { "introText": string, "options": [ { "id":"aggressive", "text": string, "type":"aggressive", "preview": string, "impact": {"heat":number,"trust":number,"evidence":number,"corruption":number,"signal":number,"trace":number,"health":number,"credits":number,"route":"loud","flag":string}, "outcome": StorySegment }, { "id":"stealth", "text": string, "type":"stealth", "preview": string, "impact": {"heat":number,"trust":number,"evidence":number,"corruption":number,"signal":number,"trace":number,"health":number,"credits":number,"route":"silent","flag":string}, "outcome": StorySegment } ] }`;
+  const prompt = `SETTING: ${pack.storyGenre}. WORLD RULES (follow strictly, never drift into another genre): ${pack.worldRules} HERO: ${pack.heroName}. STATUS: Level ${level} | Mid-Level Branching Point. RECENT CONTEXT: "${recentHistory}" LAST EVENT: "${lastSentence}" MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, route=${mission?.route ?? 'balanced'}. TASK: Create a major tactical decision with two approaches. Aggressive: loud, risky, stronger evidence/credits, raises heat. Stealth: quiet, technical, lowers heat, raises trust, usually less loot. OUTCOMES: text they must type next. Aggressive outcome is action text. Stealth outcome can be code/BREACH. Include preview and impact numbers. OUTPUT LANGUAGE: ${language === 'ru' ? 'Russian' : 'English'}. Keep code in English. JSON schema: { "introText": string, "options": [ { "id":"aggressive", "text": string, "type":"aggressive", "preview": string, "impact": {"heat":number,"trust":number,"evidence":number,"trace":number,"health":number,"credits":number,"route":"loud","flag":string}, "outcome": StorySegment }, { "id":"stealth", "text": string, "type":"stealth", "preview": string, "impact": {"heat":number,"trust":number,"evidence":number,"trace":number,"health":number,"credits":number,"route":"silent","flag":string}, "outcome": StorySegment } ] }`;
 
   try {
     const response = await ai.models.generateContent({ model, contents: prompt, config: { responseMimeType: "application/json", temperature: 1.0 } });
@@ -487,7 +550,7 @@ export const generateStrategicDecision = async (
       opt.id = opt.id || (index === 0 ? 'aggressive' : 'stealth');
       opt.type = opt.type || (index === 0 ? 'aggressive' : 'stealth');
       opt.preview = opt.preview || fallback.options[index].preview;
-      opt.impact = { ...fallback.options[index].impact, ...opt.impact };
+      opt.impact = clampDecisionImpact({ ...fallback.options[index].impact, ...opt.impact });
       opt.outcome = sanitizeSegment(opt.outcome, index === 0 ? 'flow' : 'symbols');
     });
     return data as DecisionPoint;

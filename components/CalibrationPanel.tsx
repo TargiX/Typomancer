@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { Language } from '../types';
+import { audioEngine, type ComboTier } from '../services/audioEngine';
 import { createCalibrationResult, type CalibrationResult } from '../services/playerProgress';
 import type { TypingObservation } from '../services/typingTraining';
 
@@ -69,6 +70,12 @@ const CalibrationPanel: React.FC<CalibrationPanelProps> = ({ language, mode = 'c
   const observationsRef = useRef<TypingObservation[]>([]);
   const completedRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Calibration is the first typing a new player does, so it gets the same
+  // keystroke voice as the campaign rather than being silent.
+  const streakRef = useRef(0);
+  const comboTier = (value: number): ComboTier => (
+    value >= 50 ? 3 : value >= 25 ? 2 : value >= 10 ? 1 : 0
+  );
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -101,7 +108,14 @@ const CalibrationPanel: React.FC<CalibrationPanelProps> = ({ language, mode = 'c
       let newMistakes = 0;
       for (let index = value.length; index < next.length; index += 1) {
         const correct = normalizeChar(next[index]) === normalizeChar(prompt[index]);
-        if (!correct) newMistakes += 1;
+        if (correct) {
+          audioEngine.keyHit(comboTier(streakRef.current));
+          streakRef.current += 1;
+        } else {
+          audioEngine.keyError();
+          streakRef.current = 0;
+          newMistakes += 1;
+        }
         observationsRef.current.push({
           expected: prompt[index],
           previousExpected: index > 0 ? prompt[index - 1] : undefined,

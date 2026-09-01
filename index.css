@@ -3,3 +3,32 @@
 @tailwind utilities;
 
 /* Narrative Flow custom visual rules remain alongside the app for AI Studio compatibility. */
+
+/**
+ * HUD TYPE SCALE
+ *
+ * The interface had 13 distinct font sizes on a single screen, 57% of its text
+ * below 11px, and a floor of 8px. That density of tiny graded labels is a
+ * dashboard convention: a game HUD uses fewer steps with bigger jumps between
+ * them, so ambient state reads as ambient and the number that matters reads as
+ * the number that matters.
+ *
+ * Six steps, and nothing below 10px.
+ */
+:root {
+  --fs-micro: 10px;   /* ambient labels: meter names, key caps, chip text */
+  --fs-label: 11px;   /* secondary readouts and captions */
+  --fs-body: 13px;    /* copy meant to be read as sentences */
+  --fs-lead: 16px;    /* sub-headings, option text */
+  --fs-title: 22px;   /* screen titles */
+  --fs-display: 34px; /* stat tiles */
+  --fs-hero: 52px;    /* the one number a screen is about */
+}
+
+.fs-micro { font-size: var(--fs-micro); }
+.fs-label { font-size: var(--fs-label); }
+.fs-body { font-size: var(--fs-body); }
+.fs-lead { font-size: var(--fs-lead); }
+.fs-title { font-size: var(--fs-title); }
+.fs-display { font-size: var(--fs-display); }
+.fs-hero { font-size: var(--fs-hero); }

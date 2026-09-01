@@ -1,3 +1,5 @@
+import type { PactClauseId } from './services/pact.ts';
+
 export type Language = 'en' | 'ru';
 
 export enum GameState {
@@ -34,12 +36,20 @@ export enum SegmentType {
 export type TypingSkill = 'flow' | 'precision' | 'symbols' | 'numbers' | 'punctuation';
 export type RouteStyle = 'balanced' | 'silent' | 'loud';
 
+/**
+ * Three meters, each with a distinct source and a distinct consequence: Heat is
+ * how hunted you are, Trust is who is still with you, Evidence is how much proof
+ * you have and the win condition.
+ *
+ * There used to be five. `signal` was never shown to the player and never read
+ * by any rule — it existed only as a number in a prompt. `corruption` moved in
+ * lockstep with Heat (both rose on a fumbled line, both fed trace pressure), so
+ * it asked the player to track two readings of one thing.
+ */
 export interface MissionState {
   heat: number;
   trust: number;
   evidence: number;
-  corruption: number;
-  signal: number;
   route: RouteStyle;
   flags: string[];
   consequenceLog: string[];
@@ -67,8 +77,6 @@ export interface DecisionImpact {
   heat?: number;
   trust?: number;
   evidence?: number;
-  corruption?: number;
-  signal?: number;
   route?: RouteStyle;
   flag?: string;
   trace?: number;
@@ -129,7 +137,6 @@ export interface GameModifiers {
   mistakeGraceCount: number;
   healthRegenWpmThreshold: number;
   healthRegenAmount: number;
-  criticalHackChance: number;
   maxHealth: number;
   maxOverclock: number;
   creditMultiplier: number;
@@ -138,6 +145,25 @@ export interface GameModifiers {
   errorChargeGain: number;
   breachRewardMultiplier: number;
   evidenceMultiplier: number;
+  /**
+   * Perk effects that pay out for accuracy instead of excusing its absence.
+   * A perk that lowers what the fingers are asked to do works against the only
+   * progression that matters in a typing game — the player's own hands.
+   */
+  /** Unbroken correct keystrokes that throw the tracer back. 0 disables. */
+  streakPurgeInterval: number;
+  /** Characters the tracer loses when that streak lands. */
+  streakPurgeCharacters: number;
+  /** Security Trace multiplier while a streak is held. 1 disables. */
+  streakTraceMultiplier: number;
+  /** Combo needed to hold that stealth. */
+  streakTraceThreshold: number;
+  /** Health restored by a line typed with zero mistakes. */
+  perfectLineHealth: number;
+  /** Mistakes per round that keep the combo alive, paid for in Energy. */
+  comboShields: number;
+  /** Energy each combo shield costs. */
+  comboShieldCost: number;
 }
 
 export interface Perk {
@@ -184,4 +210,6 @@ export interface UserProfile {
   upgrades: UserUpgrades;
   language?: Language;
   strictCase?: boolean;
+  /** Difficulty the player asked for, in exchange for a bigger payout. */
+  pact?: PactClauseId[];
 }
