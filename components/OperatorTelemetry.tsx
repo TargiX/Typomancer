@@ -175,7 +175,7 @@ const OperatorTelemetry: React.FC<OperatorTelemetryProps> = ({ language, progres
               <line key={fraction} className="telemetry-grid" x1="0" x2={CHART_W}
                     y1={CHART_H * fraction} y2={CHART_H * fraction} />
             ))}
-            <path className="telemetry-accuracy" d={steppedPath(accuracyValues, 80, 100)} />
+            <path className="telemetry-accuracy" d={steppedPath(accuracyValues, 0, 100)} />
             <path className="telemetry-line" d={steppedPath(wpmValues, min, max)} />
           </svg>
           <div className="telemetry-chart-axis">

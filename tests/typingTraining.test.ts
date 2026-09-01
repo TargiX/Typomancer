@@ -142,3 +142,25 @@ test('training focus is bounded, deduplicated and lowercase', () => {
 test('an untrained player produces no focus tokens at all', () => {
   assert.deepEqual(getTrainingFocusTokens(EMPTY_TYPING_TRAINING), []);
 });
+
+test('low-sample noise cannot crowd out the real weak patterns', () => {
+  // Twelve one-attempt misses used to fill every candidate slot before the
+  // evidence filter ran, leaving no qualifying token at all.
+  const noise = Array.from({ length: 12 }, (_, i) => ({
+    token: String.fromCharCode(945 + i),
+    attempts: 1,
+    errors: 1,
+    totalLatencyMs: 900,
+    timedAttempts: 1
+  }));
+  const profile = {
+    ...EMPTY_TYPING_TRAINING,
+    samples: 400,
+    keys: [...noise, { token: 'q', attempts: 40, errors: 18, totalLatencyMs: 16000, timedAttempts: 40 }],
+    bigrams: [{ token: 'br', attempts: 50, errors: 20, totalLatencyMs: 18000, timedAttempts: 50 }]
+  };
+
+  const tokens = getTrainingFocusTokens(profile);
+  assert.ok(tokens.includes('q'), `expected q among ${JSON.stringify(tokens)}`);
+  assert.ok(tokens.includes('br'), `expected br among ${JSON.stringify(tokens)}`);
+});

@@ -142,7 +142,10 @@ export const getEffectiveBaseline = (progress: PlayerProgress): { wpm: number; a
   const calibration = progress.calibration;
   const base = {
     wpm: calibration?.wpm ?? 0,
-    accuracy: calibration?.accuracy ?? 100
+    // No calibration means no floor to hold. Defaulting to 100 pinned the ratchet
+    // at its maximum and discarded every recorded run's accuracy, so a fast but
+    // inaccurate uncalibrated player was graded on speed alone.
+    accuracy: calibration?.accuracy ?? 0
   };
   const recent = progress.runs.slice(0, BASELINE_RUN_WINDOW).filter((run) => run.wpm > 0);
   if (!recent.length) return base;

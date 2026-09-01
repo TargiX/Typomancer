@@ -493,10 +493,11 @@ class NeuralAudioEngine {
 
   /** A counted mistake: detuned low thud, deliberately sour against the key. */
   public keyError() {
+      // Reset before the audibility guard: a muted run still breaks the combo.
+      this.keyStep = 0;
       const ch = this.sfxBus();
       if (!ch) return;
       const { ctx, bus, now } = ch;
-      this.keyStep = 0;
       this.blip(ctx, bus, now, { freq: 104, endFreq: 62, duration: 0.2, gain: 0.24, type: 'square', cutoff: 900 });
       this.blip(ctx, bus, now, { freq: 98, endFreq: 60, duration: 0.2, gain: 0.16, type: 'sawtooth', cutoff: 700 });
       this.noiseBurst(ctx, bus, now, { duration: 0.09, gain: 0.11, type: 'lowpass', frequency: 1400 });
@@ -552,10 +553,11 @@ class NeuralAudioEngine {
    * a falling detuned pair under a noise sweep.
    */
   public tracerCatch() {
+      // Reset before the audibility guard: a muted run still breaks the combo.
+      this.keyStep = 0;
       const ch = this.sfxBus();
       if (!ch) return;
       const { ctx, bus, now } = ch;
-      this.keyStep = 0;
       this.blip(ctx, bus, now, { freq: 220, endFreq: 55, duration: 0.55, gain: 0.26, type: 'sawtooth', cutoff: 1200 });
       this.blip(ctx, bus, now, { freq: 233, endFreq: 58, duration: 0.55, gain: 0.2, type: 'square', cutoff: 900 });
       this.noiseBurst(ctx, bus, now, { duration: 0.4, gain: 0.16, type: 'bandpass', frequency: 900, Q: 1.5 });

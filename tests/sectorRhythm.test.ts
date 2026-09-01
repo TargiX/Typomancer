@@ -74,3 +74,13 @@ test('a sector is a meaningful amount of typing, not a flat sprint', () => {
   const characters = midWords * 6;
   assert.ok(characters > 700, `sector is only ~${Math.round(characters)} characters`);
 });
+
+test('a one-round sector is its own climax, not just its opening', () => {
+  // Round one was checked before the final-round case, so a single-round sector
+  // reported the gentlest beat while also claiming to be the climax.
+  const only = getRoundShape(1, 1);
+  assert.equal(only.beat, 'climax');
+  assert.equal(only.isClimax, true);
+  // A clamped sectorRounds of 0 lands in the same place.
+  assert.equal(getRoundShape(1, 0).beat, 'climax');
+});

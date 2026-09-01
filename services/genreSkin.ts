@@ -223,7 +223,7 @@ const CYBERPUNK: GenreSkin = {
       tiers: [
         enRu('Every 50 unbroken correct keystrokes throw the trace back 14 characters.', 'Каждые 50 верных нажатий подряд отбрасывают след на 14 символов.'),
         enRu('Every 35 unbroken correct keystrokes throw the trace back 18 characters.', 'Каждые 35 верных нажатий подряд отбрасывают след на 18 символов.'),
-        enRu('Every 25 unbroken correct keystrokes throw the trace back 22 characters.', 'Каждые 25 верных нажатий подряд отбрасывают след на 22 символов.')
+        enRu('Every 25 unbroken correct keystrokes throw the trace back 22 characters.', 'Каждые 25 верных нажатий подряд отбрасывают след на 22 символа.')
       ]
     },
     focus_lattice: {
@@ -383,7 +383,7 @@ const SPACE_HORROR: GenreSkin = {
       tiers: [
         enRu('Every 50 unbroken correct keystrokes throw the trace back 14 characters.', 'Каждые 50 верных нажатий подряд отбрасывают след на 14 символов.'),
         enRu('Every 35 unbroken correct keystrokes throw the trace back 18 characters.', 'Каждые 35 верных нажатий подряд отбрасывают след на 18 символов.'),
-        enRu('Every 25 unbroken correct keystrokes throw the trace back 22 characters.', 'Каждые 25 верных нажатий подряд отбрасывают след на 22 символов.')
+        enRu('Every 25 unbroken correct keystrokes throw the trace back 22 characters.', 'Каждые 25 верных нажатий подряд отбрасывают след на 22 символа.')
       ]
     },
     focus_lattice: {
@@ -543,7 +543,7 @@ const NOIR: GenreSkin = {
       tiers: [
         enRu('Every 50 unbroken correct keystrokes throw the trace back 14 characters.', 'Каждые 50 верных нажатий подряд отбрасывают след на 14 символов.'),
         enRu('Every 35 unbroken correct keystrokes throw the trace back 18 characters.', 'Каждые 35 верных нажатий подряд отбрасывают след на 18 символов.'),
-        enRu('Every 25 unbroken correct keystrokes throw the trace back 22 characters.', 'Каждые 25 верных нажатий подряд отбрасывают след на 22 символов.')
+        enRu('Every 25 unbroken correct keystrokes throw the trace back 22 characters.', 'Каждые 25 верных нажатий подряд отбрасывают след на 22 символа.')
       ]
     },
     focus_lattice: {
@@ -703,7 +703,7 @@ const DARK_FABLE: GenreSkin = {
       tiers: [
         enRu('Every 50 unbroken correct keystrokes throw the trace back 14 characters.', 'Каждые 50 верных нажатий подряд отбрасывают след на 14 символов.'),
         enRu('Every 35 unbroken correct keystrokes throw the trace back 18 characters.', 'Каждые 35 верных нажатий подряд отбрасывают след на 18 символов.'),
-        enRu('Every 25 unbroken correct keystrokes throw the trace back 22 characters.', 'Каждые 25 верных нажатий подряд отбрасывают след на 22 символов.')
+        enRu('Every 25 unbroken correct keystrokes throw the trace back 22 characters.', 'Каждые 25 верных нажатий подряд отбрасывают след на 22 символа.')
       ]
     },
     focus_lattice: {

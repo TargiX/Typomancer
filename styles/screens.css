@@ -91,7 +91,7 @@
 }
 
 .screens-death-copy span {
-  font-family: 'Rajdhani', sans-serif;
+  font-family: Rajdhani, sans-serif;
   font-size: clamp(2.4rem, 8vw, 6rem);
   font-weight: 800;
   line-height: 0.9;
@@ -134,7 +134,7 @@
 
 .screens-debrief-primary strong,
 .screens-debrief-metric strong {
-  font-family: 'Rajdhani', sans-serif;
+  font-family: Rajdhani, sans-serif;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   line-height: 0.9;
@@ -265,7 +265,7 @@
 .calibration-header h2,
 .operator-record-header h2 {
   margin-top: 8px;
-  font-family: 'Rajdhani', sans-serif;
+  font-family: Rajdhani, sans-serif;
   font-size: clamp(2.2rem, 6vw, 3.75rem);
   font-weight: 800;
   line-height: 0.95;
@@ -301,7 +301,7 @@
 }
 
 .calibration-readout strong {
-  font-family: 'Rajdhani', sans-serif;
+  font-family: Rajdhani, sans-serif;
   font-size: var(--fs-title);
   line-height: 1;
   color: #e0f2fe;
@@ -435,7 +435,7 @@
 }
 
 .operator-record-calibration strong {
-  font-family: 'Rajdhani', sans-serif;
+  font-family: Rajdhani, sans-serif;
   font-size: var(--fs-title);
   text-transform: uppercase;
   color: #e0f2fe;
@@ -470,7 +470,7 @@
 }
 
 .operator-record-stats strong {
-  font-family: 'Rajdhani', sans-serif;
+  font-family: Rajdhani, sans-serif;
   font-size: var(--fs-display);
   line-height: 1;
   color: #f8fafc;
@@ -683,7 +683,7 @@
 }
 
 .operator-record-run > b {
-  font-family: 'Rajdhani', sans-serif;
+  font-family: Rajdhani, sans-serif;
   font-size: var(--fs-lead);
   text-align: right;
   color: #e2e8f0;
@@ -1334,7 +1334,7 @@
 .screens-accuracy-bar-fill {
   height: 100%;
   border-radius: 999px;
-  background: currentColor;
+  background: currentcolor;
   transition: width 600ms ease-out;
 }
 
@@ -1472,7 +1472,7 @@
 }
 
 .hud-gauge-notch.is-lit {
-  background: currentColor;
+  background: currentcolor;
 }
 
 .screens-pact-toggle {

@@ -22,7 +22,7 @@ A consequence-driven RPG typing game. You play as Agent Nox, a field hacker tryi
 - **Operator Record:** the last 60 runs, WPM trend, accuracy, streak, and next training target stay locally on the device. Runs taken under a Pact are marked with what they demanded, so a hard-won clear reads as one.
 - **The campaign is the drill:** weak keys and letter pairs are learned locally from aggregate timing/error counts, then seeded into the story the generator writes for you — so you practise what you actually fumble without leaving the mission. They also power standalone drills.
 
-  Only the letter pairs themselves (`th`, `br`, …) are sent, and only to the story generator, as a soft preference it is told to ignore when a sentence has no natural home for them. Typed text is never stored and never sent anywhere.
+  Only the letters and letter pairs themselves (`q`, `th`, `br`, …) are sent, and only to the story generator, as a soft preference it is told to ignore when a sentence has no natural home for them. Typed text is never stored and never sent anywhere.
 - **Player challenges:** Daily Sector results can be shared as a same-sector score target.
 - **Perk market expanded:** new run perks and permanent hardware upgrades support Focus Mode, evidence gain, breach rewards, and error recovery.
 - **The Pact:** opt into a harder run — a hot start, no forgiven typos, near-perfect accuracy for the clean branch, case sensitivity, a 35% faster trace — and it pays for itself in credits and XP, up to 2.25x. It is the one progression axis that raises the bar instead of lowering it, and it is where a fast typist goes once the ordinary run stops asking anything.

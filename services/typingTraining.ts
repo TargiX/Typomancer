@@ -213,7 +213,10 @@ export const getTrainingFocusTokens = (
   minAttempts = 6
 ): string[] => {
   const isLetters = (token: string) => /^[\p{Letter}]+$/u.test(token);
-  return getWeakPatterns(profile, limit * 3)
+  // Rank the full bounded profile first: truncating to limit * 3 up front let
+  // one- and two-attempt noise occupy every candidate slot and starve the real
+  // weak patterns ranked below them.
+  return getWeakPatterns(profile, MAX_PATTERN_STATS * 2)
     .filter((stat) => stat.attempts >= minAttempts)
     .map((stat) => stat.token.toLowerCase())
     .filter((token) => token.length > 0 && token.length <= 2 && isLetters(token))

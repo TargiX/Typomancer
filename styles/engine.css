@@ -131,7 +131,7 @@
 .engine-skill-briefing-card strong {
   display: block;
   margin-top: 17px;
-  font-family: 'Rajdhani', sans-serif;
+  font-family: Rajdhani, sans-serif;
   font-size: var(--fs-title);
   color: #f8fafc;
 }
@@ -153,7 +153,7 @@
   border: 1px solid rgba(52, 211, 153, 0.42);
   background: rgba(52, 211, 153, 0.1);
   color: #a7f3d0;
-  font-family: 'Rajdhani', sans-serif;
+  font-family: Rajdhani, sans-serif;
   font-weight: 700;
   letter-spacing: 0.08em;
   clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
@@ -316,8 +316,20 @@ button.engine-cursor-skill:disabled {
     padding: 2px 5px;
   }
 
+  /* Hover tooltips are meaningless on touch, so they stay hidden — but the
+     first-unlock introduction is the only place a mobile player is ever told
+     what a protocol does, and hiding it left them a key with no explanation. */
   .engine-cursor-skill-effect {
     display: none;
+  }
+
+  .engine-cursor-skill--introducing .engine-cursor-skill-effect {
+    display: block;
+    position: static;
+    max-width: none;
+    margin-top: 4px;
+    transform: none;
+    white-space: normal;
   }
 }
 

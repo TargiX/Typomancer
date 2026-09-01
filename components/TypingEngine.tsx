@@ -239,7 +239,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const comboTierRef = useRef(0);
   /** Combo shields spent this round, and whether one is currently absorbing a break. */
   const comboShieldsUsedRef = useRef(0);
-  const keepComboRef = useRef(false);
   /** Live combo for the animation frame, which cannot read state directly. */
   const comboRef = useRef(0);
   const [missionState, setMissionState] = useState<MissionState>(() => normalizeMissionState(missionSeed));
@@ -664,7 +663,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       segmentFirstKeyAtRef.current = null;
       tracerCaughtAtRef.current = null;
       comboShieldsUsedRef.current = 0;
-      keepComboRef.current = false;
   }, [activeSegment]);
 
   // Combo survives across segments, so the streak advantage must follow it rather
@@ -735,7 +733,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           // A finished line is out of the tracer's reach: the caret only sits at the
           // end because the player already won the race down it.
           const lineComplete = inputLengthRef.current >= activeSegment.text.length;
-          if (!lineComplete && isTracerCaught(tracerRef.current, inputLengthRef.current)) {
+          if (!lineComplete && !gameOverTriggeredRef.current
+              && isTracerCaught(tracerRef.current, inputLengthRef.current)) {
               handleTracerCatch();
           }
           frame = requestAnimationFrame(step);
@@ -1019,18 +1018,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
              setInputValue(val);
              return;
          }
-         // A combo shield keeps the streak alive but charges the Energy you would
-         // otherwise spend on a protocol. The mistake still counts.
-         if (
-             modifiers.comboShields > 0
-             && comboShieldsUsedRef.current < modifiers.comboShields
-             && overclockCharge >= modifiers.comboShieldCost
-         ) {
-             comboShieldsUsedRef.current += 1;
-             setOverclockCharge(c => Math.max(0, c - modifiers.comboShieldCost));
-             keepComboRef.current = true;
-             triggerShieldEffect();
-         }
          const forgivenessBudget = modifiers.mistakeGraceCount + (isOverclockActive ? modifiers.focusMistakeForgiveness : 0);
          if (forgivenMistakesRef.current < forgivenessBudget) {
              forgivenMistakesRef.current += 1;
@@ -1040,8 +1027,15 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
              const newMistakes = mistakesInSegment + 1;
              audioEngine.keyError();
              setMistakesInSegment(newMistakes);
-             if (keepComboRef.current) {
-                 keepComboRef.current = false;
+             // Only a mistake that would actually break the streak can buy a
+             // shield against it. The mistake still counts either way.
+             const canShield = modifiers.comboShields > 0
+                 && comboShieldsUsedRef.current < modifiers.comboShields
+                 && overclockCharge >= modifiers.comboShieldCost;
+             if (canShield) {
+                 comboShieldsUsedRef.current += 1;
+                 setOverclockCharge(c => Math.max(0, c - modifiers.comboShieldCost));
+                 triggerShieldEffect();
              } else {
                  comboTierRef.current = 0;
                  setCombo(0);
@@ -1157,6 +1151,11 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   };
 
   const triggerGameOver = (finalHealth: number, totalErrorsOverride?: number) => {
+    // A fatal tracer catch left this unlatched: health stayed at 0, the stun
+    // expired, the tracer caught the caret again and the parent received several
+    // run-completion callbacks for one death.
+    if (gameOverTriggeredRef.current) return;
+    gameOverTriggeredRef.current = true;
     if (timerRef.current) clearInterval(timerRef.current);
     if (overclockTimerRef.current) clearTimeout(overclockTimerRef.current);
     if (forkRevealTimerRef.current) clearTimeout(forkRevealTimerRef.current);
@@ -1179,8 +1178,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   };
 
   useEffect(() => {
-    if (tracePercent < 100 || gameOverTriggeredRef.current) return;
-    gameOverTriggeredRef.current = true;
+    if (tracePercent < 100) return;
     triggerGameOver(0);
   }, [tracePercent]);
 

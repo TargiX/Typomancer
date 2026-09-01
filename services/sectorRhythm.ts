@@ -60,7 +60,8 @@ export const getRoundShape = (round: number, sectorRounds: number, level = 1): R
   // The opening round is always the gentlest, whatever the sector length. Its job
   // — let the player find the rhythm before anything closes in — does not go away
   // just because there are fewer rounds to spread the curve across.
-  const position = safeRound === 1 ? 0 : safeRound / totalRounds;
+  // Final round first: a one-round sector is its own climax, and it also opens.
+  const position = safeRound === totalRounds ? 1 : safeRound === 1 ? 0 : safeRound / totalRounds;
   const template = CURVE.find((entry) => position <= entry.upTo) ?? CURVE[CURVE.length - 1];
 
   return {
