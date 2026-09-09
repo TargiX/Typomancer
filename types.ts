@@ -57,6 +57,8 @@ export interface MissionState {
 }
 
 export interface StorySegment {
+  /** Trusted authored mission event, never populated from generated prose. */
+  missionBeat?: 'relay-camera' | 'relay-cover' | 'relay-upload';
   text: string;
   mood: StoryMood;
   type: SegmentType;
