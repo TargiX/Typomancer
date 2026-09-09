@@ -1,3 +1,4 @@
+import { LAST_RELAY, RELAY_SECTORS, isLastRelay, getRelayStart, getRelaySummary, getRelayEnding } from './services/lastRelay';
 import React, { useState, useEffect, useRef, useMemo, useCallback} from 'react';
 import { GameState, StorySegment, GameStats, StoryLogItem, UserProfile, Perk, GameModifiers, LevelReport, UserUpgrades, StoryMood, SegmentType, Language, MissionState, ComicFrame, StoryGenreId } from './types';
 import { generateStoryStart, generateCharacterProfile, generateLevelSummary, generateNextLevelStart } from './services/geminiService';
@@ -1048,6 +1049,7 @@ const App: React.FC = () => {
     const eventContext = getAnalyticsContext();
     captureProductEvent('typomancer_run_completed', {
       ...eventContext,
+      mission: isLastRelay(campaignState) ? 'last_relay' : (isDailyRunRef.current ? 'daily' : 'campaign'),
       daily: isDailyRunRef.current,
       genre: runGenreRef.current,
       level: stats.level,
@@ -1132,7 +1134,8 @@ const App: React.FC = () => {
                 consume();
             }
         } else if (gameState === GameState.MENU) {
-            if (e.key === '1' || e.key === 'Enter') { initializeSession(); consume(); }
+            if (e.key === '1') { initializeSession(); consume(); }
+            if (e.key === '5' || e.key === 'Enter') { initializeRelay(); consume(); }
             if (e.key === '2') { setGameState(GameState.BLACK_MARKET); consume(); }
             if (e.key === '3' && !dailyAttemptsExhausted) { initializeDailySession(); consume(); }
             if (e.key === '4') { setGameState(GameState.OPERATOR_RECORD); consume(); }
@@ -1335,6 +1338,30 @@ const App: React.FC = () => {
       audioEngine.unlock();
   };
 
+  const initializeRelay = () => {
+      clearRunCheckpoint();
+      setRunCheckpoint(null);
+      prepareSession();
+      const mission = { ...openingMission, flags: [...openingMission.flags, LAST_RELAY] };
+      setCampaignState(mission);
+      setSelectedGenre('cyberpunk');
+      runGenreRef.current = 'cyberpunk';
+      setIsDailyRun(false);
+      isDailyRunRef.current = false;
+      setCurrentDailyId(null);
+      currentDailyIdRef.current = null;
+      setCurrentDailyDateLabel(null);
+      setInitialSegment(getRelayStart(1, language, mission));
+      setCharacterDesc('Agent Nox and Mira, a courier in a yellow raincoat carrying a witness key');
+      setGameState(GameState.PLAYING);
+      audioEngine.unlock();
+      captureProductEvent('typomancer_run_started', {
+          ...getAnalyticsContext(), daily: false, genre: 'cyberpunk', mission: 'last_relay',
+          preset: adaptiveDifficulty.preset, run_number: playerProgress.runs.length + 1,
+          returning_player: playerProgress.runs.length > 0
+      });
+  };
+
   const resumeSession = async () => {
       const checkpoint = loadRunCheckpoint();
       if (!checkpoint) {
@@ -1376,6 +1403,7 @@ const App: React.FC = () => {
           ...getAnalyticsContext(),
           daily: false,
           genre: checkpoint.genre,
+          mission: isLastRelay(checkpoint.mission) ? 'last_relay' : 'campaign',
           preset: adaptiveDifficulty.preset,
           run_number: playerProgress.runs.length + 1,
           returning_player: playerProgress.runs.length > 0,
@@ -1383,7 +1411,9 @@ const App: React.FC = () => {
       });
 
       try {
-          const nextStart = await generateNextLevelStart(
+          const nextStart = isLastRelay(checkpoint.mission)
+            ? getRelayStart(checkpoint.nextLevel, language, checkpoint.mission)
+            : await generateNextLevelStart(
               checkpoint.nextLevel,
               checkpoint.narrativeContext,
               language,
@@ -1550,6 +1580,7 @@ const App: React.FC = () => {
 
   const getEndingTitle = (report: LevelReport): string => {
       const mission = report.mission || campaignState;
+      if (isLastRelay(mission)) return getRelayEnding(mission, language).title;
       if (mission.evidence >= 55 && mission.heat < 55 && mission.trust >= 45) {
           return worldSkin.endings.ghost[language];
       }
@@ -1610,7 +1641,7 @@ const App: React.FC = () => {
           route: mission.route
       };
 
-      const isFinal = isDailyRunRef.current || finalRoundStats.level >= CAMPAIGN_FINAL_LEVEL;
+      const isFinal = isDailyRunRef.current || finalRoundStats.level >= (isLastRelay(mission) ? RELAY_SECTORS : CAMPAIGN_FINAL_LEVEL);
       const upgradeOptions = isFinal ? [] : getUpgradeOptions(performanceRating);
       setLastLevelReport(report);
       if (isFinal) {
@@ -1623,7 +1654,9 @@ const App: React.FC = () => {
           setGameState(GameState.LEVEL_COMPLETE);
       }
 
-      const summary = await generateLevelSummary(finalRoundStats.level, report, storyLog.map(l => l.text).join(" "), language, runGenreRef.current);
+      const summary = isLastRelay(mission)
+        ? getRelaySummary(finalRoundStats.level, mission, language)
+        : await generateLevelSummary(finalRoundStats.level, report, storyLog.map(l => l.text).join(" "), language, runGenreRef.current);
       const completedReport = { ...report, narrativeSummary: summary, endingTitle: getEndingTitle({ ...report, narrativeSummary: summary }) };
       setNarrativeContext(summary);
       addToLog(`[${UI.level.toUpperCase()} ${finalRoundStats.level} ${UI.seq_complete}]: ${summary}`, 'neutral', 0, 0, 0, `${UI.evidence}: ${mission.evidence} · ${UI.heat}: ${mission.heat}%`);
@@ -1671,7 +1704,9 @@ const App: React.FC = () => {
       setCurrentLevel(nextLvl);
       setLevelBuffer([]);
       try {
-          const nextStartSegment = await generateNextLevelStart(nextLvl, narrativeContext, language, campaignState, runGenreRef.current);
+          const nextStartSegment = isLastRelay(campaignState)
+            ? getRelayStart(nextLvl, language, campaignState)
+            : await generateNextLevelStart(nextLvl, narrativeContext, language, campaignState, runGenreRef.current);
           setInitialSegment(nextStartSegment);
           setGameState(GameState.PLAYING);
         } catch (e) {
@@ -1744,6 +1779,7 @@ const App: React.FC = () => {
       const eventContext = getAnalyticsContext();
       captureProductEvent('typomancer_run_completed', {
           ...eventContext,
+          mission: isLastRelay(campaignState) ? 'last_relay' : 'campaign',
           daily: false,
           genre: runGenreRef.current,
           level: lastLevelReport.level,
@@ -2082,7 +2118,7 @@ const App: React.FC = () => {
              style={{ backgroundImage: 'linear-gradient(#334155 1px, transparent 1px), linear-gradient(90deg, #334155 1px, transparent 1px)', backgroundSize: '40px 40px' }}>
         </div>
 
-        <div className="flex-1 min-h-0 flex items-center justify-center p-2 sm:p-6 relative z-10">
+        <div className={`flex-1 min-h-0 flex justify-center p-2 sm:p-6 relative z-10 ${gameState === GameState.MENU ? 'items-start overflow-y-auto' : 'items-center'}`}>
             {gameState === GameState.MENU && (
                 <div className="text-center space-y-7 max-w-md animate-fade-in-up">
                     <div className="space-y-5">
@@ -2094,6 +2130,15 @@ const App: React.FC = () => {
                         </p>
                     </div>
                     <div className="flex flex-col gap-3.5">
+                        <button onClick={initializeRelay} className="btn-cyber btn-cyber-primary px-8 py-4 font-display font-bold tracking-[0.06em] text-[#04120b] flex items-center justify-center gap-3">
+                            <span className="keycap">5</span>
+                            <span>{language === 'ru' ? 'ПОСЛЕДНИЙ КАНАЛ' : 'THE LAST RELAY'}</span>
+                        </button>
+                        <p className="px-3 fs-label leading-relaxed text-slate-400">
+                            {language === 'ru'
+                                ? 'Мира заперта. Улики готовы. Один канал ещё работает. Два сектора, два решения — начни сразу.'
+                                : 'Mira is locked inside. The evidence is ready. One channel still works. Two sectors, two choices — start immediately.'}
+                        </p>
                         {incomingChallenge && (
                             <div className={`screens-cut-card border p-4 text-left ${isCurrentChallenge ? 'border-amber-400/35 bg-amber-400/[0.06]' : 'border-white/10 bg-white/[0.02]'}`}>
                                 <div className="fs-micro font-bold uppercase tracking-[0.2em] text-amber-300">{UI.challenge_title}</div>
@@ -2116,7 +2161,7 @@ const App: React.FC = () => {
                         )}
                         <button
                             onClick={initializeSession}
-                            className={`${runCheckpoint ? 'btn-cyber btn-cyber-ghost text-emerald-200' : 'btn-cyber btn-cyber-primary text-[#04120b]'} px-8 py-4 font-display font-bold tracking-[0.06em] flex items-center justify-center gap-3`}
+                            className={`btn-cyber btn-cyber-ghost text-emerald-200 px-8 py-4 font-display font-bold tracking-[0.06em] flex items-center justify-center gap-3`}
                         >
                             <span className="keycap">1</span>
                             <span>{stripKeyHint(UI.init_link)}</span>
@@ -2570,11 +2615,11 @@ const App: React.FC = () => {
                 <div className="screens-cut-panel w-full max-w-3xl bg-[#0b101a]/95 p-10 border border-emerald-400/35 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_60px_rgba(16,185,129,0.12)] animate-fade-in-up">
                     <div className="text-center border-b border-white/[0.07] pb-6 mb-6">
                         <div className="screens-cut-chip inline-block px-3 py-1 bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 fs-micro uppercase tracking-[0.2em] mb-4">
-                            {genrePack.ui.victoryTitle[language]}
+                            {isLastRelay(victoryReport.mission) ? (language === 'ru' ? 'ОПЕРАЦИЯ ЗАВЕРШЕНА' : 'OPERATION COMPLETE') : genrePack.ui.victoryTitle[language]}
                         </div>
                         <h2 className="font-display text-4xl font-bold text-white mb-3 tracking-tight">{victoryReport.endingTitle}</h2>
                         <p className="text-slate-300 fs-lead italic">"{victoryReport.narrativeSummary}"</p>
-                        <p className="text-slate-500 fs-body mt-3">{UI.victory_subtitle}</p>
+                        <p className="text-slate-500 fs-body mt-3">{isLastRelay(victoryReport.mission) ? (language === 'ru' ? 'Операция завершена. Судьба Миры и улик зависит от твоих действий.' : 'Operation complete. Your actions decided what happened to Mira and the evidence.') : UI.victory_subtitle}</p>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6">
                         <div className="screens-stat-tile p-4 text-center border border-emerald-400/15 bg-emerald-400/[0.025]"><div className="font-display text-3xl font-bold text-emerald-300 tabular-nums leading-none">{victoryReport.mission?.evidence ?? campaignState.evidence}</div><div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.evidence}</div></div>
