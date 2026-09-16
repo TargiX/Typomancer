@@ -81,6 +81,24 @@ test('event sanitizer drops raw text and unknown properties', () => {
   });
 });
 
+test('ai request telemetry keeps only kind and outcome', () => {
+  const safe = sanitizeEventProperties('typomancer_ai_request', {
+    kind: 'image',
+    ok: true,
+    prompt: 'never send this',
+    response: 'nor this'
+  });
+
+  assert.deepEqual(safe, {
+    source: 'direct',
+    medium: 'none',
+    campaign: 'none',
+    challenge: false,
+    kind: 'image',
+    ok: true
+  });
+});
+
 test('PostHog payload is anonymous and does not create a person profile', () => {
   const identity = getAnalyticsIdentity({
     storage: new MemoryStorage(),

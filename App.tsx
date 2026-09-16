@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { GameState, StorySegment, GameStats, StoryLogItem, UserProfile, Perk, GameModifiers, LevelReport, UserUpgrades, StoryMood, SegmentType, Language, MissionState, ComicFrame, StoryGenreId } from './types';
 import { generateStoryStart, generateCharacterProfile, generateLevelSummary, generateNextLevelStart } from './services/geminiService';
 import { GENRE_ORDER, getGenrePack } from './services/genreConfig';
@@ -229,12 +229,17 @@ const App: React.FC = () => {
           : DEFAULT_BRANCH_THRESHOLDS
   ), [activePact]);
 
-  const handleTogglePactClause = useCallback((id: PactClauseId) => {
+  const handleTogglePactClause = (id: PactClauseId) => {
       setUserProfile(prev => {
           const pact = togglePactClause(normalizePact(prev.pact), id);
+          captureProductEvent('typomancer_pact_toggled', {
+              ...getAnalyticsContext(),
+              clause: id,
+              active: pact.includes(id)
+          });
           return { ...prev, pact, strictCase: pact.includes('strict_case') };
       });
-  }, []);
+  };
 
   // The pace the game measures the player at, tracking real runs rather than the
   // one calibration prompt they typed on their first day.
@@ -255,6 +260,22 @@ const App: React.FC = () => {
     landingTrackedRef.current = true;
     captureProductEvent('typomancer_landing_viewed', getAnalyticsContext());
   }, []);
+
+  // A tab closing mid-run is the only abandon signal available without a server
+  // session; keepalive in captureProductEvent survives the unload.
+  useEffect(() => {
+    const onPageHide = () => {
+        if (gameState !== GameState.PLAYING) return;
+        captureProductEvent('typomancer_run_abandoned', {
+            ...getAnalyticsContext(),
+            daily: isDailyRun,
+            level: currentLevel,
+            run_number: playerProgress.runs.length + 1
+        });
+    };
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, [gameState, isDailyRun, currentLevel, playerProgress.runs.length]);
 
   useEffect(() => {
     if (!incomingChallenge || challengeTrackedRef.current) return;

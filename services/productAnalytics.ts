@@ -16,7 +16,9 @@ export type ProductEventName =
   | 'typomancer_drill_completed'
   | 'typomancer_challenge_opened'
   | 'typomancer_challenge_shared'
-  | 'typomancer_ai_request';
+  | 'typomancer_ai_request'
+  | 'typomancer_pact_toggled'
+  | 'typomancer_run_abandoned';
 
 export interface CampaignAttribution {
   source: string;
@@ -88,7 +90,13 @@ const EVENT_PROPERTY_ALLOWLIST: Record<ProductEventName, readonly string[]> = {
   typomancer_challenge_shared: [...COMMON_PROPERTIES, 'daily', 'outcome', 'target_score_bucket'],
   // Spend telemetry: counts proxy calls by kind/outcome so AI cost per run is
   // measurable without ever sending prompts or responses.
-  typomancer_ai_request: [...COMMON_PROPERTIES, 'kind', 'ok']
+  typomancer_ai_request: [...COMMON_PROPERTIES, 'kind', 'ok'],
+  // Which clause flipped and to what — the Pact is a progression bet, and this
+  // is the only way to see whether anyone takes it.
+  typomancer_pact_toggled: [...COMMON_PROPERTIES, 'clause', 'active'],
+  // pagehide during a run. A tab can come back, but this is still the best
+  // abandon signal available without a server session.
+  typomancer_run_abandoned: [...COMMON_PROPERTIES, 'daily', 'level', 'run_number']
 };
 
 const truncateToken = (value: string, fallback: string): string => {
