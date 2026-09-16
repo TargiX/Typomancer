@@ -70,6 +70,16 @@ VITE_POSTHOG_HOST=https://us.i.posthog.com
 
 Analytics is disabled when the token is absent. Events use a random local anonymous ID, do not create person profiles, and accept only allowlisted aggregate properties. Prompts, generated story text, and typed text are never included.
 
+## Optional crash reporting
+
+Set a public Sentry DSN to report unhandled render crashes:
+
+```bash
+VITE_SENTRY_DSN=your_public_dsn
+```
+
+Crash reporting is disabled when the DSN is absent, and the SDK is not bundled into the entry chunk — it is lazy-loaded only when configured. No PII or typed text is attached.
+
 ## Build
 
 ```bash

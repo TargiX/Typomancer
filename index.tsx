@@ -3,6 +3,9 @@ import ReactDOM from 'react-dom/client';
 import { initBotId } from 'botid/client/core';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
+import { initErrorReporting } from './services/errorReporting';
+
+initErrorReporting();
 
 if (import.meta.env.PROD) {
   initBotId({

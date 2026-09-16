@@ -1,4 +1,5 @@
 import React from 'react';
+import { captureError } from '../services/errorReporting';
 
 interface ErrorBoundaryProps {
     children?: React.ReactNode;
@@ -24,6 +25,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
 
     componentDidCatch(error: unknown) {
         console.error('App crash', error);
+        captureError(error);
     }
 
     render() {
