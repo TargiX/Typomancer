@@ -81,6 +81,22 @@ Restore into a disposable, isolated PostgreSQL 18 instance using
 Never run a restore rehearsal against the live database. Restore to production
 requires stopping writers, backing up the current state, and explicit approval.
 
+### Deployment verification (2026-09-16)
+
+- The Coolify backend is deployed from `Dockerfile.progress` and serves a healthy
+  HTTPS `/health`; anonymous progress reads return 401.
+- Daily backups are enabled for the application DB (02:15 UTC) and the Coolify
+  instance DB (02:45 UTC), each retaining 7 local backups.
+- An application dump was restored with `--exit-on-error` into an isolated
+  PostgreSQL 18 container with no network. All seven application/auth tables
+  were present. This first rehearsal verified the schema, before real users.
+- Private R2 bucket `apps-server-backups` exists in the EU jurisdiction. Uploads
+  are **not configured yet**: a bucket-scoped credential still needs approval.
+- Vercel OG functions use a plain `.ts` entrypoint and `React.createElement`.
+  A `.tsx` entrypoint was incorrectly loaded as CommonJS, and a `.js` import of
+  a `.tsx` renderer was not traced. A deployed preview now returns a real
+  1200x630 PNG; local rendering tests alone did not catch this packaging issue.
+
 ## Verification
 
 - `pnpm test`, `pnpm typecheck`, `pnpm build`.

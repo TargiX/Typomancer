@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import handler from '../api/og.tsx';
+import handler from '../api/og.ts';
 
 test('Node OG endpoint renders packaged fonts to a 1200×630 PNG in both languages', async () => {
   for (const language of ['en', 'ru']) {
