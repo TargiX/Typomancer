@@ -4,6 +4,7 @@ import type { UITranslations } from '../../services/i18n';
 import type { GenrePack } from '../../services/genreConfig';
 import type { ChallengeVerdict, TypomancerChallenge } from '../../services/challenge';
 import { stripKeyHint } from '../../services/text';
+import { isLastRelay } from '../../services/lastRelay';
 import ChallengeVerdictCard from '../ChallengeVerdictCard';
 
 interface VictoryScreenProps {
@@ -42,11 +43,19 @@ const VictoryScreen: React.FC<VictoryScreenProps> = ({
     <div className="screens-cut-panel w-full max-w-3xl bg-[#0b101a]/95 p-10 border border-emerald-400/35 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_60px_rgba(16,185,129,0.12)] animate-fade-in-up">
         <div className="text-center border-b border-white/[0.07] pb-6 mb-6">
             <div className="screens-cut-chip inline-block px-3 py-1 bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 fs-micro uppercase tracking-[0.2em] mb-4">
-                {genrePack.ui.victoryTitle[language]}
+                {isLastRelay(report.mission)
+                    ? (language === 'ru' ? 'ОПЕРАЦИЯ ЗАВЕРШЕНА' : 'OPERATION COMPLETE')
+                    : genrePack.ui.victoryTitle[language]}
             </div>
             <h2 className="font-display text-4xl font-bold text-white mb-3 tracking-tight">{report.endingTitle}</h2>
             <p className="text-slate-300 fs-lead italic">"{report.narrativeSummary}"</p>
-            <p className="text-slate-500 fs-body mt-3">{ui.victory_subtitle}</p>
+            <p className="text-slate-500 fs-body mt-3">
+                {isLastRelay(report.mission)
+                    ? (language === 'ru'
+                        ? 'Операция завершена. Судьба Миры и улик зависит от твоих действий.'
+                        : 'Operation complete. Your actions decided what happened to Mira and the evidence.')
+                    : ui.victory_subtitle}
+            </p>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6">
             <div className="screens-stat-tile p-4 text-center border border-emerald-400/15 bg-emerald-400/[0.025]"><div className="font-display text-3xl font-bold text-emerald-300 tabular-nums leading-none">{report.mission?.evidence ?? fallbackMission.evidence}</div><div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{ui.evidence}</div></div>

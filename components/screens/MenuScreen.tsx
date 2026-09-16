@@ -32,6 +32,7 @@ interface MenuScreenProps {
     onPactOpened?: () => void;
     canInstall?: boolean;
     onInstall?: () => void;
+    onRelay: () => void;
     onInitialize: () => void;
     onDaily: () => void;
     onResume: () => void;
@@ -58,6 +59,7 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
     onPactOpened,
     canInstall,
     onInstall,
+    onRelay,
     onInitialize,
     onDaily,
     onResume,
@@ -88,6 +90,18 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                 )}
             </div>
             <div className="flex flex-col gap-3.5">
+                <button
+                    onClick={onRelay}
+                    className="btn-cyber btn-cyber-primary px-8 py-4 font-display font-bold tracking-[0.06em] text-[#04120b] flex items-center justify-center gap-3"
+                >
+                    <span className="keycap">5</span>
+                    <span>{language === 'ru' ? 'ПОСЛЕДНИЙ КАНАЛ' : 'THE LAST RELAY'}</span>
+                </button>
+                <p className="px-3 fs-label leading-relaxed text-slate-400">
+                    {language === 'ru'
+                        ? 'Мира заперта. Улики готовы. Один канал ещё работает. Два сектора, два решения — начни сразу.'
+                        : 'Mira is locked inside. The evidence is ready. One channel still works. Two sectors, two choices — start immediately.'}
+                </p>
                 {incomingChallenge && (
                     <div className={`screens-cut-card border p-4 text-left ${isCurrentChallenge ? 'border-amber-400/35 bg-amber-400/[0.06]' : 'border-white/10 bg-white/[0.02]'}`}>
                         <div className="fs-micro font-bold uppercase tracking-[0.2em] text-amber-300">{ui.challenge_title}</div>
@@ -110,7 +124,7 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                 )}
                 <button
                     onClick={onInitialize}
-                    className={`${runCheckpoint ? 'btn-cyber btn-cyber-ghost text-emerald-200' : 'btn-cyber btn-cyber-primary text-[#04120b]'} px-8 py-4 font-display font-bold tracking-[0.06em] flex items-center justify-center gap-3`}
+                    className="btn-cyber btn-cyber-ghost text-emerald-200 px-8 py-4 font-display font-bold tracking-[0.06em] flex items-center justify-center gap-3"
                 >
                     <span className="keycap">1</span>
                     <span>{stripKeyHint(ui.init_link)}</span>

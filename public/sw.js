@@ -33,8 +33,10 @@ self.addEventListener('fetch', (event) => {
         event.respondWith(
             fetch(request)
                 .then((response) => {
-                    const copy = response.clone();
-                    caches.open(CACHE).then((cache) => cache.put(request, copy));
+                    if (response.ok) {
+                        const copy = response.clone();
+                        event.waitUntil(caches.open(CACHE).then((cache) => cache.put(request, copy)));
+                    }
                     return response;
                 })
                 .catch(() => caches.match(request).then((hit) => hit || caches.match('/')))
@@ -50,7 +52,10 @@ self.addEventListener('fetch', (event) => {
                     caches.open(CACHE).then((cache) => cache.put(request, copy));
                 }
                 return response;
-            }).catch(() => hit);
+            }).catch(() => hit || new Response('', {
+                status: 503,
+                statusText: 'Offline'
+            }));
             return hit || refresh;
         })
     );

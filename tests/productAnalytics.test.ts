@@ -153,3 +153,12 @@ test('capture is provider-gated and posts only the anonymous allowlisted payload
   assert.equal(requests[0].body.includes('private'), false);
   assert.equal(requests[0].body.includes('anonymous-2'), true);
 });
+
+ test('authored mission attribution survives start and completion sanitization without story text', () => {
+  for (const event of ['typomancer_run_started', 'typomancer_run_completed'] as const) {
+    const payload = sanitizeEventProperties(event, { mission: 'last_relay', story: 'Mira is trapped', typed_text: 'secret' });
+    assert.equal(payload.mission, 'last_relay');
+    assert.equal('story' in payload, false);
+    assert.equal('typed_text' in payload, false);
+  }
+});

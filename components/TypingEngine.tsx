@@ -1,3 +1,4 @@
+import { RELAY_SECTORS, isLastRelay, getRelayBranch, getRelayDecision, getRelayBeatImpact } from '../services/lastRelay';
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from 'react';
 import { StorySegment, BranchingStory, GameStats, StoryMood, GameModifiers, SegmentType, DecisionPoint, Language, MissionState, DecisionImpact, ComicFrame, StoryGenreId } from '../types';
 import {
@@ -284,6 +285,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const firewallGraceRef = useRef(0);
   const [firewallGrace, setFirewallGrace] = useState(0);
   const [showSkillBriefing, setShowSkillBriefing] = useState(() => {
+    // The authored opening teaches in context through the existing caret cues.
+    if (isLastRelay(missionSeed)) return false;
     try {
       return window.localStorage.getItem(SKILL_BRIEFING_STORAGE_KEY) !== '1';
     } catch {
@@ -636,6 +639,13 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   useEffect(() => {
     let isMounted = true;
     const fetchImage = async () => {
+        if (isLastRelay(missionRef.current)) {
+            const image = '/assets/worlds/cyberpunk.png';
+            setCurrentImage(image);
+            currentImageRef.current = image;
+            setIsImageLoading(false);
+            return;
+        }
         setIsImageLoading(true);
         const isStoryBeat = round === 1 || round === DECISION_ROUND + 1 || round === SECTOR_ROUNDS;
         const base64 = await generateSceneImage(activeSegment.text, characterDescription, genre, isStoryBeat);
@@ -802,12 +812,16 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       if (round >= SECTOR_ROUNDS) return;
       try {
         if (nextRound === DECISION_ROUND) {
-             const decision = deterministicStory
+             const decision = isLastRelay(missionRef.current)
+               ? getRelayDecision(currentLevel, language, missionRef.current)
+               : deterministicStory
                ? getDeterministicStrategicDecision(genre, language, currentLevel, missionRef.current)
                : await generateStrategicDecision(context, currentLevel, language, missionRef.current, genre);
              if (isMounted) setNextDecision(decision);
         } else {
-             const branch = deterministicStory
+             const branch = isLastRelay(missionRef.current)
+               ? getRelayBranch(nextLevel, nextRound, language, missionRef.current)
+               : deterministicStory
                ? getDeterministicStoryBranch(genre, nextLevel, nextRound, language, missionRef.current)
                : await generateNextSegments(context, nextLevel, nextRound, language, prevLevelSummary, missionRef.current, genre, trainingFocusRef.current);
              if (isMounted) setNextBranch(branch);
@@ -1000,9 +1014,11 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           evidenceDelta += 1;
       }
 
+      const eventImpact = getRelayBeatImpact(missionRef.current, segment, performance);
+      traceDelta += eventImpact.trace || 0;
       const meta = `${UI.evidence} ${evidenceDelta >= 0 ? '+' : ''}${evidenceDelta} · ${UI.heat} ${heatDelta >= 0 ? '+' : ''}${heatDelta}% · ${UI.trust} ${trustDelta >= 0 ? '+' : ''}${trustDelta}`;
       commitMission(
-          { heat: heatDelta, trust: trustDelta, evidence: evidenceDelta },
+          { heat: heatDelta, trust: trustDelta, evidence: evidenceDelta, flag: eventImpact.flag },
           describeSegmentBeat(segment.text, performance, language)
       );
       setTracePercent(p => clamp(p + traceDelta));
@@ -1127,6 +1143,26 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
 
   const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     applyInputValue(e.target.value);
+  };
+
+  const settleRelayDecisionLeadIn = () => {
+      if (!isLastRelay(missionRef.current)) return;
+      const wpm = Math.round((activeSegment.text.length / 5) / (Math.max(1, Date.now() - startTime) / 60000));
+      const { totalErrors } = getErrorReport();
+      const performance = getBranchPerformance(totalErrors, activeSegment.text.length, branchThresholds);
+      const reward = { errors: totalErrors, type: activeSegment.type, wpm,
+          overclock: isOverclockActive, breachMultiplier: modifiers.breachRewardMultiplier,
+          comboMultiplier, creditMultiplier: modifiers.creditMultiplier };
+      const outcome = applySegmentOutcome(performance, totalErrors, wpm, activeSegment);
+      setCredits(c => c + calculateSegmentCredits(reward));
+      const healing = (totalErrors === 0 ? 1 + modifiers.perfectLineHealth : 0)
+          + (modifiers.healthRegenWpmThreshold > 0 && wpm > modifiers.healthRegenWpmThreshold ? modifiers.healthRegenAmount : 0);
+      if (healing > 0) setHealth(h => Math.min(modifiers.maxHealth, h + healing));
+      setTotalWPM(w => w + wpm);
+      addToLog(activeSegment.text, performance, calculateSegmentScore(reward), wpm, totalErrors, outcome.meta, activeSegment.type);
+      onCaptureFrame?.({ image: currentImageRef.current, caption: activeSegment.text, performance, level: currentLevel });
+      setHistory(h => [...h, { ...activeSegment, performance }]);
+      audioEngine.segmentClear(performance);
   };
 
   const handleDecisionSelect = (index: number) => {
@@ -1262,6 +1298,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         if (nextDecision && round + 1 === DECISION_ROUND) {
              transitionLockRef.current = true;
              setTimeout(() => {
+                 settleRelayDecisionLeadIn();
                  setIsDecisionActive(true);
              }, 200);
         } else if (nextBranch || round >= SECTOR_ROUNDS) {
@@ -1309,15 +1346,17 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     if (healthChange > 0) setHealth(h => Math.min(modifiers.maxHealth, h + healthChange));
 
     const performanceType = getBranchPerformance(totalErrors, activeSegment.text.length, branchThresholds);
-    const nextSeg: StorySegment = performanceType === 'good'
-        ? branch.goodPath
-        : performanceType === 'average'
-            ? branch.mediumPath
-            : branch.badPath;
-
     const outcome = applySegmentOutcome(performanceType, totalErrors, wpm, activeSegment);
+    const resolvedBranch = isLastRelay(missionRef.current)
+      ? getRelayBranch(currentLevel, round + 1, language, missionRef.current)
+      : branch;
+    const nextSeg: StorySegment = performanceType === 'good'
+        ? resolvedBranch.goodPath
+        : performanceType === 'average'
+            ? resolvedBranch.mediumPath
+            : resolvedBranch.badPath;
     audioEngine.segmentClear(performanceType);
-    setForkReveal(buildForkReveal(branch, performanceType, totalErrors));
+    setForkReveal(isLastRelay(missionRef.current) ? null : buildForkReveal(branch, performanceType, totalErrors));
     if (forkRevealTimerRef.current) clearTimeout(forkRevealTimerRef.current);
     forkRevealTimerRef.current = window.setTimeout(() => setForkReveal(null), FORK_REVEAL_MS);
     addToLog(activeSegment.text, performanceType, segmentScore, wpm, totalErrors, outcome.meta, activeSegment.type);
@@ -1603,7 +1642,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                 <div className="flex items-end gap-6">
                     <div>
                         <div className="fs-micro uppercase tracking-[0.22em] text-slate-500">{UI.level}</div>
-                        <div className="font-display mt-1 text-xl font-bold tabular-nums leading-none text-slate-100">{currentLevel}</div>
+                        <div className="font-display mt-1 text-xl font-bold tabular-nums leading-none text-slate-100">{currentLevel}{isLastRelay(missionState) && <span className="ml-1 fs-micro font-mono text-slate-600">/{RELAY_SECTORS}</span>}</div>
                     </div>
                     <div>
                         <div className="fs-micro uppercase tracking-[0.22em] text-slate-500">{UI.round}</div>

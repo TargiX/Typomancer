@@ -52,7 +52,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             <div className="screens-debrief-primary">
                 <strong>{Math.round(stats?.wpm || 0)}</strong>
                 <span>{ui.avg_speed} · {ui.wpm}</span>
-                <small>{language === 'ru' ? `Пик ${Math.round(stats?.bestWpm || 0)} СЛ/М` : `Peak ${Math.round(stats?.bestWpm || 0)} WPM`}</small>
+                <small>{ui.peak_speed.replace('{value}', String(Math.round(stats?.bestWpm || 0)))}</small>
             </div>
             <div className="screens-debrief-metric">
                 <strong>{Math.round(stats?.accuracy ?? 100)}%</strong>

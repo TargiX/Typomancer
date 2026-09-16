@@ -22,6 +22,11 @@ const PerkCard: React.FC<PerkCardProps> = ({ perk, index, onSelect, disabled = f
             ? 'border-violet-400/60 shadow-[0_0_24px_rgba(167,139,250,0.12)] hover:shadow-[0_0_32px_rgba(167,139,250,0.2)]'
             : 'border-white/10 hover:border-emerald-400/35 hover:shadow-[0_0_24px_rgba(52,211,153,0.1)]';
     const rarityColor = isLegendary ? 'text-amber-300' : isRare ? 'text-violet-300' : 'text-slate-300';
+    const rarityLabel = {
+        common: ui.rarity_common,
+        rare: ui.rarity_rare,
+        legendary: ui.rarity_legendary
+    }[perk.rarity];
 
     return (
         <button
@@ -46,7 +51,7 @@ const PerkCard: React.FC<PerkCardProps> = ({ perk, index, onSelect, disabled = f
             <div className="screens-perk-meta flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
                     <span className="keycap opacity-70 group-hover:opacity-100">{index + 1}</span>
-                    <span className={`truncate fs-micro font-bold uppercase tracking-[0.2em] ${rarityColor}`}>{perk.rarity}</span>
+                    <span className={`truncate fs-micro font-bold uppercase tracking-[0.2em] ${rarityColor}`}>{rarityLabel}</span>
                 </div>
                  <div className="flex gap-1" aria-label={`${ui.level} ${perk.tier}`}>
                      {Array.from({ length: perk.maxTier }, (_, tierIndex) => (

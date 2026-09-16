@@ -10,6 +10,11 @@ const SystemBeacon: React.FC<{ label: string }> = ({ label }) => {
     const [ping, setPing] = useState(4);
 
     useEffect(() => {
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            setText(label);
+            return;
+        }
+
         let frame = 0;
         const id = window.setInterval(() => {
             frame++;

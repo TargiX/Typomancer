@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
+import { LAST_RELAY, RELAY_SECTORS, isLastRelay, getRelayStart, getRelaySummary, getRelayEnding } from './services/lastRelay';
 import { GameState, StorySegment, GameStats, StoryLogItem, UserProfile, Perk, GameModifiers, LevelReport, UserUpgrades, StoryMood, SegmentType, Language, MissionState, ComicFrame, StoryGenreId } from './types';
 import { generateStoryStart, generateCharacterProfile, generateLevelSummary, generateNextLevelStart } from './services/geminiService';
 import { GENRE_ORDER, getGenrePack } from './services/genreConfig';
@@ -243,15 +244,13 @@ const App: React.FC = () => {
   ), [activePact]);
 
   const handleTogglePactClause = (id: PactClauseId) => {
-      setUserProfile(prev => {
-          const pact = togglePactClause(normalizePact(prev.pact), id);
-          captureProductEvent('typomancer_pact_toggled', {
-              ...getAnalyticsContext(),
-              clause: id,
-              active: pact.includes(id)
-          });
-          return { ...prev, pact, strictCase: pact.includes('strict_case') };
+      const pact = togglePactClause(activePact, id);
+      captureProductEvent('typomancer_pact_toggled', {
+          ...getAnalyticsContext(),
+          clause: id,
+          active: pact.includes(id)
       });
+      setUserProfile(prev => ({ ...prev, pact, strictCase: pact.includes('strict_case') }));
   };
 
   // The pace the game measures the player at, tracking real runs rather than the
@@ -463,6 +462,9 @@ const App: React.FC = () => {
     const eventContext = getAnalyticsContext();
     captureProductEvent('typomancer_run_completed', {
       ...eventContext,
+      mission: isLastRelay(
+        (gameState === GameState.GAME_OVER ? finalStats?.mission : victoryReport?.mission) || campaignState
+      ) ? 'last_relay' : (sessionRef.current.isDaily ? 'daily' : 'campaign'),
       daily: sessionRef.current.isDaily,
       genre: sessionRef.current.genre,
       level: stats.level,
@@ -547,7 +549,8 @@ const App: React.FC = () => {
                 consume();
             }
         } else if (gameState === GameState.MENU) {
-            if (e.key === '1' || e.key === 'Enter') { initializeSession(); consume(); }
+            if (e.key === '1') { initializeSession(); consume(); }
+            if (e.key === '5' || e.key === 'Enter') { initializeRelay(); consume(); }
             if (e.key === '2') { setGameState(GameState.BLACK_MARKET); consume(); }
             if (e.key === '3' && !dailyAttemptsExhausted) { initializeDailySession(); consume(); }
             if (e.key === '4') { setGameState(GameState.OPERATOR_RECORD); consume(); }
@@ -660,6 +663,30 @@ const App: React.FC = () => {
       audioEngine.unlock();
   };
 
+  const initializeRelay = () => {
+      clearRunCheckpoint();
+      setRunCheckpoint(null);
+      prepareSession();
+      const mission = { ...openingMission, flags: [...openingMission.flags, LAST_RELAY] };
+      setCampaignState(mission);
+      setSelectedGenre('cyberpunk');
+      sessionRef.current.genre = 'cyberpunk';
+      setIsDailyRun(false);
+      sessionRef.current.isDaily = false;
+      setCurrentDailyId(null);
+      sessionRef.current.dailyId = null;
+      setCurrentDailyDateLabel(null);
+      setInitialSegment(getRelayStart(1, language, mission));
+      setCharacterDesc('Agent Nox and Mira, a courier in a yellow raincoat carrying a witness key');
+      setGameState(GameState.PLAYING);
+      audioEngine.unlock();
+      captureProductEvent('typomancer_run_started', {
+          ...getAnalyticsContext(), daily: false, genre: 'cyberpunk', mission: 'last_relay',
+          preset: adaptiveDifficulty.preset, run_number: playerProgress.runs.length + 1,
+          returning_player: playerProgress.runs.length > 0
+      });
+  };
+
   const resumeSession = async () => {
       const checkpoint = loadRunCheckpoint();
       if (!checkpoint) {
@@ -701,6 +728,7 @@ const App: React.FC = () => {
           ...getAnalyticsContext(),
           daily: false,
           genre: checkpoint.genre,
+          mission: isLastRelay(checkpoint.mission) ? 'last_relay' : 'campaign',
           preset: adaptiveDifficulty.preset,
           run_number: playerProgress.runs.length + 1,
           returning_player: playerProgress.runs.length > 0,
@@ -708,7 +736,9 @@ const App: React.FC = () => {
       });
 
       try {
-          const nextStart = await generateNextLevelStart(
+          const nextStart = isLastRelay(checkpoint.mission)
+            ? getRelayStart(checkpoint.nextLevel, language, checkpoint.mission)
+            : await generateNextLevelStart(
               checkpoint.nextLevel,
               checkpoint.narrativeContext,
               language,
@@ -883,6 +913,7 @@ const App: React.FC = () => {
 
   const getEndingTitle = (report: LevelReport): string => {
       const mission = report.mission || campaignState;
+      if (isLastRelay(mission)) return getRelayEnding(mission, language).title;
       if (mission.evidence >= 55 && mission.heat < 55 && mission.trust >= 45) {
           return worldSkin.endings.ghost[language];
       }
@@ -943,7 +974,7 @@ const App: React.FC = () => {
           route: mission.route
       };
 
-      const isFinal = sessionRef.current.isDaily || finalRoundStats.level >= CAMPAIGN_SECTORS;
+      const isFinal = sessionRef.current.isDaily || finalRoundStats.level >= (isLastRelay(mission) ? RELAY_SECTORS : CAMPAIGN_SECTORS);
       const upgradeOptions = isFinal ? [] : getUpgradeOptions(performanceRating, activePerks, hubSkin, language);
       setLastLevelReport(report);
       if (isFinal) {
@@ -956,7 +987,9 @@ const App: React.FC = () => {
           setGameState(GameState.LEVEL_COMPLETE);
       }
 
-      const summary = await generateLevelSummary(finalRoundStats.level, report, storyLog.map(l => l.text).join(" "), language, sessionRef.current.genre);
+      const summary = isLastRelay(mission)
+        ? getRelaySummary(finalRoundStats.level, mission, language)
+        : await generateLevelSummary(finalRoundStats.level, report, storyLog.map(l => l.text).join(" "), language, sessionRef.current.genre);
       const completedReport = { ...report, narrativeSummary: summary, endingTitle: getEndingTitle({ ...report, narrativeSummary: summary }) };
       setNarrativeContext(summary);
       addToLog(`[${UI.level.toUpperCase()} ${finalRoundStats.level} ${UI.seq_complete}]: ${summary}`, 'neutral', 0, 0, 0, `${UI.evidence}: ${mission.evidence} · ${UI.heat}: ${mission.heat}%`);
@@ -1004,7 +1037,9 @@ const App: React.FC = () => {
       setCurrentLevel(nextLvl);
       setLevelBuffer([]);
       try {
-          const nextStartSegment = await generateNextLevelStart(nextLvl, narrativeContext, language, campaignState, sessionRef.current.genre);
+          const nextStartSegment = isLastRelay(campaignState)
+            ? getRelayStart(nextLvl, language, campaignState)
+            : await generateNextLevelStart(nextLvl, narrativeContext, language, campaignState, sessionRef.current.genre);
           setInitialSegment(nextStartSegment);
           setGameState(GameState.PLAYING);
         } catch (e) {
@@ -1077,6 +1112,7 @@ const App: React.FC = () => {
       const eventContext = getAnalyticsContext();
       captureProductEvent('typomancer_run_completed', {
           ...eventContext,
+          mission: isLastRelay(campaignState) ? 'last_relay' : 'campaign',
           daily: false,
           genre: sessionRef.current.genre,
           level: lastLevelReport.level,
@@ -1274,7 +1310,7 @@ const App: React.FC = () => {
              style={{ backgroundImage: 'linear-gradient(#334155 1px, transparent 1px), linear-gradient(90deg, #334155 1px, transparent 1px)', backgroundSize: '40px 40px' }}>
         </div>
 
-        <div className="flex-1 min-h-0 flex items-center justify-center p-2 sm:p-6 relative z-10">
+        <div className={`flex-1 min-h-0 flex justify-center p-2 sm:p-6 relative z-10 ${gameState === GameState.MENU ? 'items-start overflow-y-auto' : 'items-center'}`}>
             {gameState === GameState.MENU && (
                 <MenuScreen
                     ui={UI}
@@ -1293,6 +1329,7 @@ const App: React.FC = () => {
                     activePact={activePact}
                     onTogglePactClause={handleTogglePactClause}
                     onPactOpened={() => captureProductEvent('typomancer_pact_opened', getAnalyticsContext())}
+                    onRelay={initializeRelay}
                     onInitialize={initializeSession}
                     onDaily={initializeDailySession}
                     onResume={resumeSession}

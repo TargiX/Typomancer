@@ -83,6 +83,7 @@ const checkRateLimit = (req: any): RateLimitVerdict => {
   const clientIp = getClientIp(req);
   const requestHistory = pruneBefore(requestHistoryByIp.get(clientIp) || [], dayCutoff);
   globalRequestHistory = pruneBefore(globalRequestHistory, dayCutoff);
+  if (globalRequestHistory.length < MAX_GLOBAL_REQUESTS_PER_DAY) globalCapWarned = false;
 
   const requestsThisMinute = requestHistory.reduce(
     (count, timestamp) => count + (timestamp > minuteCutoff ? 1 : 0),
@@ -110,8 +111,6 @@ const checkRateLimit = (req: any): RateLimitVerdict => {
     globalCapWarned = true;
     console.warn('Gemini global daily request cap reached — all players are on local fallback until the window slides');
   }
-  if (globalRequestHistory.length < MAX_GLOBAL_REQUESTS_PER_DAY) globalCapWarned = false;
-
   const oldestInMinute = requestHistory.find((timestamp) => timestamp > minuteCutoff);
   // Retry-After must reflect whichever window is binding — a per-IP minute cap
   // frees in seconds, the global day cap can take hours.
