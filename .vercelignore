@@ -1,6 +1,13 @@
+.context
 .env
 .env.*
 !.env.example
 node_modules
 dist
 .vercel
+.git
+server
+tests
+e2e
+test-results
+playwright-report

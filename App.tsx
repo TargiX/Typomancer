@@ -73,6 +73,7 @@ import {
 import { buildChallengeShareUrl, getChallengeVerdict, parseChallenge } from './services/challenge';
 import { shareScoreCardImage } from './services/scoreCard';
 import { createSessionFlow, isLegalGameTransition } from './services/gameFlow';
+import { playerStorage } from './services/playerStorage';
 
 // Secondary screens are route-gated and heavy (telemetry charts, comic canvas,
 // the calibration typing test) — they ship as their own chunks.
@@ -325,7 +326,7 @@ const App: React.FC = () => {
     // anything persisted.
     const profileToSave = { ...userProfile, language, lastGenre: selectedGenre };
     try {
-      localStorage.setItem('narrativeFlowProfile', JSON.stringify(profileToSave));
+      playerStorage()?.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profileToSave));
     } catch (e) {
       console.error("Profile save fail", e);
     }
@@ -524,6 +525,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.defaultPrevented || (e.target instanceof Element && e.target.closest('input,textarea,select,[contenteditable="true"],[data-account-panel]'))) return;
         if (deathSequenceActive) return;
         // Consuming a shortcut must also swallow the key. Otherwise the same
         // keypress that opens a screen is delivered again to whatever input that

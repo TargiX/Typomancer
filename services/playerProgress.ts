@@ -1,4 +1,5 @@
 import type { StoryGenreId } from '../types.ts';
+import { playerStorage } from './playerStorage.ts';
 import type { TypingFocus } from './gameRules.ts';
 import { normalizePact, type PactClauseId } from './pact.ts';
 
@@ -252,7 +253,7 @@ export const normalizePlayerProgress = (value: unknown): PlayerProgress => {
 };
 
 export const loadPlayerProgress = (storage?: Storage): PlayerProgress => {
-  const target = storage || (typeof localStorage !== 'undefined' ? localStorage : undefined);
+  const target = storage || playerStorage();
   if (!target) return { ...EMPTY_PLAYER_PROGRESS, runs: [] };
   try {
     const raw = target.getItem(PLAYER_PROGRESS_STORAGE_KEY);
@@ -264,7 +265,7 @@ export const loadPlayerProgress = (storage?: Storage): PlayerProgress => {
 
 export const savePlayerProgress = (progress: PlayerProgress, storage?: Storage): PlayerProgress => {
   const normalized = normalizePlayerProgress(progress);
-  const target = storage || (typeof localStorage !== 'undefined' ? localStorage : undefined);
+  const target = storage || playerStorage();
   try {
     target?.setItem(PLAYER_PROGRESS_STORAGE_KEY, JSON.stringify(normalized));
   } catch {

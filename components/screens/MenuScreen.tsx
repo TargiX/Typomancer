@@ -12,6 +12,7 @@ import { PACT_CLAUSES, isPactClauseActive, type PactClauseId } from '../../servi
 import { stripKeyHint } from '../../services/text';
 import SystemBeacon from '../SystemBeacon';
 import EmblemTile from '../EmblemTile';
+import { AccountPanel } from '../CloudProgress';
 
 interface MenuScreenProps {
     ui: UITranslations;
@@ -197,6 +198,8 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                     </div>
                 </div>
             )}
+
+            <AccountPanel language={language} />
 
             {/* THE PACT — the only progression that raises the bar instead of
                 lowering it. Perfectionist used to sit here alone; it is now

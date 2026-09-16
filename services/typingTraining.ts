@@ -1,4 +1,5 @@
 import type { Language } from '../types.ts';
+import { playerStorage } from './playerStorage.ts';
 
 export const TYPING_TRAINING_STORAGE_KEY = 'typomancerTypingTraining';
 export const MAX_PATTERN_STATS = 64;
@@ -119,7 +120,7 @@ export const normalizeTypingTraining = (value: unknown): TypingTrainingProfile =
 };
 
 export const loadTypingTraining = (storage?: Storage): TypingTrainingProfile => {
-  const target = storage || (typeof localStorage !== 'undefined' ? localStorage : undefined);
+  const target = storage || playerStorage();
   try {
     const raw = target?.getItem(TYPING_TRAINING_STORAGE_KEY);
     return raw ? normalizeTypingTraining(JSON.parse(raw)) : normalizeTypingTraining(null);
@@ -130,7 +131,7 @@ export const loadTypingTraining = (storage?: Storage): TypingTrainingProfile => 
 
 export const saveTypingTraining = (profile: TypingTrainingProfile, storage?: Storage): TypingTrainingProfile => {
   const normalized = normalizeTypingTraining(profile);
-  const target = storage || (typeof localStorage !== 'undefined' ? localStorage : undefined);
+  const target = storage || playerStorage();
   try {
     target?.setItem(TYPING_TRAINING_STORAGE_KEY, JSON.stringify(normalized));
   } catch {

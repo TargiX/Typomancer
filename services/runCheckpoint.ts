@@ -1,4 +1,5 @@
 import type { MissionState, StoryGenreId } from '../types.ts';
+import { playerStorage } from './playerStorage.ts';
 
 export const RUN_CHECKPOINT_STORAGE_KEY = 'typomancerRunCheckpoint';
 const CHECKPOINT_VERSION = 1;
@@ -87,7 +88,7 @@ export const normalizeRunCheckpoint = (value: unknown): RunCheckpoint | null => 
 };
 
 export const loadRunCheckpoint = (storage?: Storage): RunCheckpoint | null => {
-  const target = storage || (typeof localStorage !== 'undefined' ? localStorage : undefined);
+  const target = storage || playerStorage();
   if (!target) return null;
   try {
     const raw = target.getItem(RUN_CHECKPOINT_STORAGE_KEY);
@@ -99,7 +100,7 @@ export const loadRunCheckpoint = (storage?: Storage): RunCheckpoint | null => {
 
 export const saveRunCheckpoint = (checkpoint: Omit<RunCheckpoint, 'version'>, storage?: Storage): RunCheckpoint => {
   const normalized: RunCheckpoint = { ...checkpoint, version: CHECKPOINT_VERSION };
-  const target = storage || (typeof localStorage !== 'undefined' ? localStorage : undefined);
+  const target = storage || playerStorage();
   try {
     target?.setItem(RUN_CHECKPOINT_STORAGE_KEY, JSON.stringify(normalized));
   } catch {
@@ -109,7 +110,7 @@ export const saveRunCheckpoint = (checkpoint: Omit<RunCheckpoint, 'version'>, st
 };
 
 export const clearRunCheckpoint = (storage?: Storage): void => {
-  const target = storage || (typeof localStorage !== 'undefined' ? localStorage : undefined);
+  const target = storage || playerStorage();
   try {
     target?.removeItem(RUN_CHECKPOINT_STORAGE_KEY);
   } catch {

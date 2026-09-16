@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { initBotId } from 'botid/client/core';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
+import { CloudProgressProvider } from './components/CloudProgress';
 import { initErrorReporting } from './services/errorReporting';
 
 initErrorReporting();
@@ -29,7 +30,7 @@ const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
     <ErrorBoundary>
-      <App />
+      <CloudProgressProvider><App /></CloudProgressProvider>
     </ErrorBoundary>
   </React.StrictMode>
 );

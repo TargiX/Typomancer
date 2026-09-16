@@ -1,4 +1,8 @@
 import { ImageResponse } from '@vercel/og';
+import React from 'react';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 
 /**
  * Dynamic share card for challenge links. Crawlers only read meta tags, so
@@ -6,8 +10,14 @@ import { ImageResponse } from '@vercel/og';
  * image, which is what actually makes people click "beat it".
  */
 export const config = {
-  runtime: 'edge'
+  maxDuration: 30
 };
+// Resolve packaged assets rather than fetching the request's Host (which may
+// be untrusted or a deployment-protected preview URL).
+const fonts = Promise.all([
+  readFile(join(process.cwd(), 'public/fonts/JetBrainsMono-Bold.ttf')),
+  readFile(join(process.cwd(), 'public/fonts/SpaceGrotesk-Bold.ttf'))
+]);
 
 const DAILY_ID_PATTERN = /^SECTOR-(\d{8})$/;
 const clampScore = (value: number): number => Math.max(0, Math.min(9_999_999, Math.floor(value)));
@@ -27,8 +37,8 @@ const COPY = {
   }
 } as const;
 
-export default async function handler(req: Request) {
-  const url = new URL(req.url);
+export default async function handler(req: IncomingMessage, res: ServerResponse) {
+  const url = new URL(req.url || '/', 'https://typomancer.xyz');
   const score = clampScore(Number(url.searchParams.get('s')) || 0);
   const dailyId = url.searchParams.get('d') || '';
   const lang = url.searchParams.get('l') === 'ru' ? 'ru' : 'en';
@@ -37,13 +47,9 @@ export default async function handler(req: Request) {
     ? dailyId.replace('SECTOR-', '').replace(/(\d{4})(\d{2})(\d{2})/, '$1.$2.$3')
     : '';
 
-  const origin = url.origin;
-  const [monoFont, displayFont] = await Promise.all([
-    fetch(`${origin}/fonts/JetBrainsMono-Bold.ttf`).then((r) => r.arrayBuffer()),
-    fetch(`${origin}/fonts/SpaceGrotesk-Bold.ttf`).then((r) => r.arrayBuffer())
-  ]);
+  const [monoFont, displayFont] = await fonts;
 
-  return new ImageResponse(
+  const image = new ImageResponse(
     (
       <div
         style={{
@@ -64,7 +70,7 @@ export default async function handler(req: Request) {
 
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <div style={{ color: '#94a3b8', fontSize: 26, letterSpacing: 4 }}>
-            {T.sector}{sectorLabel ? ` · ${sectorLabel}` : ''}
+            {`${T.sector}${sectorLabel ? ` · ${sectorLabel}` : ''}`}
           </div>
           <div
             style={{
@@ -109,4 +115,7 @@ export default async function handler(req: Request) {
       ]
     }
   );
+  res.statusCode = image.status;
+  image.headers.forEach((value, name) => res.setHeader(name, value));
+  res.end(Buffer.from(await image.arrayBuffer()));
 }

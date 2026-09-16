@@ -1,4 +1,5 @@
 import type { Language, MissionState, StoryGenreId, UserProfile } from '../types.ts';
+import { playerStorage } from './playerStorage.ts';
 import { GENRE_ORDER } from './genreConfig.ts';
 import { getStealthLevel } from './gameRules.ts';
 import { normalizePact, type PactClauseId } from './pact.ts';
@@ -40,7 +41,7 @@ export const DEFAULT_PROFILE: UserProfile = {
  */
 export const loadStoredProfile = (): { profile: UserProfile; language?: Language; lastGenre?: StoryGenreId } => {
     try {
-        const saved = localStorage.getItem(PROFILE_STORAGE_KEY);
+        const saved = playerStorage()?.getItem(PROFILE_STORAGE_KEY);
         if (!saved) return { profile: DEFAULT_PROFILE };
         const parsed = JSON.parse(saved);
         const totalXp = Number.isFinite(parsed.totalXp) ? Math.max(0, parsed.totalXp) : 0;
