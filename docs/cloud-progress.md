@@ -66,10 +66,10 @@ password manager. Do not claim that an unverified email proves ownership.
 ## Backup policy
 
 Coolify resource `apps-postgres`: daily 02:15 UTC, database `narrative_flow`,
-PostgreSQL custom-format dumps, retain 7 local backups. This backup includes
-accounts, sessions and password hashes; keep storage private. A same-server
-dump is **not** disaster recovery. Off-server storage must be configured and
-restore-tested separately before claiming protection against server loss.
+PostgreSQL custom-format dumps, retain 7 local backups and up to 30 daily
+copies/30 days in private Cloudflare R2 bucket `apps-server-backups` (EU).
+Coolify's own DB follows the same retention at 02:45 UTC. These backups include
+accounts, sessions and password hashes; keep storage and credentials private.
 
 Keep the Coolify instance database, its APP_KEY/source `.env`, SSH keys and
 deployment configuration in a separate private recovery backup too. Application
@@ -86,12 +86,27 @@ requires stopping writers, backing up the current state, and explicit approval.
 - The Coolify backend is deployed from `Dockerfile.progress` and serves a healthy
   HTTPS `/health`; anonymous progress reads return 401.
 - Daily backups are enabled for the application DB (02:15 UTC) and the Coolify
-  instance DB (02:45 UTC), each retaining 7 local backups.
+  instance DB (02:45 UTC), each retaining 7 local backups and 30 external copies.
 - An application dump was restored with `--exit-on-error` into an isolated
   PostgreSQL 18 container with no network. All seven application/auth tables
   were present. This first rehearsal verified the schema, before real users.
-- Private R2 bucket `apps-server-backups` exists in the EU jurisdiction. Uploads
-  are **not configured yet**: a bucket-scoped credential still needs approval.
+- A bucket-scoped R2 Object Read & Write credential is stored encrypted in
+  Coolify. The endpoint uses the EU jurisdiction. Both database dumps were
+  uploaded, downloaded from R2, and restored into an isolated PostgreSQL 18
+  container. The application had 7 tables; Coolify had the application and both
+  backup schedules. The disposable restore container was then removed.
+- `apps-recovery-backup.timer` runs at 03:00 UTC (up to 60 seconds jitter).
+  It encrypts configuration, APP_KEY, Coolify SSH keys, resource compose files
+  and its own recovery job before writing/uploading an archive. It retains 7
+  days locally and 30 archives under the R2 `recovery/` prefix. Upload success
+  requires a positive completion marker and matching remote object size.
+- The RSA private decryption key is deliberately **not on the server**. Its
+  secure local path is recorded in the private Obsidian infrastructure note.
+  Preserve that key independently; database backups do not replace it.
+  A downloaded encrypted archive was successfully decrypted and its contents
+  verified. Never extract recovery archives over a running installation.
+- Email alerts and password-reset delivery remain unconfigured: no SMTP
+  service was present in either instance or team notification settings.
 - Vercel OG functions use a plain `.ts` entrypoint and `React.createElement`.
   A `.tsx` entrypoint was incorrectly loaded as CommonJS, and a `.js` import of
   a `.tsx` renderer was not traced. A deployed preview now returns a real
