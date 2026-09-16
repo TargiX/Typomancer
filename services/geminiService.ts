@@ -18,6 +18,7 @@ import { getRecentConsequences } from "./missionLog.ts";
 import { isProseSegmentType, repairProseLine } from "./proseRepair.ts";
 import { clampDecisionImpact } from "./decisionImpact.ts";
 import { getBeatDirection, getRoundShape } from "./sectorRhythm.ts";
+import { captureProductEvent } from "./productAnalytics.ts";
 
 type Schema = Record<string, unknown>;
 
@@ -32,14 +33,28 @@ type GeminiResponse = {
 };
 
 const callGemini = async (model: string, contents: string, config?: Record<string, unknown>): Promise<GeminiResponse | null> => {
-  const response = await fetch('/api/gemini', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, contents, config })
-  });
+  const kind = model === TEXT_MODEL ? 'text' : 'image';
+  try {
+    const response = await fetch('/api/gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, contents, config })
+    });
 
-  if (!response.ok) return null;
-  return response.json();
+    if (!response.ok) {
+      captureProductEvent('typomancer_ai_request', { kind, ok: false });
+      return null;
+    }
+
+    const result = await response.json();
+    // Spend telemetry: which kind of call went out and whether the complete
+    // request parsed successfully. Prompts and responses stay local.
+    captureProductEvent('typomancer_ai_request', { kind, ok: true });
+    return result;
+  } catch (error) {
+    captureProductEvent('typomancer_ai_request', { kind, ok: false });
+    throw error;
+  }
 };
 
 const ai = {

@@ -1,9 +1,10 @@
+import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { LAST_RELAY, RELAY_SECTORS, isLastRelay, getRelayStart, getRelaySummary, getRelayEnding } from './services/lastRelay';
-import React, { useState, useEffect, useRef, useMemo, useCallback} from 'react';
 import { GameState, StorySegment, GameStats, StoryLogItem, UserProfile, Perk, GameModifiers, LevelReport, UserUpgrades, StoryMood, SegmentType, Language, MissionState, ComicFrame, StoryGenreId } from './types';
 import { generateStoryStart, generateCharacterProfile, generateLevelSummary, generateNextLevelStart } from './services/geminiService';
 import { GENRE_ORDER, getGenrePack } from './services/genreConfig';
-import { getGenreSkin, PerkGroupId, UpgradeId } from './services/genreSkin';
+import { getGenreSkin } from './services/genreSkin';
+import { TRANSLATIONS } from './services/i18n';
 import { DAILY_MAX_ATTEMPTS, DailyBrief, getDailyBrief, getDailyState, pickDailyItems, recordDailyAttempt } from './services/dailyMode';
 import { CAMPAIGN_SECTORS, DEFAULT_BRANCH_THRESHOLDS, getStealthLevel, getTypingAccuracy, getTypingFocus, summarizeSector } from './services/gameRules';
 import { clampTraceSpeed, getComfortCreditMultiplier } from './services/riskReward';
@@ -13,7 +14,6 @@ import {
   EXACTING_GOOD_ACCURACY,
   HOT_START_HEAT,
   HUNTED_TRACE_MULTIPLIER,
-  PACT_CLAUSES,
   getPactRewardMultiplier,
   isPactClauseActive,
   normalizePact,
@@ -33,11 +33,26 @@ import {
   setCalibration,
   type CalibrationResult
 } from './services/playerProgress';
+import { DEFAULT_MISSION_STATE, DEFAULT_PROFILE, PROFILE_STORAGE_KEY, loadStoredProfile } from './services/profile';
+import {
+  DEFAULT_MODIFIERS,
+  META_UPGRADES,
+  PERK_DEFINITIONS,
+  createPerk,
+  getUpgradeOptions
+} from './services/perks';
 import { audioEngine } from './services/audioEngine';
 import TypingEngine from './components/TypingEngine';
-import RunComic from './components/RunComic';
-import CalibrationPanel from './components/CalibrationPanel';
-import OperatorRecord from './components/OperatorRecord';
+import HudStrip from './components/HudStrip';
+import DeathSequence from './components/DeathSequence';
+import MenuScreen from './components/screens/MenuScreen';
+import BlackMarketScreen from './components/screens/BlackMarketScreen';
+import GenreSelectionScreen from './components/screens/GenreSelectionScreen';
+import StarterPerkScreen from './components/screens/StarterPerkScreen';
+import SectorCompleteScreen from './components/screens/SectorCompleteScreen';
+import LoadingScreen from './components/screens/LoadingScreen';
+import VictoryScreen from './components/screens/VictoryScreen';
+import GameOverScreen from './components/screens/GameOverScreen';
 import {
   captureProductEvent,
   getAccuracyBucket,
@@ -56,452 +71,13 @@ import {
   type TypingObservation
 } from './services/typingTraining';
 import { buildChallengeUrl, getChallengeVerdict, parseChallenge } from './services/challenge';
+import { createSessionFlow, isLegalGameTransition } from './services/gameFlow';
 
-// --- TRANSLATIONS ---
-const TRANSLATIONS = {
-    en: {
-        game_title: "NARRATIVE FLOW",
-        subtitle: "Consequence-Driven RPG Typer",
-        score: "SCORE",
-        wallet: "WALLET",
-        audio_active: "AUDIO ACTIVE",
-        audio_muted: "AUDIO MUTED",
-        empty_log: "Mission log is empty.\nAwaiting system initialization...",
-        mission_log: "MISSION LOG",
-        speed: "SPEED",
-        system_online: "SYSTEM ONLINE",
-        main_title: "Operation Black Ledger",
-        intro_desc: "Type to move, decide to bend the city, survive to publish the proof.",
-        mistakes_warn: "Every typo changes heat, trust, evidence, and the ending.",
-        init_link: "[1] INITIALIZE LINK",
-        quick_session: "A sector runs about 4–6 minutes depending on your pace. Continue only when you want a longer training run.",
-        resume_run: "RESUME OPERATION",
-        resume_sector: "Sector",
-        daily_sector: "DAILY SECTOR",
-        daily_left: "LEFT",
-        daily_best: "BEST",
-        daily_tomorrow: "BACK TOMORROW",
-        daily_severed: "SEVERED",
-        challenge_title: "INCOMING PLAYER CHALLENGE",
-        challenge_target: "TARGET SCORE",
-        challenge_accept: "ACCEPT SAME DAILY SECTOR",
-        challenge_expired: "This challenge belongs to an older Daily Sector. Today’s sector is ready instead.",
-        challenge_share: "CHALLENGE A FRIEND",
-        challenge_copied: "CHALLENGE LINK COPIED",
-        challenge_beaten: "TARGET BEATEN",
-        challenge_missed: "TARGET MISSED",
-        challenge_tied: "TARGET TIED",
-        challenge_you: "YOUR SCORE",
-        black_market: "[2] THE BLACK MARKET",
-        operator_record: "[4] OPERATOR RECORD",
-        powered_by: "Works with Gemini, but has a full local campaign fallback",
-        privacy_note: "Anonymous play metrics only. Typed text never leaves this device for analytics.",
-        perfectionist: "PERFECTIONIST · +30% XP",
-        perfectionist_desc: "Case-sensitive typing. Typos are never forgiven.",
-        accuracy_hook: "Most typing games shrug off mistakes. Here every typo bends your story — the ultimate accuracy trainer.",
-        market_title: "THE BLACK MARKET",
-        market_subtitle: "Permanent hardware upgrades for future runs",
-        avail_credits: "Available Credits",
-        install: "INSTALL",
-        maxed_out: "MAXED OUT",
-        return_menu: "[ESC] Return to Menu",
-        loadout_title: "CONFIGURE LOADOUT",
-        loadout_subtitle: "Pick the subroutine that defines your first strategy.",
-        seq_complete: "SEQUENCE COMPLETE",
-        xp_gained: "XP Gained",
-        avg_speed: "AVG Speed",
-        credits: "Credits",
-        heat: "Heat",
-        health: "Health",
-        trust: "Trust",
-        evidence: "Evidence",
-        route: "Route",
-        select_upgrade: "SELECT NEURAL UPGRADE",
-        continue_hint: "Choose one upgrade to continue deeper.",
-        bank_exit: "SAVE & EXIT",
-        accuracy: "Accuracy",
-        consistency: "Consistency",
-        mistakes: "Mistakes",
-        characters_typed: "Characters typed",
-        typing_debrief: "Typing debrief",
-        next_drill: "Next run target",
-        signal_lost: "SIGNAL LOST",
-        mistake_one: "uncorrected mistake this sector",
-        mistake_many: "uncorrected mistakes this sector",
-        return_faster: "FASTER THAN WHEN YOU STARTED",
-        return_slower: "SLOWER THAN WHEN YOU STARTED",
-        return_holding: "HOLDING YOUR PACE",
-        return_early: "STILL MEASURING YOUR PACE",
-        return_sessions: "sessions",
-        return_streak: "day streak",
-        pact_title: "THE PACT",
-        pact_reward: "REWARDS",
-        pact_hint: "Ask for a harder run and it pays for itself. Nothing here is required.",
-        pact_hot_start: "HOT START",
-        pact_hot_start_desc: "Every sector opens already hunted.",
-        pact_no_grace: "NO GRACE",
-        pact_no_grace_desc: "No typo is forgiven, whatever your difficulty preset.",
-        pact_exacting: "EXACTING",
-        pact_exacting_desc: "The clean branch demands near-perfect accuracy.",
-        pact_strict_case: "PERFECTIONIST",
-        pact_strict_case_desc: "Case-sensitive typing.",
-        pact_hunted: "HUNTED",
-        pact_hunted_desc: "The trace runs 35% faster all run.",
-        focus_accuracy: "Slow down slightly and keep accuracy above 96%.",
-        focus_consistency: "Hold one rhythm instead of sprinting between pauses.",
-        focus_speed: "Accuracy is stable. Push your average speed by 5 WPM.",
-        focus_mastery: "Strong control. Keep this accuracy while increasing pressure.",
-        generating_sector: "GENERATING NEW SECTOR...",
-        generating_scenario: "GENERATING SCENARIO...",
-        critical_failure: "CRITICAL FAILURE",
-        connection_severed: "Your link was severed before the Ledger went live.",
-        reached: "Reached",
-        main_menu: "[SPACE] MAIN MENU",
-        legendary_drop: "LEGENDARY DROP DETECTED",
-        level: "Level",
-        wpm: "WPM",
-        operation_dossier: "OPERATION DOSSIER",
-        campaign_goal: "Finish one sector in about 5 minutes, then bank the result or continue through four.",
-        focus_hint: "TAB activates Focus Mode when charged: trace pauses, mistakes hurt less, rewards double.",
-        victory_title: "LEDGER PUBLISHED",
-        victory_subtitle: "You won the run. The ending reflects your typing and choices.",
-        final_ending: "Ending",
-        new_run: "[SPACE] NEW RUN",
-        focus: "Focus",
-        effect: "Effect",
-        currency_suffix: "CR",
-        type_cue: "TYPE",
-        type_subcue: "BEGIN INPUT",
-        share_comic: "SHARE YOUR COMIC",
-        comic_building: "ASSEMBLING REPLAY...",
-        comic_error: "Could not build the comic.",
-        comic_share: "SHARE",
-        comic_download: "DOWNLOAD",
-        comic_copied: "COPIED",
-        comic_close: "Close",
-        comic_replay: "Mission Replay",
-        comic_watermark: "NARRATIVE FLOW · your run, generated live",
-        genre_title: "SIMULATION LINK",
-        genre_subtitle: "Jack into a different world through the same operator deck. Hardware stays yours — only the simulation behind the glass changes.",
-        genre_back: "[ESC] MAIN MENU",
-        genre_persists_note: "The Black Market and Focus protocols stay cyberpunk. Worlds change the story and art, not your gear.",
-        sim_badge: "SIM LINK"
-    },
-    ru: {
-        game_title: "НАРРАТИВНЫЙ ПОТОК",
-        subtitle: "RPG-тайпер с последствиями",
-        score: "СЧЕТ",
-        wallet: "КОШЕЛЕК",
-        audio_active: "ЗВУК ВКЛ",
-        audio_muted: "ЗВУК ВЫКЛ",
-        empty_log: "Журнал миссии пуст.\nОжидание инициализации системы...",
-        mission_log: "ЖУРНАЛ МИССИИ",
-        speed: "СКОРОСТЬ",
-        system_online: "СИСТЕМА В СЕТИ",
-        main_title: "Операция Черный Реестр",
-        intro_desc: "Печатай, чтобы двигаться; выбирай, чтобы менять город; выживи, чтобы опубликовать улики.",
-        mistakes_warn: "Каждая опечатка меняет угрозу, доверие, улики и финал.",
-        init_link: "[1] ИНИЦИАЛИЗАЦИЯ",
-        quick_session: "Сектор занимает 4–6 минут в зависимости от твоего темпа. Продолжай только если хочешь длинную тренировку.",
-        resume_run: "ПРОДОЛЖИТЬ ОПЕРАЦИЮ",
-        resume_sector: "Сектор",
-        daily_sector: "ДНЕВНОЙ СЕКТОР",
-        daily_left: "ОСТАЛОСЬ",
-        daily_best: "ЛУЧШИЙ",
-        daily_tomorrow: "ЗАВТРА НОВЫЙ СЕКТОР",
-        daily_severed: "ОБРЫВ",
-        challenge_title: "ВХОДЯЩИЙ ВЫЗОВ ИГРОКА",
-        challenge_target: "ЦЕЛЕВОЙ СЧЁТ",
-        challenge_accept: "ПРИНЯТЬ ТОТ ЖЕ ДНЕВНОЙ СЕКТОР",
-        challenge_expired: "Этот вызов был для прошлого Дневного сектора. Сегодняшний уже готов.",
-        challenge_share: "БРОСИТЬ ВЫЗОВ ДРУГУ",
-        challenge_copied: "ССЫЛКА НА ВЫЗОВ СКОПИРОВАНА",
-        challenge_beaten: "ЦЕЛЬ ПОБИТА",
-        challenge_missed: "ЦЕЛЬ НЕ ДОСТИГНУТА",
-        challenge_tied: "РАВНЫЙ СЧЁТ",
-        challenge_you: "ТВОЙ СЧЁТ",
-        black_market: "[2] ЧЕРНЫЙ РЫНОК",
-        operator_record: "[4] ДОСЬЕ ОПЕРАТОРА",
-        powered_by: "Работает с Gemini, но имеет полноценную локальную кампанию",
-        privacy_note: "Только анонимные метрики игры. Набранный текст не уходит с устройства в аналитику.",
-        perfectionist: "ПЕРФЕКЦИОНИСТ · +30% XP",
-        perfectionist_desc: "Регистр важен. Опечатки не прощаются.",
-        accuracy_hook: "Другие тайпинг-игры прощают ошибки. Здесь каждая опечатка гнёт твою историю — предельный тренажёр точности.",
-        market_title: "ЧЕРНЫЙ РЫНОК",
-        market_subtitle: "Постоянные апгрейды оборудования для будущих забегов",
-        avail_credits: "Доступные Кредиты",
-        install: "УСТАНОВИТЬ",
-        maxed_out: "МАКСИМУМ",
-        return_menu: "[ESC] В Меню",
-        loadout_title: "КОНФИГУРАЦИЯ",
-        loadout_subtitle: "Выбери подпрограмму, которая задаст первую стратегию.",
-        seq_complete: "СЕКВЕНЦИЯ ЗАВЕРШЕНА",
-        xp_gained: "Получено XP",
-        avg_speed: "Ср. Скор.",
-        credits: "Кредиты",
-        heat: "Угроза",
-        health: "Здоровье",
-        trust: "Доверие",
-        evidence: "Улики",
-        route: "Маршрут",
-        select_upgrade: "ВЫБОР НЕЙРО-АПГРЕЙДА",
-        continue_hint: "Выбери один апгрейд, чтобы идти глубже.",
-        bank_exit: "СОХРАНИТЬ И ВЫЙТИ",
-        accuracy: "Точность",
-        consistency: "Стабильность",
-        mistakes: "Ошибки",
-        characters_typed: "Напечатано знаков",
-        typing_debrief: "Разбор печати",
-        next_drill: "Цель следующего забега",
-        signal_lost: "СИГНАЛ ПОТЕРЯН",
-        mistake_one: "неисправленная ошибка за сектор",
-        mistake_many: "неисправленных ошибок за сектор",
-        return_faster: "БЫСТРЕЕ, ЧЕМ В НАЧАЛЕ",
-        return_slower: "МЕДЛЕННЕЕ, ЧЕМ В НАЧАЛЕ",
-        return_holding: "ТЕМП ДЕРЖИТСЯ",
-        return_early: "ЕЩЁ ЗАМЕРЯЮ ТВОЙ ТЕМП",
-        return_sessions: "сессий",
-        return_streak: "дней подряд",
-        pact_title: "ПАКТ",
-        pact_reward: "К НАГРАДАМ",
-        pact_hint: "Попроси забег потруднее — он окупит себя. Ничего из этого не обязательно.",
-        pact_hot_start: "ГОРЯЧИЙ СТАРТ",
-        pact_hot_start_desc: "Каждый сектор начинается, когда тебя уже ищут.",
-        pact_no_grace: "БЕЗ ПОБЛАЖЕК",
-        pact_no_grace_desc: "Ни одна опечатка не прощается, какой бы ни был пресет.",
-        pact_exacting: "ТРЕБОВАТЕЛЬНОСТЬ",
-        pact_exacting_desc: "Чистая ветка требует почти безупречной точности.",
-        pact_strict_case: "ПЕРФЕКЦИОНИСТ",
-        pact_strict_case_desc: "Регистр имеет значение.",
-        pact_hunted: "ОХОТА",
-        pact_hunted_desc: "След бежит на 35% быстрее весь забег.",
-        focus_accuracy: "Чуть сбавь темп и удерживай точность выше 96%.",
-        focus_consistency: "Держи один ритм вместо рывков между паузами.",
-        focus_speed: "Точность стабильна. Подними среднюю скорость на 5 СЛ/М.",
-        focus_mastery: "Сильный контроль. Сохрани точность под большим давлением.",
-        generating_sector: "ГЕНЕРАЦИЯ НОВОГО СЕКТОРА...",
-        generating_scenario: "ГЕНЕРАЦИЯ СЦЕНАРИЯ...",
-        critical_failure: "КРИТИЧЕСКИЙ СБОЙ",
-        connection_severed: "Связь оборвалась до публикации Реестра.",
-        reached: "Достигнут",
-        main_menu: "[SPACE] ГЛАВНОЕ МЕНЮ",
-        legendary_drop: "ОБНАРУЖЕН ЛЕГЕНДАРНЫЙ МОДУЛЬ",
-        level: "Уровень",
-        wpm: "СЛ/М",
-        operation_dossier: "ДОСЬЕ ОПЕРАЦИИ",
-        campaign_goal: "Пройди сектор примерно за 5 минут, затем сохрани результат или продолжай до четырёх.",
-        focus_hint: "TAB включает Фокус-Мод при полном заряде: след заморожен, ошибки мягче, награды удвоены.",
-        victory_title: "РЕЕСТР ОПУБЛИКОВАН",
-        victory_subtitle: "Ты выиграл забег. Финал зависит от печати и решений.",
-        final_ending: "Финал",
-        new_run: "[SPACE] НОВЫЙ ЗАБЕГ",
-        focus: "Фокус",
-        effect: "Эффект",
-        currency_suffix: "CR",
-        type_cue: "TYPE",
-        type_subcue: "НАЧИНАЙ ВВОД",
-        share_comic: "ПОДЕЛИТЬСЯ КОМИКСОМ",
-        comic_building: "СБОРКА ПОВТОРА...",
-        comic_error: "Не удалось собрать комикс.",
-        comic_share: "ПОДЕЛИТЬСЯ",
-        comic_download: "СКАЧАТЬ",
-        comic_copied: "СКОПИРОВАНО",
-        comic_close: "Закрыть",
-        comic_replay: "Повтор миссии",
-        comic_watermark: "NARRATIVE FLOW · твой забег, сгенерирован вживую",
-        genre_title: "СВЯЗЬ С СИМУЛЯЦИЕЙ",
-        genre_subtitle: "Подключись к другому миру через тот же операторский пульт. Железо остаётся твоим — меняется только симуляция за стеклом.",
-        genre_back: "[ESC] В МЕНЮ",
-        genre_persists_note: "Чёрный рынок и протоколы Фокуса остаются киберпанком. Миры меняют историю и арт, а не твой софт.",
-        sim_badge: "СИМ-СВЯЗЬ"
-    }
-};
-
-// --- TIERED PERK DEFINITIONS (mechanics only; display names come from genre skins) ---
-const PERK_DEFINITIONS = [
-    {
-        // Was: forgive N mistakes outright. Now a mistake keeps your streak alive
-        // but bills you the Energy you would have spent on a protocol — a trade,
-        // not a free pass.
-        groupId: 'neural_buffer' as PerkGroupId,
-        type: 'defense',
-        tiers: [
-            { shields: 1, cost: 30 },
-            { shields: 2, cost: 25 },
-            { shields: 3, cost: 20 }
-        ]
-    },
-    {
-        // Was: a flat trace slowdown you kept whatever you did. Now the stealth
-        // has to be held with a clean streak.
-        groupId: 'ghost_protocol' as PerkGroupId,
-        type: 'stealth',
-        tiers: [
-            { streakMult: 0.85, threshold: 25 },
-            { streakMult: 0.75, threshold: 20 },
-            { streakMult: 0.65, threshold: 15 }
-        ]
-    },
-    {
-        groupId: 'adrenaline_spike' as PerkGroupId,
-        type: 'offense',
-        tiers: [
-            { thresh: 80, regen: 2 },
-            { thresh: 70, regen: 3 },
-            { thresh: 60, regen: 4 }
-        ]
-    },
-    {
-        // Was: a bigger health pool, which is just room to fail more. Now health
-        // comes back for lines typed perfectly.
-        groupId: 'titanium_firewall' as PerkGroupId,
-        type: 'defense',
-        tiers: [
-            { perfectHeal: 2 },
-            { perfectHeal: 3 },
-            { perfectHeal: 5 }
-        ]
-    },
-    {
-        // Was: a chance the line typed itself. In a typing game that is not a
-        // perk, it is an opt-out. Now a long clean streak shoves the tracer back.
-        groupId: 'critical_override' as PerkGroupId,
-        type: 'utility',
-        tiers: [
-            { interval: 50, characters: 14 },
-            { interval: 35, characters: 18 },
-            { interval: 25, characters: 22 }
-        ]
-    },
-    {
-        groupId: 'focus_lattice' as PerkGroupId,
-        type: 'utility',
-        tiers: [
-            { duration: 1000, forgiveness: 1 },
-            { duration: 2000, forgiveness: 2 },
-            { duration: 3000, forgiveness: 3 }
-        ]
-    },
-    {
-        groupId: 'error_siphon' as PerkGroupId,
-        type: 'offense',
-        tiers: [
-            { charge: 2 },
-            { charge: 4 },
-            { charge: 7 }
-        ]
-    },
-    {
-        groupId: 'evidence_lens' as PerkGroupId,
-        type: 'stealth',
-        tiers: [
-            { evidence: 0.15 },
-            { evidence: 0.30 },
-            { evidence: 0.50 }
-        ]
-    }
-];
-
-const DEFAULT_MODIFIERS: GameModifiers = {
-    traceSpeedMultiplier: 1.0,
-    mistakeGraceCount: 0,
-    healthRegenWpmThreshold: 0,
-    healthRegenAmount: 0,
-    maxHealth: 20,
-    maxOverclock: 50,
-    creditMultiplier: 1.0,
-    focusDurationMs: 6500,
-    focusMistakeForgiveness: 2,
-    errorChargeGain: 0,
-    breachRewardMultiplier: 1,
-    evidenceMultiplier: 1,
-    streakPurgeInterval: 0,
-    streakPurgeCharacters: 0,
-    streakTraceMultiplier: 1,
-    streakTraceThreshold: 0,
-    perfectLineHealth: 0,
-    comboShields: 0,
-    comboShieldCost: 0
-};
-
-/**
- * Reads the stored profile synchronously, the way every other saved slice of this
- * app is read. It used to load in an effect, which left a render in which state
- * was still the default while the save effect was already running — see the note
- * on the save effect.
- */
-const loadStoredProfile = (): { profile: UserProfile; language?: Language; lastGenre?: StoryGenreId } => {
-    try {
-        const saved = localStorage.getItem('narrativeFlowProfile');
-        if (!saved) return { profile: DEFAULT_PROFILE };
-        const parsed = JSON.parse(saved);
-        const totalXp = Number.isFinite(parsed.totalXp) ? Math.max(0, parsed.totalXp) : 0;
-        // Perfectionist predates the Pact and was the same idea with one clause,
-        // so an existing player keeps it as the clause it always was.
-        const pact = parsed.pact === undefined && parsed.strictCase
-            ? (['strict_case'] as PactClauseId[])
-            : normalizePact(parsed.pact);
-        return {
-            profile: {
-                ...DEFAULT_PROFILE,
-                ...parsed,
-                totalXp,
-                stealthLevel: getStealthLevel(totalXp),
-                upgrades: { ...DEFAULT_PROFILE.upgrades, ...parsed.upgrades },
-                pact,
-                strictCase: pact.includes('strict_case')
-            },
-            language: parsed.language,
-            lastGenre: GENRE_ORDER.includes(parsed.lastGenre) ? parsed.lastGenre : undefined
-        };
-    } catch (e) {
-        console.error("Profile load fail", e);
-        return { profile: DEFAULT_PROFILE };
-    }
-};
-
-/** Notches in a HUD gauge. Enough to read a trend, few enough to count. */
-const HUD_GAUGE_SEGMENTS = 16;
-
-const DEFAULT_MISSION_STATE: MissionState = {
-    heat: 18,
-    trust: 44,
-    evidence: 0,
-    route: 'balanced',
-    flags: [],
-    consequenceLog: []
-};
-
-const DEFAULT_PROFILE: UserProfile = {
-    totalXp: 0,
-    stealthLevel: 0,
-    unlockedPerks: [],
-    credits: 0,
-    upgrades: {
-        synapticWeave: 0,
-        cryptoMiner: 0,
-        signalDampener: 0,
-        bufferExpansion: 0,
-        focusLens: 0,
-        patternScanner: 0
-    },
-    language: 'en',
-    strictCase: false,
-    pact: []
-};
-
-// Perfectionist (strict-case) mode grants +30% XP as the "ultimate accuracy" reward.
-
-const META_UPGRADES: Record<UpgradeId, { baseCost: number; effectPerLevel: number; maxLevel: number }> = {
-    synapticWeave: { baseCost: 100, effectPerLevel: 2, maxLevel: 10 },
-    cryptoMiner: { baseCost: 150, effectPerLevel: 0.1, maxLevel: 10 },
-    signalDampener: { baseCost: 200, effectPerLevel: 0.05, maxLevel: 10 },
-    bufferExpansion: { baseCost: 120, effectPerLevel: 5, maxLevel: 10 },
-    focusLens: { baseCost: 180, effectPerLevel: 500, maxLevel: 8 },
-    patternScanner: { baseCost: 220, effectPerLevel: 0.08, maxLevel: 8 }
-};
-
-const CAMPAIGN_FINAL_LEVEL = CAMPAIGN_SECTORS;
+// Secondary screens are route-gated and heavy (telemetry charts, comic canvas,
+// the calibration typing test) — they ship as their own chunks.
+const RunComic = lazy(() => import('./components/RunComic'));
+const CalibrationPanel = lazy(() => import('./components/CalibrationPanel'));
+const OperatorRecord = lazy(() => import('./components/OperatorRecord'));
 
 interface RoundData {
     wpm: number;
@@ -510,204 +86,24 @@ interface RoundData {
     characters: number;
 }
 
-// Live "signal monitor" that replaces the cliché status pill: the label continuously
-// scrambles through glyphs and re-decodes, next to a scrolling oscilloscope, a pulsing
-// REC dot, a drifting ping readout and a scanline sweep — a hacker rig that feels alive.
-const BEACON_SCRAMBLE = "ABCDEF0123456789#%&/\\<>[]{}=+*!?";
-
-const SystemBeacon: React.FC<{ label: string }> = ({ label }) => {
-    const [text, setText] = useState(label);
-    const [ping, setPing] = useState(4);
-
-    useEffect(() => {
-        let frame = 0;
-        const id = window.setInterval(() => {
-            frame++;
-            const period = label.length + 26; // decode, then hold, then re-scramble
-            const t = frame % period;
-            const revealed = Math.max(0, Math.min(label.length, t - 4));
-            let out = "";
-            for (let i = 0; i < label.length; i++) {
-                const ch = label[i];
-                if (ch === " ") { out += " "; continue; }
-                out += i < revealed ? ch : BEACON_SCRAMBLE[Math.floor(Math.random() * BEACON_SCRAMBLE.length)];
-            }
-            setText(out);
-        }, 55);
-        return () => window.clearInterval(id);
-    }, [label]);
-
-    useEffect(() => {
-        const id = window.setInterval(() => setPing(2 + Math.floor(Math.random() * 8)), 700);
-        return () => window.clearInterval(id);
-    }, []);
-
-    const wave = useMemo(() => {
-        const pts: string[] = [];
-        const mid = 12;
-        for (let x = 0; x <= 240; x += 3) {
-            const base = Math.sin((x * 2 * Math.PI) / 40) * 2.4;
-            const fine = Math.sin((x * 2 * Math.PI) / 8) * 1.0;
-            let spike = 0;
-            const m = x % 40;
-            if (m < 3) spike = -7.5; else if (m >= 20 && m < 23) spike = 7.5;
-            pts.push(`${x},${(mid + base + fine + spike).toFixed(1)}`);
-        }
-        return "M" + pts.join(" L");
-    }, []);
-
-    const cut = 'polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px)';
-
-    return (
-        <div className="relative inline-flex items-center gap-3 px-4 py-2 overflow-hidden" style={{ clipPath: cut }}>
-            {/* emerald frame + dark face */}
-            <div className="absolute inset-0 z-0" style={{ clipPath: cut, background: 'linear-gradient(180deg, rgba(52,211,153,0.55), rgba(52,211,153,0.12))' }} />
-            <div className="absolute inset-[1.5px] z-0 bg-[#060c12]" style={{ clipPath: 'polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)' }} />
-            {/* scanline sweep */}
-            <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
-                <div className="beacon-scan h-2.5 w-full bg-gradient-to-b from-transparent via-emerald-400/25 to-transparent" />
-            </div>
-
-            {/* REC dot */}
-            <span className="relative z-20 flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-70" />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
-            </span>
-
-            {/* decoding label */}
-            <span className="relative z-20 beacon-flicker font-mono fs-label font-bold tracking-[0.22em] text-emerald-300 whitespace-nowrap" style={{ textShadow: '0 0 8px rgba(52,211,153,0.45)' }}>
-                {text}
-            </span>
-
-            {/* oscilloscope */}
-            <div className="relative z-20 h-4 w-16 overflow-hidden">
-                <svg className="absolute inset-0 h-full scope-scroll" style={{ width: '200%' }} viewBox="0 0 240 24" preserveAspectRatio="none">
-                    <path d={wave} fill="none" stroke="#34d399" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round" />
-                </svg>
-            </div>
-
-            {/* drifting ping */}
-            <span className="relative z-20 font-mono fs-micro tracking-[0.15em] text-emerald-500/70 tabular-nums whitespace-nowrap">
-                {ping}ms
-            </span>
-        </div>
-    );
-};
-
-const stripKeyHint = (label: string): string => label.replace(/^\[[^\]]+\]\s*/, '');
-const stripLeadingGlyph = (label: string): string => label.replace(/^[^\p{L}\p{N}]+/u, '');
-
-const PerkTypeIcon: React.FC<{ type: Perk['type'] }> = ({ type }) => {
-    const iconClass = 'h-5 w-5';
-
-    if (type === 'defense') {
-        return (
-            <svg className={iconClass} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M12 3 20 6v5c0 5.2-3.4 8.5-8 10-4.6-1.5-8-4.8-8-10V6l8-3Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-                <path d="m9 12 2 2 4-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-        );
-    }
-
-    if (type === 'stealth') {
-        return (
-            <svg className={iconClass} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M3 3 21 21M10.6 10.7a2 2 0 0 0 2.7 2.7M9.9 4.2A10.7 10.7 0 0 1 12 4c5.2 0 8.5 4.5 9.5 6.2a3.5 3.5 0 0 1 0 3.6 14.4 14.4 0 0 1-2.2 2.8M6.2 6.2a14.4 14.4 0 0 0-3.7 4 3.5 3.5 0 0 0 0 3.6C3.5 15.5 6.8 20 12 20c1 0 1.9-.2 2.7-.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-        );
-    }
-
-    if (type === 'utility') {
-        return (
-            <svg className={iconClass} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <rect x="5" y="7" width="14" height="10" rx="1" stroke="currentColor" strokeWidth="2" />
-                <path d="M9 3v4m6-4v4M9 17v4m6-4v4M2 10h3m-3 4h3m14-4h3m-3 4h3m-8-4-3 4h4l-3 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-        );
-    }
-
-    return (
-        <svg className={iconClass} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-    );
-};
-
-const GenreIcon: React.FC<{ genre: StoryGenreId; className?: string }> = ({ genre, className = 'h-5 w-5' }) => {
-    if (genre === 'space_horror') {
-        return (
-            <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M5 16.5a9 9 0 0 1 14 0M8 13a5 5 0 0 1 8 0M11 9.5a1.5 1.5 0 1 1 2 0M4 20h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-        );
-    }
-
-    if (genre === 'noir') {
-        return (
-            <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <circle cx="10.5" cy="10.5" r="5.5" stroke="currentColor" strokeWidth="2" />
-                <path d="m15 15 5 5M8.5 8.5h4M10.5 6.5v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-        );
-    }
-
-    if (genre === 'dark_fable') {
-        return (
-            <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M5 5.5A3.5 3.5 0 0 1 8.5 2H12v17H8.5A3.5 3.5 0 0 0 5 22V5.5ZM19 5.5A3.5 3.5 0 0 0 15.5 2H12v17h3.5A3.5 3.5 0 0 1 19 22V5.5Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-                <path d="M8 6h1m6 0h1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-        );
-    }
-
-    return (
-        <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-    );
-};
-
-interface EmblemTileProps {
-    src: string;
-    fallback?: React.ReactNode;
-    size: number;
-    className?: string;
-    style?: React.CSSProperties;
+// beforeinstallprompt isn't in lib.dom yet — the browser fires it with this shape.
+interface BeforeInstallPromptEvent extends Event {
+    prompt(): Promise<void>;
 }
-
-const EmblemTile: React.FC<EmblemTileProps> = ({ src, fallback, size, className = '', style }) => {
-    const [imageFailed, setImageFailed] = useState(false);
-
-    useEffect(() => {
-        setImageFailed(false);
-    }, [src]);
-
-    if (imageFailed && fallback == null) return null;
-
-    return (
-        <span
-            className={`screens-icon-tile screens-emblem-tile ${imageFailed ? 'screens-emblem-failed' : ''} ${className}`}
-            style={{ width: size, height: size, ...style }}
-            aria-hidden="true"
-        >
-            {imageFailed ? (
-                <span className="screens-emblem-fallback">{fallback}</span>
-            ) : (
-                <img
-                    src={src}
-                    alt=""
-                    loading="lazy"
-                    className="screens-emblem-image"
-                    onError={() => setImageFailed(true)}
-                />
-            )}
-        </span>
-    );
-};
 
 const App: React.FC = () => {
   const [dailyBrief, setDailyBrief] = useState(() => getDailyBrief());
-  const [gameState, setGameState] = useState<GameState>(GameState.MENU);
+  const [gameState, setGameStateUnchecked] = useState<GameState>(GameState.MENU);
+  // Legal edges live in services/gameFlow.ts. Going through this setter means
+  // an impossible jump warns instead of rendering a half-initialised screen.
+  const setGameState = (next: GameState) => {
+      setGameStateUnchecked(prev => {
+          if (!isLegalGameTransition(prev, next)) {
+              console.warn(`[flow] illegal transition ${prev} -> ${next}`);
+          }
+          return next;
+      });
+  };
   const [storyLog, setStoryLog] = useState<StoryLogItem[]>([]);
   const [initialSegment, setInitialSegment] = useState<StorySegment | null>(null);
   const [characterDesc, setCharacterDesc] = useState<string>("");
@@ -718,8 +114,6 @@ const App: React.FC = () => {
   const [currentHealth, setCurrentHealth] = useState(20);
   const [musicActive, setMusicActive] = useState(() => audioEngine.isEnabled());
   const [storedBoot] = useState(loadStoredProfile);
-  const [pactOpen, setPactOpen] = useState(false);
-  const [logOpen, setLogOpen] = useState(false);
   const [language, setLanguage] = useState<Language>(storedBoot.language ?? 'en'); // Global Language State
   
   const [userProfile, setUserProfile] = useState<UserProfile>(storedBoot.profile);
@@ -746,15 +140,12 @@ const App: React.FC = () => {
   const [typingTraining, setTypingTraining] = useState(() => loadTypingTraining());
   const [incomingChallenge] = useState(() => parseChallenge(typeof location !== 'undefined' ? location.search : ''));
   const [challengeShareStatus, setChallengeShareStatus] = useState(false);
-  const runGenreRef = useRef<StoryGenreId>(storedBoot.lastGenre ?? 'cyberpunk');
-  const isDailyRunRef = useRef(false);
-  const currentDailyIdRef = useRef<string | null>(null);
-  const activeDailyBriefRef = useRef<DailyBrief>(dailyBrief);
+  const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
+  const sessionRef = useRef(createSessionFlow(storedBoot.lastGenre ?? 'cyberpunk', dailyBrief));
   const dailyAttemptRecordedRef = useRef(false);
   const runRecordedRef = useRef(false);
   const runStartedAtRef = useRef(Date.now());
-  const calibrationNextRef = useRef<'campaign' | 'daily' | 'record'>('campaign');
-  const calibrationModeRef = useRef<'calibration' | 'drill'>('calibration');
+
   const runTrainingObservationsRef = useRef<TypingObservation[]>([]);
   const totalScoreRef = useRef(0);
   const deathSequenceTimerRef = useRef<number | null>(null);
@@ -762,7 +153,6 @@ const App: React.FC = () => {
   const firstSegmentTrackedRef = useRef(false);
   const challengeTrackedRef = useRef(false);
 
-  const logEndRef = useRef<HTMLDivElement>(null);
 
   const genrePack = getGenrePack(selectedGenre);
   const dailyGenrePack = getGenrePack(dailyBrief.genre);
@@ -824,13 +214,6 @@ const App: React.FC = () => {
     speed: UI.focus_speed,
     mastery: UI.focus_mastery
   }[typingFocus];
-  const challengeVerdictLabel = challengeVerdict
-    ? challengeVerdict.outcome === 'beaten'
-      ? UI.challenge_beaten
-      : challengeVerdict.outcome === 'missed'
-        ? UI.challenge_missed
-        : UI.challenge_tied
-    : '';
   // The player's weak letter pairs, handed to the story generator so the campaign
   // doubles as their drill.
   const trainingFocusTokens = useMemo(
@@ -860,12 +243,15 @@ const App: React.FC = () => {
           : DEFAULT_BRANCH_THRESHOLDS
   ), [activePact]);
 
-  const handleTogglePactClause = useCallback((id: PactClauseId) => {
-      setUserProfile(prev => {
-          const pact = togglePactClause(normalizePact(prev.pact), id);
-          return { ...prev, pact, strictCase: pact.includes('strict_case') };
+  const handleTogglePactClause = (id: PactClauseId) => {
+      const pact = togglePactClause(activePact, id);
+      captureProductEvent('typomancer_pact_toggled', {
+          ...getAnalyticsContext(),
+          clause: id,
+          active: pact.includes(id)
       });
-  }, []);
+      setUserProfile(prev => ({ ...prev, pact, strictCase: pact.includes('strict_case') }));
+  };
 
   // The pace the game measures the player at, tracking real runs rather than the
   // one calibration prompt they typed on their first day.
@@ -887,6 +273,31 @@ const App: React.FC = () => {
     captureProductEvent('typomancer_landing_viewed', getAnalyticsContext());
   }, []);
 
+  // A tab closing mid-run is the only abandon signal available without a server
+  // session; keepalive in captureProductEvent survives the unload.
+  useEffect(() => {
+    const onPageHide = () => {
+        if (gameState !== GameState.PLAYING) return;
+        captureProductEvent('typomancer_run_abandoned', {
+            ...getAnalyticsContext(),
+            daily: isDailyRun,
+            level: currentLevel,
+            run_number: playerProgress.runs.length + 1
+        });
+    };
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, [gameState, isDailyRun, currentLevel, playerProgress.runs.length]);
+
+  useEffect(() => {
+    const onInstallPrompt = (event: Event) => {
+        event.preventDefault();
+        setInstallPromptEvent(event as BeforeInstallPromptEvent);
+    };
+    window.addEventListener('beforeinstallprompt', onInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', onInstallPrompt);
+  }, []);
+
   useEffect(() => {
     if (!incomingChallenge || challengeTrackedRef.current) return;
     challengeTrackedRef.current = true;
@@ -895,7 +306,13 @@ const App: React.FC = () => {
       daily_id_present: true,
       target_score_bucket: getMetricBucket(incomingChallenge.targetScore, 500, 10_000)
     });
-  }, [incomingChallenge]);
+    if (incomingChallenge.dailyId !== dailyBrief.dailyId) {
+      captureProductEvent('typomancer_challenge_expired', {
+        ...getAnalyticsContext(),
+        target_score_bucket: getMetricBucket(incomingChallenge.targetScore, 500, 10_000)
+      });
+    }
+  }, [incomingChallenge, dailyBrief.dailyId]);
 
   useEffect(() => {
     // The profile is read synchronously into state, so by the time this runs it
@@ -929,10 +346,6 @@ const App: React.FC = () => {
       window.removeEventListener('focus', refreshDailyBrief);
     };
   }, [dailyBrief.dailyId]);
-
-  useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [storyLog]);
 
   useEffect(() => {
     if (!isDailyRun || !currentDailyId || dailyAttemptRecordedRef.current) return;
@@ -1020,8 +433,8 @@ const App: React.FC = () => {
       endedAt: endedAt.toISOString(),
       dateKey: getLocalDateKey(endedAt),
       outcome: stats.outcome,
-      daily: isDailyRunRef.current,
-      genre: runGenreRef.current,
+      daily: sessionRef.current.isDaily,
+      genre: sessionRef.current.genre,
       level: stats.level,
       score: stats.score,
       wpm: stats.wpm,
@@ -1049,9 +462,11 @@ const App: React.FC = () => {
     const eventContext = getAnalyticsContext();
     captureProductEvent('typomancer_run_completed', {
       ...eventContext,
-      mission: isLastRelay(campaignState) ? 'last_relay' : (isDailyRunRef.current ? 'daily' : 'campaign'),
-      daily: isDailyRunRef.current,
-      genre: runGenreRef.current,
+      mission: isLastRelay(
+        (gameState === GameState.GAME_OVER ? finalStats?.mission : victoryReport?.mission) || campaignState
+      ) ? 'last_relay' : (sessionRef.current.isDaily ? 'daily' : 'campaign'),
+      daily: sessionRef.current.isDaily,
+      genre: sessionRef.current.genre,
       level: stats.level,
       outcome: stats.outcome,
       wpm_bucket: getMetricBucket(stats.wpm),
@@ -1062,7 +477,7 @@ const App: React.FC = () => {
     });
     captureProductEvent('typomancer_debrief_viewed', {
       ...eventContext,
-      daily: isDailyRunRef.current,
+      daily: sessionRef.current.isDaily,
       outcome: stats.outcome,
       focus,
       run_number: runNumber
@@ -1173,6 +588,12 @@ const App: React.FC = () => {
       };
   }, []);
 
+  const handleInstallApp = () => {
+      if (!installPromptEvent) return;
+      captureProductEvent('typomancer_install_prompted', getAnalyticsContext());
+      void installPromptEvent.prompt().finally(() => setInstallPromptEvent(null));
+  };
+
   const handleToggleMusic = () => {
       const active = audioEngine.toggle();
       setMusicActive(active);
@@ -1180,102 +601,6 @@ const App: React.FC = () => {
 
   const handleToggleLanguage = () => {
       setLanguage(prev => prev === 'en' ? 'ru' : 'en');
-  };
-
-  const handleToggleStrictCase = () => {
-      handleTogglePactClause('strict_case');
-  };
-
-  const generatePerkObject = (def: typeof PERK_DEFINITIONS[number], tierIndex: number, _genreOverride?: StoryGenreId): Perk => {
-      const tierData = def.tiers[tierIndex] as any;
-      // Perk firmware lives on the operator deck — always cyberpunk names.
-      const perkSkin = hubSkin.perks[def.groupId];
-      return {
-          id: `${def.groupId}_${tierIndex + 1}`,
-          groupId: def.groupId,
-          name: `${perkSkin.name[language]} ${['I','II','III'][tierIndex]}`,
-          description: perkSkin.tiers[tierIndex][language],
-          type: def.type as any,
-          rarity: tierIndex === 0 ? 'common' : tierIndex === 1 ? 'rare' : 'legendary',
-          tier: tierIndex + 1,
-          maxTier: def.tiers.length,
-          apply: (mods) => {
-              const newMods = { ...mods };
-              if (def.groupId === 'neural_buffer') {
-                  newMods.comboShields = Math.max(newMods.comboShields, tierData.shields);
-                  newMods.comboShieldCost = tierData.cost;
-              }
-              if (def.groupId === 'ghost_protocol') {
-                  newMods.streakTraceMultiplier = Math.min(newMods.streakTraceMultiplier, tierData.streakMult);
-                  newMods.streakTraceThreshold = tierData.threshold;
-              }
-              if (def.groupId === 'adrenaline_spike') {
-                  newMods.healthRegenWpmThreshold = tierData.thresh;
-                  newMods.healthRegenAmount = tierData.regen;
-              }
-              if (def.groupId === 'titanium_firewall') newMods.perfectLineHealth = Math.max(newMods.perfectLineHealth, tierData.perfectHeal);
-              if (def.groupId === 'critical_override') {
-                  newMods.streakPurgeInterval = tierData.interval;
-                  newMods.streakPurgeCharacters = tierData.characters;
-              }
-              if (def.groupId === 'focus_lattice') { newMods.focusDurationMs += tierData.duration; newMods.focusMistakeForgiveness += tierData.forgiveness; }
-              if (def.groupId === 'error_siphon') newMods.errorChargeGain = Math.max(newMods.errorChargeGain, tierData.charge);
-              if (def.groupId === 'evidence_lens') newMods.evidenceMultiplier += tierData.evidence;
-              return newMods;
-          }
-      };
-  };
-
-  const getRarityRoll = (performance: 'bad' | 'average' | 'good' | 'legendary'): number => {
-      const rand = Math.random();
-      if (performance === 'legendary') {
-          if (rand < 0.20) return 2;
-          if (rand < 0.60) return 1;
-          return 0;
-      }
-      if (performance === 'good') {
-          if (rand < 0.05) return 2;
-          if (rand < 0.30) return 1;
-          return 0;
-      }
-      if (performance === 'average') {
-          if (rand < 0.01) return 2;
-          if (rand < 0.10) return 1;
-          return 0;
-      }
-      return 0;
-  };
-
-  const getUpgradeOptions = (performance: 'bad' | 'average' | 'good' | 'legendary') => {
-      const options: Perk[] = [];
-      const usedGroupIds = new Set<string>();
-      const upgradeCandidates: Perk[] = [];
-      activePerks.forEach(p => {
-          const def = PERK_DEFINITIONS.find(d => d.groupId === p.groupId);
-          if (def && p.tier < p.maxTier) {
-              upgradeCandidates.push(generatePerkObject(def, p.tier)); 
-              usedGroupIds.add(p.groupId);
-          } else {
-              usedGroupIds.add(p.groupId); 
-          }
-      });
-
-      const pickedUpgrades = upgradeCandidates.sort(() => 0.5 - Math.random()).slice(0, 2);
-      options.push(...pickedUpgrades);
-
-      const availableNewDefinitions = PERK_DEFINITIONS.filter(d => !usedGroupIds.has(d.groupId));
-      const shuffledDefinitions = [...availableNewDefinitions].sort(() => 0.5 - Math.random());
-      const slotsNeeded = 3 - options.length;
-      
-      for (let i = 0; i < slotsNeeded; i++) {
-          if (shuffledDefinitions[i]) {
-              const def = shuffledDefinitions[i];
-              const rolledTierIndex = getRarityRoll(performance);
-              const finalTierIndex = Math.min(rolledTierIndex, def.tiers.length - 1);
-              options.push(generatePerkObject(def, finalTierIndex));
-          }
-      }
-      return options.sort(() => 0.5 - Math.random());
   };
 
   const prepareSession = (dailySeed?: string) => {
@@ -1312,7 +637,7 @@ const App: React.FC = () => {
           ? dailyStarterIds.flatMap((id) => PERK_DEFINITIONS.find((definition) => definition.groupId === id) || [])
           : [...PERK_DEFINITIONS].sort(() => 0.5 - Math.random()).slice(0, 3);
       const starters = starterDefinitions
-          .map(d => generatePerkObject(d, 0));
+          .map(d => createPerk(d, 0, hubSkin, language));
       setOfferedPerks(starters);
       dailyAttemptRecordedRef.current = false;
       firstSegmentTrackedRef.current = false;
@@ -1320,14 +645,14 @@ const App: React.FC = () => {
   };
 
   const initializeSession = () => {
-      calibrationModeRef.current = 'calibration';
+      sessionRef.current.calibrationMode = 'calibration';
       clearRunCheckpoint();
       setRunCheckpoint(null);
       prepareSession();
       setIsDailyRun(false);
-      isDailyRunRef.current = false;
+      sessionRef.current.isDaily = false;
       setCurrentDailyId(null);
-      currentDailyIdRef.current = null;
+      sessionRef.current.dailyId = null;
       setCurrentDailyDateLabel(null);
       // A newcomer meets the story first. Calibration used to be the very first
       // thing a stranger saw: a 93-character typing test, before the game had
@@ -1345,11 +670,11 @@ const App: React.FC = () => {
       const mission = { ...openingMission, flags: [...openingMission.flags, LAST_RELAY] };
       setCampaignState(mission);
       setSelectedGenre('cyberpunk');
-      runGenreRef.current = 'cyberpunk';
+      sessionRef.current.genre = 'cyberpunk';
       setIsDailyRun(false);
-      isDailyRunRef.current = false;
+      sessionRef.current.isDaily = false;
       setCurrentDailyId(null);
-      currentDailyIdRef.current = null;
+      sessionRef.current.dailyId = null;
       setCurrentDailyDateLabel(null);
       setInitialSegment(getRelayStart(1, language, mission));
       setCharacterDesc('Agent Nox and Mira, a courier in a yellow raincoat carrying a witness key');
@@ -1371,7 +696,7 @@ const App: React.FC = () => {
 
       const restoredPerks = checkpoint.perks.flatMap((savedPerk) => {
           const definition = PERK_DEFINITIONS.find((candidate) => candidate.groupId === savedPerk.groupId);
-          return definition ? [generatePerkObject(definition, savedPerk.tier - 1)] : [];
+          return definition ? [createPerk(definition, savedPerk.tier - 1, hubSkin, language)] : [];
       });
       setStoryLog([]);
       runRecordedRef.current = false;
@@ -1391,11 +716,11 @@ const App: React.FC = () => {
       setTotalScore(checkpoint.totalScore);
       totalScoreRef.current = checkpoint.totalScore;
       setSelectedGenre(checkpoint.genre);
-      runGenreRef.current = checkpoint.genre;
+      sessionRef.current.genre = checkpoint.genre;
       setIsDailyRun(false);
-      isDailyRunRef.current = false;
+      sessionRef.current.isDaily = false;
       setCurrentDailyId(null);
-      currentDailyIdRef.current = null;
+      sessionRef.current.dailyId = null;
       setCurrentDailyDateLabel(null);
       setGameState(GameState.LOADING);
       audioEngine.unlock();
@@ -1430,7 +755,7 @@ const App: React.FC = () => {
   };
 
   const initializeDailySession = () => {
-      calibrationModeRef.current = 'calibration';
+      sessionRef.current.calibrationMode = 'calibration';
       const brief = getDailyBrief();
       const latestState = getDailyState(brief.dailyId);
       setDailyBrief(brief);
@@ -1438,20 +763,20 @@ const App: React.FC = () => {
       if (latestState.attemptsUsed >= DAILY_MAX_ATTEMPTS) return;
 
       prepareSession(brief.dailyId);
-      activeDailyBriefRef.current = brief;
+      sessionRef.current.dailyBrief = brief;
       setIsDailyRun(true);
-      isDailyRunRef.current = true;
+      sessionRef.current.isDaily = true;
       setCurrentDailyId(brief.dailyId);
-      currentDailyIdRef.current = brief.dailyId;
+      sessionRef.current.dailyId = brief.dailyId;
       setCurrentDailyDateLabel(brief.dateLabel);
       setSelectedGenre(brief.genre);
-      runGenreRef.current = brief.genre;
+      sessionRef.current.genre = brief.genre;
       setGameState(GameState.STARTER_PERK_SELECTION);
       audioEngine.unlock();
   };
 
   const finishCalibration = (result: CalibrationResult, observations: TypingObservation[] = [], skipped = false) => {
-      const mode = calibrationModeRef.current;
+      const mode = sessionRef.current.calibrationMode;
       setTypingTraining((current) => saveTypingTraining(recordTypingSession(
           current,
           observations,
@@ -1469,27 +794,27 @@ const App: React.FC = () => {
               accuracy_bucket: getAccuracyBucket(result.accuracy),
               samples_bucket: getMetricBucket(observations.length, 25, 500)
           });
-          calibrationModeRef.current = 'calibration';
+          sessionRef.current.calibrationMode = 'calibration';
           setGameState(GameState.OPERATOR_RECORD);
           return;
       }
       setPlayerProgressState((current) => savePlayerProgress(setCalibration(current, result)));
       captureProductEvent('typomancer_calibration_completed', {
           ...getAnalyticsContext(),
-          recalibration: calibrationNextRef.current === 'record',
+          recalibration: sessionRef.current.calibrationNext === 'record',
           skipped,
           wpm_bucket: getMetricBucket(result.wpm),
           accuracy_bucket: getAccuracyBucket(result.accuracy),
           preset: result.preset
       });
-      if (calibrationNextRef.current === 'daily') setGameState(GameState.STARTER_PERK_SELECTION);
-      else if (calibrationNextRef.current === 'record') setGameState(GameState.OPERATOR_RECORD);
+      if (sessionRef.current.calibrationNext === 'daily') setGameState(GameState.STARTER_PERK_SELECTION);
+      else if (sessionRef.current.calibrationNext === 'record') setGameState(GameState.OPERATOR_RECORD);
       else setGameState(GameState.GENRE_SELECTION);
   };
 
   const skipCalibration = () => {
-      if (calibrationModeRef.current === 'drill') {
-          calibrationModeRef.current = 'calibration';
+      if (sessionRef.current.calibrationMode === 'drill') {
+          sessionRef.current.calibrationMode = 'calibration';
           setGameState(GameState.OPERATOR_RECORD);
           return;
       }
@@ -1497,8 +822,8 @@ const App: React.FC = () => {
   };
 
   const recalibrate = () => {
-      calibrationModeRef.current = 'calibration';
-      calibrationNextRef.current = 'record';
+      sessionRef.current.calibrationMode = 'calibration';
+      sessionRef.current.calibrationNext = 'record';
       captureProductEvent('typomancer_calibration_started', {
           ...getAnalyticsContext(),
           recalibration: true
@@ -1507,8 +832,8 @@ const App: React.FC = () => {
   };
 
   const startTargetedDrill = () => {
-      calibrationModeRef.current = 'drill';
-      calibrationNextRef.current = 'record';
+      sessionRef.current.calibrationMode = 'drill';
+      sessionRef.current.calibrationNext = 'record';
       captureProductEvent('typomancer_drill_started', {
           ...getAnalyticsContext(),
           samples_bucket: getMetricBucket(typingTraining.samples, 100, 2000),
@@ -1518,8 +843,8 @@ const App: React.FC = () => {
   };
 
   const shareDailyChallenge = async (outcome: 'victory' | 'defeat', score: number) => {
-      if (!isDailyRunRef.current || !currentDailyIdRef.current || typeof location === 'undefined') return;
-      const url = buildChallengeUrl(location.origin + location.pathname, currentDailyIdRef.current, score);
+      if (!sessionRef.current.isDaily || !sessionRef.current.dailyId || typeof location === 'undefined') return;
+      const url = buildChallengeUrl(location.origin + location.pathname, sessionRef.current.dailyId, score);
       if (!url) return;
       const text = language === 'ru'
           ? `Я набрал ${score} в Дневном секторе Typomancer. Сможешь побить мой результат?`
@@ -1542,39 +867,47 @@ const App: React.FC = () => {
 
   const handleGenreSelect = (genre: StoryGenreId) => {
       setSelectedGenre(genre);
-      runGenreRef.current = genre;
+      sessionRef.current.genre = genre;
       setGameState(GameState.STARTER_PERK_SELECTION);
   };
 
   const handleStarterPerkSelect = (perk: Perk) => {
       setActivePerks([perk]);
-      beginStoryGeneration(runGenreRef.current);
+      beginStoryGeneration(sessionRef.current.genre);
   };
 
-  const beginStoryGeneration = async (genre: StoryGenreId = runGenreRef.current) => {
+  const beginStoryGeneration = async (genre: StoryGenreId = sessionRef.current.genre) => {
     setGameState(GameState.LOADING);
     captureProductEvent('typomancer_run_started', {
       ...getAnalyticsContext(),
-      daily: isDailyRunRef.current,
+      daily: sessionRef.current.isDaily,
       genre,
       preset: adaptiveDifficulty.preset,
       run_number: playerProgress.runs.length + 1,
       returning_player: playerProgress.runs.length > 0
     });
-    const activeBrief = activeDailyBriefRef.current;
-    const startRequest = isDailyRunRef.current && currentDailyIdRef.current === activeBrief.dailyId
+    const activeBrief = sessionRef.current.dailyBrief;
+    const startRequest = sessionRef.current.isDaily && sessionRef.current.dailyId === activeBrief.dailyId
       ? Promise.resolve<StorySegment>({
           text: activeBrief.opening[language],
           mood: StoryMood.TENSE,
           type: SegmentType.NARRATIVE
         })
       : generateStoryStart(language, genre);
-    const [start, charProfile] = await Promise.all([
-        startRequest,
-        generateCharacterProfile(language, genre)
-    ]);
-    setInitialSegment(start);
-    setCharacterDesc(charProfile);
+    try {
+        const [start, charProfile] = await Promise.all([
+            startRequest,
+            generateCharacterProfile(language, genre)
+        ]);
+        setInitialSegment(start);
+        setCharacterDesc(charProfile);
+    } catch {
+        // A rejection here must not strand the player on LOADING — fall back to
+        // the authored opening like every other generation path does.
+        const local = getGenrePack(genre).local[language];
+        setInitialSegment({ text: local.start, mood: StoryMood.TENSE, type: SegmentType.NARRATIVE, skill: 'flow' });
+        setCharacterDesc(local.protagonist);
+    }
     setGameState(GameState.PLAYING);
   };
 
@@ -1641,8 +974,8 @@ const App: React.FC = () => {
           route: mission.route
       };
 
-      const isFinal = isDailyRunRef.current || finalRoundStats.level >= (isLastRelay(mission) ? RELAY_SECTORS : CAMPAIGN_FINAL_LEVEL);
-      const upgradeOptions = isFinal ? [] : getUpgradeOptions(performanceRating);
+      const isFinal = sessionRef.current.isDaily || finalRoundStats.level >= (isLastRelay(mission) ? RELAY_SECTORS : CAMPAIGN_SECTORS);
+      const upgradeOptions = isFinal ? [] : getUpgradeOptions(performanceRating, activePerks, hubSkin, language);
       setLastLevelReport(report);
       if (isFinal) {
           const endingTitle = getEndingTitle(report);
@@ -1656,7 +989,7 @@ const App: React.FC = () => {
 
       const summary = isLastRelay(mission)
         ? getRelaySummary(finalRoundStats.level, mission, language)
-        : await generateLevelSummary(finalRoundStats.level, report, storyLog.map(l => l.text).join(" "), language, runGenreRef.current);
+        : await generateLevelSummary(finalRoundStats.level, report, storyLog.map(l => l.text).join(" "), language, sessionRef.current.genre);
       const completedReport = { ...report, narrativeSummary: summary, endingTitle: getEndingTitle({ ...report, narrativeSummary: summary }) };
       setNarrativeContext(summary);
       addToLog(`[${UI.level.toUpperCase()} ${finalRoundStats.level} ${UI.seq_complete}]: ${summary}`, 'neutral', 0, 0, 0, `${UI.evidence}: ${mission.evidence} · ${UI.heat}: ${mission.heat}%`);
@@ -1670,7 +1003,7 @@ const App: React.FC = () => {
           const checkpoint = saveRunCheckpoint({
               nextLevel: finalRoundStats.level + 1,
               health: finalRoundStats.health,
-              genre: runGenreRef.current,
+              genre: sessionRef.current.genre,
               narrativeContext: summary,
               totalScore: totalScoreRef.current,
               perks: activePerks.map((perk) => ({ groupId: perk.groupId, tier: perk.tier })),
@@ -1706,11 +1039,11 @@ const App: React.FC = () => {
       try {
           const nextStartSegment = isLastRelay(campaignState)
             ? getRelayStart(nextLvl, language, campaignState)
-            : await generateNextLevelStart(nextLvl, narrativeContext, language, campaignState, runGenreRef.current);
+            : await generateNextLevelStart(nextLvl, narrativeContext, language, campaignState, sessionRef.current.genre);
           setInitialSegment(nextStartSegment);
           setGameState(GameState.PLAYING);
         } catch (e) {
-          const fallback = getGenrePack(runGenreRef.current).local[language].levelStart[nextLvl - 1]
+          const fallback = getGenrePack(sessionRef.current.genre).local[language].levelStart[nextLvl - 1]
               || (language === 'ru' ? "Связь разорвана. Вы в новом секторе." : "The connection resets. You are in a new sector.");
           setInitialSegment({ 
               text: fallback,
@@ -1754,7 +1087,7 @@ const App: React.FC = () => {
           dateKey: getLocalDateKey(endedAt),
           outcome: 'banked',
           daily: false,
-          genre: runGenreRef.current,
+          genre: sessionRef.current.genre,
           level: lastLevelReport.level,
           score,
           wpm,
@@ -1781,7 +1114,7 @@ const App: React.FC = () => {
           ...eventContext,
           mission: isLastRelay(campaignState) ? 'last_relay' : 'campaign',
           daily: false,
-          genre: runGenreRef.current,
+          genre: sessionRef.current.genre,
           level: lastLevelReport.level,
           outcome: 'banked',
           wpm_bucket: getMetricBucket(wpm),
@@ -1873,8 +1206,8 @@ const App: React.FC = () => {
         firstSegmentTrackedRef.current = true;
         captureProductEvent('typomancer_first_segment_completed', {
           ...getAnalyticsContext(),
-          daily: isDailyRunRef.current,
-          genre: runGenreRef.current,
+          daily: sessionRef.current.isDaily,
+          genre: sessionRef.current.genre,
           level: currentLevel,
           wpm_bucket: getMetricBucket(wpm),
           accuracy_bucket: getAccuracyBucket(getTypingAccuracy(mistakes, text.length))
@@ -1938,112 +1271,6 @@ const App: React.FC = () => {
     };
   };
 
-  const describeUpgradeEffect = (key: UpgradeId, level: number): string => {
-      switch (key) {
-          case 'synapticWeave': return `+${level * META_UPGRADES.synapticWeave.effectPerLevel} ${UI.health}`;
-          case 'cryptoMiner': return `+${Math.round(level * META_UPGRADES.cryptoMiner.effectPerLevel * 100)}% ${UI.credits}`;
-          case 'signalDampener': return `-${Math.round(level * META_UPGRADES.signalDampener.effectPerLevel * 100)}% ${UI.heat}`;
-          case 'bufferExpansion': return `+${level * META_UPGRADES.bufferExpansion.effectPerLevel} ${UI.focus}`;
-          case 'focusLens': return `+${(level * META_UPGRADES.focusLens.effectPerLevel) / 1000}s ${UI.focus}`;
-          case 'patternScanner': return `+${Math.round(level * META_UPGRADES.patternScanner.effectPerLevel * 100)}% ${UI.evidence}`;
-          default: return '';
-      }
-  };
-
-
-  const renderPerkCard = (perk: Perk, index: number, isStarter: boolean) => {
-      const isLegendary = perk.rarity === 'legendary';
-      const isRare = perk.rarity === 'rare';
-      const rarityClass = isLegendary
-          ? 'screens-perk-legendary border-amber-400/60 shadow-[0_0_28px_rgba(251,191,36,0.12)] hover:shadow-[0_0_36px_rgba(251,191,36,0.2)]'
-          : isRare
-              ? 'border-violet-400/60 shadow-[0_0_24px_rgba(167,139,250,0.12)] hover:shadow-[0_0_32px_rgba(167,139,250,0.2)]'
-              : 'border-white/10 hover:border-emerald-400/35 hover:shadow-[0_0_24px_rgba(52,211,153,0.1)]';
-      const rarityColor = isLegendary ? 'text-amber-300' : isRare ? 'text-violet-300' : 'text-slate-300';
-
-      return (
-        <button
-            key={perk.id}
-            onClick={() => isStarter ? handleStarterPerkSelect(perk) : handleSelectPerk(perk)}
-            disabled={!isStarter && !isSectorSummaryReady}
-            className={`screens-cut-card screens-perk-card group relative overflow-hidden border bg-[#0b101a] ${rarityClass} transition-all duration-300 text-left h-full focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-400/70 disabled:cursor-wait disabled:opacity-55`}
-        >
-            <div className="screens-card-art-frame screens-card-banner screens-perk-card-banner">
-                <EmblemTile
-                    src={`/assets/perks/${perk.groupId}.png`}
-                    size={60}
-                    fallback={<PerkTypeIcon type={perk.type} />}
-                    className={`screens-card-art border bg-black/20 ${
-                    perk.type === 'defense' ? 'border-sky-400/25 text-sky-300' :
-                    perk.type === 'stealth' ? 'border-violet-400/25 text-violet-300' :
-                    perk.type === 'utility' ? 'border-emerald-400/25 text-emerald-300' :
-                    'border-rose-400/25 text-rose-300'
-                    }`}
-                    style={{ width: '100%', height: '100%' }}
-                />
-            </div>
-            <div className="screens-perk-meta flex items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-2">
-                    <span className="keycap opacity-70 group-hover:opacity-100">{index + 1}</span>
-                    <span className={`truncate fs-micro font-bold uppercase tracking-[0.2em] ${rarityColor}`}>{perk.rarity}</span>
-                </div>
-                 <div className="flex gap-1" aria-label={`${UI.level} ${perk.tier}`}>
-                     {Array.from({ length: perk.maxTier }, (_, tierIndex) => (
-                         <span
-                             key={tierIndex}
-                             className={`h-1.5 w-3 border ${tierIndex < perk.tier ? (isLegendary ? 'border-amber-300 bg-amber-300' : isRare ? 'border-violet-300 bg-violet-300' : 'border-emerald-300 bg-emerald-300') : 'border-white/10 bg-white/[0.03]'}`}
-                         />
-                     ))}
-                 </div>
-            </div>
-            <h4 className="screens-perk-title font-display fs-lead font-bold leading-tight text-white transition-colors">{perk.name}</h4>
-            <p className="screens-perk-description fs-body text-slate-400 leading-relaxed">
-                {perk.description}
-            </p>
-            {isLegendary && (
-                <div className="screens-perk-legend fs-micro text-amber-300 font-bold uppercase tracking-[0.2em]">
-                    {stripLeadingGlyph(UI.legendary_drop)}
-                </div>
-            )}
-        </button>
-      );
-  };
-
-  const renderGenreCard = (genreId: StoryGenreId, index: number) => {
-      const pack = getGenrePack(genreId);
-      return (
-        <button
-            key={genreId}
-            type="button"
-            onClick={() => handleGenreSelect(genreId)}
-            className="screens-cut-card screens-world-card group relative min-h-[286px] overflow-hidden border bg-[#0b101a] text-left h-full transition-all focus-visible:outline-none"
-            style={{
-                borderColor: `${pack.accent}55`,
-                boxShadow: `inset 0 1px 0 rgba(255,255,255,0.04), 0 0 24px ${pack.accent}0c`
-            }}
-        >
-            <div className="screens-card-art-frame screens-card-banner screens-world-card-banner">
-                <EmblemTile
-                    src={`/assets/worlds/${genreId}.png`}
-                    size={68}
-                    fallback={<GenreIcon genre={genreId} className="h-7 w-7" />}
-                    className="screens-card-art border bg-black/20"
-                    style={{ width: '100%', height: '100%', borderColor: `${pack.accent}44`, color: pack.accent }}
-                />
-            </div>
-            <div className="screens-world-heading flex min-w-0 items-start gap-3">
-                <span className="keycap shrink-0 opacity-70 group-hover:opacity-100">{index + 1}</span>
-                <div className="min-w-0">
-                    <h4 className="font-display fs-lead font-bold" style={{ color: pack.accent }}>{pack.name[language]}</h4>
-                    <p className="fs-micro mt-1 uppercase tracking-[0.18em] text-slate-500">{pack.ui.mainTitle[language]}</p>
-                </div>
-            </div>
-            <p className="screens-world-description fs-body text-slate-400 leading-relaxed">{pack.tagline[language]}</p>
-            <p className="screens-world-goal fs-label text-slate-500 border-t border-white/[0.06] pt-3">{pack.ui.campaignGoal[language]}</p>
-        </button>
-      );
-  };
-
   return (
     <div className="screens-app-shell min-h-screen bg-[#070a11] text-slate-200 flex flex-col md:flex-row font-mono overflow-hidden">
       <div className="screens-living-backdrop" aria-hidden="true">
@@ -2058,58 +1285,23 @@ const App: React.FC = () => {
         <span className="screens-deck-corner screens-deck-corner-br" />
       </div>
 
-      {deathSequenceActive && (
-        <div className="screens-death-sequence" role="alert" aria-live="assertive">
-          <div className="screens-death-flash" aria-hidden="true" />
-          <svg className="screens-death-crack" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-            <path d="M51 48 L44 34 L46 23 L38 7" />
-            <path d="M49 49 L34 44 L24 36 L4 31" />
-            <path d="M49 51 L36 61 L29 75 L14 92" />
-            <path d="M52 49 L66 37 L77 34 L96 18" />
-            <path d="M52 51 L68 57 L77 70 L94 82" />
-            <path d="M50 50 L55 66 L52 81 L58 100" />
-            <path d="M44 34 L34 27 L29 13 M66 37 L68 22 L78 9 M36 61 L20 60 L8 68 M68 57 L84 52 L100 54" />
-          </svg>
-          <div className="screens-death-copy">
-            <span>{UI.signal_lost}</span>
-            <small>ERR // LINK_SEVERED</small>
-          </div>
-        </div>
-      )}
-      
+      {deathSequenceActive && <DeathSequence label={UI.signal_lost} />}
+
       {/* Status strip — what the shell column was actually for, minus the parts
           other screens already show. No document column: the wordmark repeats the
           title on screen, the mission meters live on the run HUD and in the
           debrief tiles, and the log moved into the debrief where reading a feed
           makes sense. */}
       {!isTyping && (
-        <div className="hud-strip">
-          <div className="flex items-center gap-3">
-            <span className="fs-micro uppercase tracking-[0.22em] text-slate-500">{UI.wallet}</span>
-            <span className="font-display fs-lead font-bold tabular-nums leading-none text-white">
-              {Math.floor(userProfile.credits || 0)}<span className="fs-body text-emerald-400 ml-1">{UI.currency_suffix}</span>
-            </span>
-          </div>
-          <div className="flex flex-1 flex-wrap items-center gap-1.5">
-            {activePerks.map((p, i) => (
-              <span key={i} title={p.description} className={`fs-micro px-2 py-0.5 border cursor-help tracking-wide ${
-                p.tier === 3 ? 'border-amber-400/40 text-amber-300 bg-amber-400/10' :
-                p.tier === 2 ? 'border-violet-400/40 text-violet-300 bg-violet-400/10' :
-                'border-white/10 text-slate-300 bg-white/[0.03]'
-              }`}>
-                {p.name}
-              </span>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={handleToggleMusic} className="hud-strip-button">
-              {musicActive ? stripLeadingGlyph(UI.audio_active) : UI.audio_muted}
-            </button>
-            <button onClick={handleToggleLanguage} className="hud-strip-button">
-              {language === 'en' ? 'RU' : 'EN'}
-            </button>
-          </div>
-        </div>
+        <HudStrip
+          ui={UI}
+          credits={userProfile.credits}
+          perks={activePerks}
+          musicActive={musicActive}
+          language={language}
+          onToggleMusic={handleToggleMusic}
+          onToggleLanguage={handleToggleLanguage}
+        />
       )}
 
 
@@ -2120,193 +1312,48 @@ const App: React.FC = () => {
 
         <div className={`flex-1 min-h-0 flex justify-center p-2 sm:p-6 relative z-10 ${gameState === GameState.MENU ? 'items-start overflow-y-auto' : 'items-center'}`}>
             {gameState === GameState.MENU && (
-                <div className="text-center space-y-7 max-w-md animate-fade-in-up">
-                    <div className="space-y-5">
-                        <SystemBeacon label={UI.system_online} />
-                        <h2 className="font-display text-5xl font-bold text-white tracking-tight leading-[1.05]">{UI.main_title}</h2>
-                        <p className="text-slate-400 text-base leading-relaxed">
-                            {UI.intro_desc}<br/>
-                            <span className="text-amber-400/90">{UI.mistakes_warn}</span>
-                        </p>
-                    </div>
-                    <div className="flex flex-col gap-3.5">
-                        <button onClick={initializeRelay} className="btn-cyber btn-cyber-primary px-8 py-4 font-display font-bold tracking-[0.06em] text-[#04120b] flex items-center justify-center gap-3">
-                            <span className="keycap">5</span>
-                            <span>{language === 'ru' ? 'ПОСЛЕДНИЙ КАНАЛ' : 'THE LAST RELAY'}</span>
-                        </button>
-                        <p className="px-3 fs-label leading-relaxed text-slate-400">
-                            {language === 'ru'
-                                ? 'Мира заперта. Улики готовы. Один канал ещё работает. Два сектора, два решения — начни сразу.'
-                                : 'Mira is locked inside. The evidence is ready. One channel still works. Two sectors, two choices — start immediately.'}
-                        </p>
-                        {incomingChallenge && (
-                            <div className={`screens-cut-card border p-4 text-left ${isCurrentChallenge ? 'border-amber-400/35 bg-amber-400/[0.06]' : 'border-white/10 bg-white/[0.02]'}`}>
-                                <div className="fs-micro font-bold uppercase tracking-[0.2em] text-amber-300">{UI.challenge_title}</div>
-                                {isCurrentChallenge ? (
-                                    <div className="mt-2 flex items-center justify-between gap-4">
-                                        <div><span className="fs-micro text-slate-500">{UI.challenge_target}</span><strong className="block text-2xl text-white tabular-nums">{incomingChallenge.targetScore}</strong></div>
-                                        <button type="button" onClick={initializeDailySession} disabled={dailyAttemptsExhausted} className="btn-cyber btn-cyber-primary px-4 py-2.5 fs-micro font-bold text-[#04120b]">{UI.challenge_accept}</button>
-                                    </div>
-                                ) : <p className="mt-2 fs-label leading-relaxed text-slate-400">{UI.challenge_expired}</p>}
-                            </div>
-                        )}
-                        {runCheckpoint && (
-                            <button
-                                onClick={resumeSession}
-                                className="btn-cyber btn-cyber-primary px-8 py-4 font-display font-bold tracking-[0.06em] text-[#04120b] flex items-center justify-center gap-3"
-                            >
-                                <span className="keycap">R</span>
-                                <span>{UI.resume_run} · {UI.resume_sector} {runCheckpoint.nextLevel}</span>
-                            </button>
-                        )}
-                        <button
-                            onClick={initializeSession}
-                            className={`btn-cyber btn-cyber-ghost text-emerald-200 px-8 py-4 font-display font-bold tracking-[0.06em] flex items-center justify-center gap-3`}
-                        >
-                            <span className="keycap">1</span>
-                            <span>{stripKeyHint(UI.init_link)}</span>
-                        </button>
-                        <p className="px-3 fs-micro leading-relaxed text-slate-500">{UI.quick_session}</p>
-                        <button
-                            onClick={initializeDailySession}
-                            disabled={dailyAttemptsExhausted}
-                            className="screens-daily-button btn-cyber btn-cyber-ghost group px-8 py-3.5 font-display font-bold text-emerald-200 hover:text-white transition-colors flex items-center justify-center gap-3"
-                        >
-                            <span className="keycap">3</span>
-                            <EmblemTile
-                                src={`/assets/worlds/${dailyBrief.genre}.png`}
-                                size={28}
-                                className="border bg-black/20"
-                                style={{ borderColor: `${dailyGenrePack.accent}44` }}
-                            />
-                            <span className="flex min-w-0 flex-col items-start text-left">
-                                <span className="tracking-[0.06em]">{UI.daily_sector}</span>
-                                {dailyAttemptsExhausted ? (
-                                    <>
-                                        <span className="mt-1 max-w-full truncate font-mono fs-micro font-bold uppercase tracking-[0.12em] text-emerald-300/75 tabular-nums">
-                                            {UI.daily_best}: {dailyState.bestScore} · {dailyState.bestEnding || UI.daily_severed}
-                                        </span>
-                                        <span className="mt-0.5 font-mono fs-micro font-bold uppercase tracking-[0.16em] text-slate-500">
-                                            {UI.daily_tomorrow}
-                                        </span>
-                                    </>
-                                ) : (
-                                    <span className="mt-1 max-w-full truncate font-mono fs-micro font-bold uppercase tracking-[0.12em] text-emerald-300/75 tabular-nums">
-                                        {dailyGenrePack.name[language]} · {dailyAttemptsLeft}/{DAILY_MAX_ATTEMPTS} {UI.daily_left}
-                                    </span>
-                                )}
-                            </span>
-                        </button>
-                        <button
-                            onClick={() => setGameState(GameState.BLACK_MARKET)}
-                            className="btn-cyber btn-cyber-ghost px-8 py-3.5 font-display font-bold tracking-[0.06em] text-emerald-200 hover:text-white transition-colors flex items-center justify-center gap-3"
-                        >
-                            <span className="keycap">2</span>
-                            <span>{stripKeyHint(UI.black_market)}</span>
-                        </button>
-                        <button
-                            onClick={() => setGameState(GameState.OPERATOR_RECORD)}
-                            className="btn-cyber btn-cyber-ghost px-8 py-3.5 font-display font-bold tracking-[0.06em] text-sky-200 hover:text-white transition-colors flex items-center justify-center gap-3"
-                        >
-                            <span className="keycap">4</span>
-                            <span>{stripKeyHint(UI.operator_record)}</span>
-                        </button>
-                    </div>
-
-                    {/* What a returning player should be met by. The wallet is the
-                        game's internal currency; this is the only reward that
-                        leaves with them, and it used to be filed behind menu
-                        item four. */}
-                    {skillHeadline.sessions > 0 && (
-                        <div className={`screens-return screens-return--${skillHeadline.deltaWpm > 0 ? 'up' : skillHeadline.deltaWpm < 0 ? 'down' : 'flat'} mx-auto`}>
-                            <div className="screens-return-figure">
-                                <strong>{skillHeadline.deltaWpm > 0 ? '+' : ''}{skillHeadline.deltaWpm}</strong>
-                                <span>{UI.wpm}</span>
-                            </div>
-                            <div className="screens-return-body">
-                                <span>{skillHeadline.hasEnoughHistory
-                                    ? (skillHeadline.deltaWpm > 0 ? UI.return_faster : skillHeadline.deltaWpm < 0 ? UI.return_slower : UI.return_holding)
-                                    : UI.return_early}</span>
-                                <small>
-                                    {skillHeadline.sessions} {UI.return_sessions}
-                                    {progressSummary.currentStreak > 1 ? ` · ${progressSummary.currentStreak} ${UI.return_streak}` : ''}
-                                </small>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* THE PACT — the only progression that raises the bar instead of
-                        lowering it. Perfectionist used to sit here alone; it is now
-                        one clause among five. */}
-                    {/* Collapsed by default. Five clauses expanded is a wall of text on
-                        the first screen a newcomer sees, and it pushed the menu past the
-                        fold on a laptop. A returning player opens it deliberately. */}
-                    <div className="screens-pact mx-auto">
-                        <button
-                            type="button"
-                            onClick={() => setPactOpen(open => !open)}
-                            aria-expanded={pactOpen}
-                            className="flex w-full items-baseline justify-between gap-3 text-left"
-                        >
-                            <span className="screens-pact-title">
-                                {UI.pact_title}
-                                <span className="screens-pact-toggle">{pactOpen ? '−' : '+'}</span>
-                            </span>
-                            <span className={`screens-pact-reward ${pactRewardMultiplier > 1 ? 'is-active' : ''}`}>
-                                x{pactRewardMultiplier.toFixed(2)} {UI.pact_reward}
-                            </span>
-                        </button>
-                        {pactOpen && <p className="screens-pact-hint">{UI.pact_hint}</p>}
-                        {pactOpen && (
-                        <div className="screens-pact-clauses">
-                            {PACT_CLAUSES.map((clause) => {
-                                const active = isPactClauseActive(activePact, clause.id);
-                                return (
-                                    <button
-                                        key={clause.id}
-                                        type="button"
-                                        onClick={() => handleTogglePactClause(clause.id)}
-                                        aria-pressed={active}
-                                        className={`screens-pact-clause ${active ? 'is-active' : ''}`}
-                                    >
-                                        <span className="screens-pact-clause-name">
-                                            {UI[`pact_${clause.id}` as keyof typeof UI]}
-                                        </span>
-                                        <span className="screens-pact-clause-desc">
-                                            {UI[`pact_${clause.id}_desc` as keyof typeof UI]}
-                                        </span>
-                                        <span className="screens-pact-clause-reward">+{Math.round(clause.reward * 100)}%</span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                        )}
-                    </div>
-
-                    <p className="fs-label leading-relaxed text-slate-500 max-w-sm mx-auto">
-                        <span className="text-emerald-400/80">◆</span> {UI.accuracy_hook}
-                    </p>
-
-                    <div className="fs-label text-slate-600 pt-2">
-                        {UI.powered_by}
-                    </div>
-                    <div className="fs-micro leading-relaxed text-slate-700">
-                        {UI.privacy_note}
-                    </div>
-                </div>
+                <MenuScreen
+                    ui={UI}
+                    language={language}
+                    incomingChallenge={incomingChallenge}
+                    isCurrentChallenge={isCurrentChallenge}
+                    dailyBrief={dailyBrief}
+                    dailyGenrePack={dailyGenrePack}
+                    dailyState={dailyState}
+                    dailyAttemptsLeft={dailyAttemptsLeft}
+                    dailyAttemptsExhausted={dailyAttemptsExhausted}
+                    runCheckpoint={runCheckpoint}
+                    skillHeadline={skillHeadline}
+                    progressSummary={progressSummary}
+                    pactRewardMultiplier={pactRewardMultiplier}
+                    activePact={activePact}
+                    onTogglePactClause={handleTogglePactClause}
+                    onPactOpened={() => captureProductEvent('typomancer_pact_opened', getAnalyticsContext())}
+                    onRelay={initializeRelay}
+                    onInitialize={initializeSession}
+                    onDaily={initializeDailySession}
+                    onResume={resumeSession}
+                    canInstall={installPromptEvent !== null}
+                    onInstall={handleInstallApp}
+                    onBlackMarket={() => setGameState(GameState.BLACK_MARKET)}
+                    onOperatorRecord={() => setGameState(GameState.OPERATOR_RECORD)}
+                />
             )}
 
             {gameState === GameState.CALIBRATION && (
+                <Suspense fallback={null}>
                 <CalibrationPanel
                     language={language}
-                    mode={calibrationModeRef.current}
+                    mode={sessionRef.current.calibrationMode}
                     drillPrompt={buildTargetedDrill(language, typingTraining)}
                     onComplete={finishCalibration}
                     onSkip={skipCalibration}
                 />
+                </Suspense>
             )}
 
             {gameState === GameState.OPERATOR_RECORD && (
+                <Suspense fallback={null}>
                 <OperatorRecord
                     language={language}
                     progress={playerProgress}
@@ -2315,272 +1362,57 @@ const App: React.FC = () => {
                     onRecalibrate={recalibrate}
                     onStartDrill={startTargetedDrill}
                 />
+                </Suspense>
             )}
 
             {gameState === GameState.BLACK_MARKET && (
-                <div className="screens-cut-panel w-full max-w-5xl h-[80vh] bg-[#0b101a]/95 border border-white/[0.07] flex flex-col overflow-hidden animate-fade-in-up shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_80px_rgba(0,0,0,0.4)] backdrop-blur-xl">
-                    <div className="p-6 border-b border-white/[0.06] bg-white/[0.015] flex justify-between items-end gap-6">
-                        <div>
-                            <h2 className="font-display text-3xl font-bold text-white tracking-tight">{UI.market_title}</h2>
-                            <p className="text-slate-500 fs-body mt-1">{UI.market_subtitle}</p>
-                        </div>
-                        <div className="text-right">
-                            <div className="fs-micro text-slate-500 uppercase tracking-[0.2em]">{UI.avail_credits}</div>
-                            <div className="font-display text-4xl font-bold text-white tabular-nums leading-none mt-1">{Math.floor(userProfile.credits)} <span className="fs-body text-emerald-400">{UI.currency_suffix}</span></div>
-                        </div>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {(Object.entries(META_UPGRADES) as [UpgradeId, typeof META_UPGRADES.synapticWeave][]).map(([key, def], idx) => {
-                            const currentLvl = userProfile.upgrades[key];
-                            const nextCost = Math.floor(def.baseCost * (1 + (currentLvl * 0.5)));
-                            const isMaxed = currentLvl >= def.maxLevel;
-                            const canAfford = userProfile.credits >= nextCost;
-                            const copy = hubSkin.upgrades[key];
-                            return (
-                                <div key={key} className="screens-cut-card screens-upgrade-card bg-[#0b101a] border border-white/[0.07] relative overflow-hidden group hover:border-emerald-400/25 transition-colors min-h-[210px]">
-                                    <div className="screens-card-art-frame screens-upgrade-art-rail">
-                                        <EmblemTile
-                                            src={`/assets/upgrades/${key}.png`}
-                                            size={56}
-                                            className="screens-card-art border-0 bg-black/20"
-                                            style={{ width: '100%', height: '100%' }}
-                                        />
-                                    </div>
-                                    <span className="keycap absolute top-3 right-3 opacity-60 group-hover:opacity-100">{idx + 1}</span>
-                                    <div className="screens-upgrade-content">
-                                        <div className="screens-upgrade-heading mb-3 pr-9">
-                                            <h3 className="min-w-0 font-display fs-lead font-bold text-slate-100 leading-tight">{copy.name[language]}</h3>
-                                            <div className="flex shrink-0 gap-1 pt-1" aria-label={`${UI.level} ${currentLvl}/${def.maxLevel}`}>
-                                                {Array.from({ length: 10 }, (_, levelIndex) => (
-                                                    <span key={levelIndex} className={`h-2 w-2 border ${levelIndex < Math.round((currentLvl / def.maxLevel) * 10) ? 'border-emerald-300 bg-emerald-300 shadow-[0_0_5px_rgba(52,211,153,0.35)]' : 'border-white/10 bg-white/[0.025]'}`} />
-                                                ))}
-                                            </div>
-                                        </div>
-                                        <p className="text-slate-400 fs-body mb-5 flex-1">{copy.desc[language]}</p>
-                                        <div className="screens-upgrade-footer flex flex-col items-start gap-3 mt-auto">
-                                            <div className="fs-micro uppercase tracking-[0.14em] text-slate-500">
-                                                {UI.effect}: <span className="text-emerald-400">{describeUpgradeEffect(key, currentLvl)}</span>
-                                            </div>
-                                            {isMaxed ? (
-                                                <button disabled className="btn-cyber btn-cyber-ghost self-end px-4 py-2 fs-micro font-bold tracking-[0.14em] text-slate-600 cursor-not-allowed opacity-50">
-                                                    {UI.maxed_out}
-                                                </button>
-                                            ) : (
-                                                <button
-                                                    onClick={() => handleBuyUpgrade(key)}
-                                                    disabled={!canAfford}
-                                                    className={`btn-cyber btn-cyber-ghost self-end px-4 py-2 fs-micro font-bold tracking-[0.12em] flex items-center gap-2 transition-all ${canAfford ? 'text-emerald-200 hover:text-white hover:shadow-[0_0_22px_rgba(52,211,153,0.12)]' : 'text-slate-600 cursor-not-allowed opacity-45'}`}
-                                                >
-                                                    <span>{UI.install}</span>
-                                                    <span className={canAfford ? 'text-emerald-400 tabular-nums' : 'tabular-nums'}>{nextCost} {UI.currency_suffix}</span>
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <div className="absolute bottom-0 left-0 h-px bg-emerald-500/10 w-full">
-                                        <div className="h-full bg-emerald-400 transition-all duration-500 shadow-[0_0_7px_rgba(52,211,153,0.55)]" style={{ width: `${(currentLvl / def.maxLevel) * 100}%` }}></div>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                    <div className="p-4 border-t border-white/[0.06] bg-black/10 flex flex-col items-center gap-3">
-                        <p className="fs-label text-slate-600 text-center max-w-xl">{UI.genre_persists_note}</p>
-                        <button 
-                            onClick={() => setGameState(GameState.MENU)}
-                            className="btn-cyber btn-cyber-ghost px-6 py-2 text-slate-400 hover:text-white transition-colors uppercase tracking-[0.16em] fs-micro font-bold flex items-center gap-2"
-                        >
-                            <span className="keycap">ESC</span>
-                            <span>{stripKeyHint(UI.return_menu)}</span>
-                        </button>
-                    </div>
-                </div>
+                <BlackMarketScreen
+                    ui={UI}
+                    language={language}
+                    skin={hubSkin}
+                    profile={userProfile}
+                    onBuy={handleBuyUpgrade}
+                    onClose={() => setGameState(GameState.MENU)}
+                />
             )}
 
             {gameState === GameState.GENRE_SELECTION && (
-                <div className="screens-cut-panel w-full max-w-4xl max-h-[calc(100vh-3rem)] bg-[#0b101a]/95 border border-white/[0.07] p-8 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_80px_rgba(0,0,0,0.4)] animate-fade-in-up flex flex-col overflow-hidden">
-                    <div className="shrink-0 border-b border-white/[0.06] pb-5 mb-6 text-center">
-                        <h2 className="font-display text-3xl font-bold text-white mb-2 tracking-tight">{UI.genre_title}</h2>
-                        <p className="text-slate-400 fs-body">{UI.genre_subtitle}</p>
-                        <p className="text-slate-600 fs-micro uppercase tracking-[0.14em] mt-3">{UI.genre_persists_note}</p>
-                    </div>
-                    <div className="min-h-0 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-4 pr-1">
-                        {GENRE_ORDER.map((genreId, index) => renderGenreCard(genreId, index))}
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => setGameState(GameState.MENU)}
-                        className="btn-cyber btn-cyber-ghost mt-6 shrink-0 w-full py-2.5 text-slate-500 hover:text-white transition-colors uppercase tracking-[0.16em] fs-micro font-bold flex items-center justify-center gap-2"
-                    >
-                        <span className="keycap">ESC</span>
-                        <span>{stripKeyHint(UI.genre_back)}</span>
-                    </button>
-                </div>
+                <GenreSelectionScreen
+                    ui={UI}
+                    language={language}
+                    onSelect={handleGenreSelect}
+                    onBack={() => setGameState(GameState.MENU)}
+                />
             )}
 
             {gameState === GameState.STARTER_PERK_SELECTION && (
-                 <div className="screens-cut-panel w-full max-w-4xl max-h-[calc(100vh-3rem)] overflow-y-auto bg-[#0b101a]/95 border border-white/[0.07] p-8 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_80px_rgba(0,0,0,0.4)] animate-fade-in-up">
-                    <div className="border-b border-white/[0.06] pb-5 mb-6 text-center">
-                        <div className="inline-flex items-center gap-2 px-3 py-1 mb-3 border fs-micro font-bold tracking-[0.2em] uppercase screens-cut-chip"
-                             style={{ borderColor: `${genrePack.accent}66`, color: genrePack.accent, background: `${genrePack.accent}14` }}>
-                            <GenreIcon genre={selectedGenre} className="h-3.5 w-3.5" />
-                            <span>{UI.sim_badge}</span>
-                            <span className="opacity-70">//</span>
-                            <span>{genrePack.name[language]}</span>
-                        </div>
-                        <h2 className="font-display text-3xl font-bold text-white mb-2 tracking-tight">{UI.loadout_title}</h2>
-                        <p className="text-slate-400 fs-body">{UI.loadout_subtitle}</p>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {offeredPerks.map((perk, index) => renderPerkCard(perk, index, true))}
-                    </div>
-                 </div>
+                <StarterPerkScreen
+                    ui={UI}
+                    language={language}
+                    perks={offeredPerks}
+                    genrePack={genrePack}
+                    genre={selectedGenre}
+                    onSelect={handleStarterPerkSelect}
+                />
             )}
 
             {gameState === GameState.LEVEL_COMPLETE && lastLevelReport && (
-                <div className="screens-cut-panel w-full max-w-4xl max-h-[calc(100vh-3rem)] overflow-y-auto bg-[#0b101a]/95 border border-white/[0.07] p-8 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_80px_rgba(0,0,0,0.4)] animate-fade-in-up">
-                    <div className="border-b border-white/[0.06] pb-5 mb-6">
-                        <div className="flex justify-between items-start mb-2">
-                            <h2 className="font-display text-3xl font-bold text-white">{UI.seq_complete}</h2>
-                            <div className="text-right">
-                                <span className="fs-micro text-slate-500 uppercase tracking-[0.2em] block">{UI.xp_gained}</span>
-                                <span className="font-display text-2xl font-bold text-emerald-300 tabular-nums">+{levelXpGained} XP</span>
-                            </div>
-                        </div>
-                        <p className="text-slate-300 text-base leading-relaxed italic">
-                            "{lastLevelReport.narrativeSummary}"
-                        </p>
-                    </div>
-                    {/* Accuracy leads the debrief. This is an accuracy trainer, and the
-                        screen used to open with a speed number, which taught the
-                        opposite of what the game rewards. */}
-                    {(() => {
-                        const accuracy = Math.round(lastLevelReport.accuracy ?? 100);
-                        const focus = getTypingFocus({
-                            avgWpm: lastLevelReport.avgWpm,
-                            accuracy: lastLevelReport.accuracy ?? 100,
-                            consistency: lastLevelReport.consistency ?? 100,
-                            totalMistakes: lastLevelReport.totalMistakes,
-                            score: 0
-                        });
-                        const coach = { accuracy: UI.focus_accuracy, consistency: UI.focus_consistency, speed: UI.focus_speed, mastery: UI.focus_mastery }[focus];
-                        return (
-                            <div className={`screens-accuracy-hero screens-accuracy-hero--${focus} mb-3`}>
-                                <div className="flex items-end justify-between gap-4">
-                                    <div>
-                                        <div className="fs-micro uppercase tracking-[0.22em] text-slate-500">{UI.accuracy}</div>
-                                        <div className="screens-accuracy-value font-display tabular-nums">{accuracy}%</div>
-                                    </div>
-                                    <div className="text-right">
-                                        <div className="fs-micro uppercase tracking-[0.22em] text-slate-500">{UI.next_drill}</div>
-                                        <p className="screens-accuracy-coach">{coach}</p>
-                                    </div>
-                                </div>
-                                <div className="screens-accuracy-bar mt-3" aria-hidden="true">
-                                    <div className="screens-accuracy-bar-fill" style={{ width: `${Math.max(0, Math.min(100, accuracy))}%` }} />
-                                </div>
-                                <div className="mt-2 fs-micro text-slate-500 tabular-nums">
-                                    {lastLevelReport.totalMistakes} {lastLevelReport.totalMistakes === 1 ? UI.mistake_one : UI.mistake_many}
-                                </div>
-                            </div>
-                        );
-                    })()}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-8">
-                        <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]">
-                            <div className="font-display text-3xl font-bold text-white tabular-nums leading-none">{Math.round(lastLevelReport.avgWpm)}</div>
-                            <div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.avg_speed} · {UI.wpm}</div>
-                        </div>
-                        <div className={`screens-stat-tile p-4 text-center border ${activePactRef.current.length ? 'border-amber-400/25 bg-amber-400/[0.03]' : 'border-white/[0.07] bg-white/[0.02]'}`}>
-                             <div className={`font-display text-3xl font-bold tabular-nums leading-none ${activePactRef.current.length ? 'text-amber-300' : 'text-white'}`}>+{lastLevelReport.creditsEarned}</div>
-                             <div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">
-                                {UI.credits}
-                                {/* The payout and the reason for it, side by side. */}
-                                {activePactRef.current.length > 0 && (
-                                    <span className="ml-1 text-amber-300/90">
-                                        {UI.pact_title} x{getPactRewardMultiplier(activePactRef.current).toFixed(2)}
-                                    </span>
-                                )}
-                             </div>
-                        </div>
-                        <div className="screens-stat-tile p-4 text-center border border-amber-400/15 bg-amber-400/[0.025]">
-                             <div className="font-display text-3xl font-bold text-amber-300 tabular-nums leading-none">{Math.round(lastLevelReport.mission?.heat ?? campaignState.heat)}%</div>
-                             <div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.heat}</div>
-                        </div>
-                        <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]">
-                             <div className="font-display text-3xl font-bold text-white tabular-nums leading-none">{lastLevelReport.finalHealth}</div>
-                             <div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.health}</div>
-                        </div>
-                        <div className="screens-stat-tile p-4 text-center border border-emerald-400/15 bg-emerald-400/[0.025]">
-                             <div className="font-display text-3xl font-bold text-emerald-300 tabular-nums leading-none">{lastLevelReport.mission?.evidence ?? campaignState.evidence}</div>
-                             <div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.evidence}</div>
-                        </div>
-                        <div className="screens-stat-tile p-4 text-center border border-sky-400/15 bg-sky-400/[0.025]">
-                             <div className="font-display text-3xl font-bold text-sky-300 tabular-nums leading-none">{lastLevelReport.mission?.trust ?? campaignState.trust}</div>
-                             <div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.trust}</div>
-                        </div>
-                        <div className="screens-stat-tile p-4 text-center border border-violet-400/15 bg-violet-400/[0.025]">
-                            <div className="font-display text-3xl font-bold text-violet-300 tabular-nums leading-none">{Math.round(lastLevelReport.consistency ?? 100)}%</div>
-                            <div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.consistency}</div>
-                        </div>
-                    </div>
-                    {/* The mission log used to live in the shell column, where it was
-                        a feed nobody reads while typing. Between sectors it is the
-                        right thing to look at, so it lands here instead. */}
-                    {storyLog.length > 0 && (
-                        <div className="screens-cut-card border border-white/[0.06] bg-black/20 p-4 mb-6">
-                            <button
-                                type="button"
-                                onClick={() => setLogOpen(open => !open)}
-                                aria-expanded={logOpen}
-                                className="flex w-full items-center justify-between gap-3 text-left"
-                            >
-                                <span className="fs-micro uppercase tracking-[0.2em] text-slate-500">{UI.mission_log}</span>
-                                <span className="fs-label text-slate-400">{logOpen ? '−' : `+${storyLog.length}`}</span>
-                            </button>
-                            {logOpen && (
-                                <div className="mt-3 max-h-56 space-y-2 overflow-y-auto no-scrollbar">
-                                    {storyLog.slice().reverse().map((log, idx) => (
-                                        <div key={idx} className="border-l border-emerald-500/25 pl-3">
-                                            <p className="fs-label text-slate-300">{log.text}</p>
-                                            {log.wpm > 0 && (
-                                                <span className="fs-micro text-slate-600">
-                                                    {UI.speed}: <span className="tabular-nums">{log.wpm}</span> {UI.wpm}
-                                                    {log.meta ? ` · ${log.meta}` : ''}
-                                                </span>
-                                            )}
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    )}
-                    <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                        <div>
-                            <h3 className="font-display fs-lead font-bold text-white tracking-[0.04em]">{UI.select_upgrade}</h3>
-                            <p className="mt-1 fs-micro text-slate-500">{UI.continue_hint}</p>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={handleBankExit}
-                            disabled={!isSectorSummaryReady}
-                            className="btn-cyber btn-cyber-ghost px-5 py-2.5 fs-micro font-bold tracking-[0.12em] text-slate-300 hover:text-white disabled:cursor-wait disabled:opacity-45"
-                        >
-                            {UI.bank_exit}
-                        </button>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {offeredPerks.map((perk, index) => renderPerkCard(perk, index, false))}
-                    </div>
-                </div>
+                <SectorCompleteScreen
+                    ui={UI}
+                    report={lastLevelReport}
+                    xpGained={levelXpGained}
+                    storyLog={storyLog}
+                    fallbackMission={campaignState}
+                    perks={offeredPerks}
+                    ready={isSectorSummaryReady}
+                    pactClauses={activePactRef.current}
+                    onSelectPerk={handleSelectPerk}
+                    onBankExit={handleBankExit}
+                />
             )}
 
             {gameState === GameState.LOADING && (
-                <div className="flex flex-col items-center justify-center space-y-4">
-                    <div className="w-12 h-12 border-4 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin"></div>
-                    <p className="text-emerald-400 animate-pulse tracking-widest fs-body">
-                        {currentLevel > 1 ? UI.generating_sector : UI.generating_scenario}
-                    </p>
-                </div>
+                <LoadingScreen ui={UI} nextSector={currentLevel > 1} />
             )}
 
             {gameState === GameState.PLAYING && initialSegment && (
@@ -2612,156 +1444,42 @@ const App: React.FC = () => {
             )}
 
             {gameState === GameState.VICTORY && victoryReport && (
-                <div className="screens-cut-panel w-full max-w-3xl bg-[#0b101a]/95 p-10 border border-emerald-400/35 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_60px_rgba(16,185,129,0.12)] animate-fade-in-up">
-                    <div className="text-center border-b border-white/[0.07] pb-6 mb-6">
-                        <div className="screens-cut-chip inline-block px-3 py-1 bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 fs-micro uppercase tracking-[0.2em] mb-4">
-                            {isLastRelay(victoryReport.mission) ? (language === 'ru' ? 'ОПЕРАЦИЯ ЗАВЕРШЕНА' : 'OPERATION COMPLETE') : genrePack.ui.victoryTitle[language]}
-                        </div>
-                        <h2 className="font-display text-4xl font-bold text-white mb-3 tracking-tight">{victoryReport.endingTitle}</h2>
-                        <p className="text-slate-300 fs-lead italic">"{victoryReport.narrativeSummary}"</p>
-                        <p className="text-slate-500 fs-body mt-3">{isLastRelay(victoryReport.mission) ? (language === 'ru' ? 'Операция завершена. Судьба Миры и улик зависит от твоих действий.' : 'Operation complete. Your actions decided what happened to Mira and the evidence.') : UI.victory_subtitle}</p>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6">
-                        <div className="screens-stat-tile p-4 text-center border border-emerald-400/15 bg-emerald-400/[0.025]"><div className="font-display text-3xl font-bold text-emerald-300 tabular-nums leading-none">{victoryReport.mission?.evidence ?? campaignState.evidence}</div><div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.evidence}</div></div>
-                        <div className="screens-stat-tile p-4 text-center border border-amber-400/15 bg-amber-400/[0.025]"><div className="font-display text-3xl font-bold text-amber-300 tabular-nums leading-none">{victoryReport.mission?.heat ?? campaignState.heat}%</div><div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.heat}</div></div>
-                        <div className="screens-stat-tile p-4 text-center border border-sky-400/15 bg-sky-400/[0.025]"><div className="font-display text-3xl font-bold text-sky-300 tabular-nums leading-none">{victoryReport.mission?.trust ?? campaignState.trust}</div><div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.trust}</div></div>
-                        <div className="screens-stat-tile p-4 text-center border border-white/[0.07] bg-white/[0.02]"><div className="font-display text-xl font-bold text-white uppercase leading-tight">{victoryReport.route}</div><div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{UI.route}</div></div>
-                    </div>
-                    <div className="screens-cut-card bg-black/20 border border-white/[0.07] p-4 mb-6">
-                        <div className="fs-micro text-slate-500 uppercase tracking-[0.2em] mb-3">{UI.operation_dossier}</div>
-                        <div className="space-y-1 fs-body text-slate-400">
-                            {(victoryReport.mission?.consequenceLog || campaignState.consequenceLog).slice(0, 4).map((line, index) => (
-                                <div key={index} className="border-l border-emerald-500/30 pl-3">{line}</div>
-                            ))}
-                        </div>
-                    </div>
-                    {challengeVerdict && incomingChallenge && (
-                        <div className={`screens-cut-card mb-6 flex items-center justify-between gap-4 border p-4 ${challengeVerdict.outcome === 'beaten' ? 'border-emerald-400/35 bg-emerald-400/[0.06]' : 'border-amber-400/35 bg-amber-400/[0.06]'}`}>
-                            <div>
-                                <div className="fs-micro font-bold uppercase tracking-[0.2em] text-slate-400">{challengeVerdictLabel}</div>
-                                <div className="mt-1 fs-label text-slate-400">
-                                    {challengeVerdict.outcome === 'tied'
-                                        ? (language === 'ru' ? 'Точно в цель — попробуй ещё раз и выйди вперёд.' : 'Exactly on target — run it again to take the lead.')
-                                        : `${Math.abs(challengeVerdict.delta)} ${language === 'ru' ? (challengeVerdict.delta > 0 ? 'очков сверху' : 'очков не хватило') : (challengeVerdict.delta > 0 ? 'points ahead' : 'points short')}`}
-                                </div>
-                            </div>
-                            <div className="flex gap-5 text-right">
-                                <div><span className="block fs-micro uppercase tracking-[0.16em] text-slate-500">{UI.challenge_target}</span><strong className="text-xl text-white tabular-nums">{incomingChallenge.targetScore}</strong></div>
-                                <div><span className="block fs-micro uppercase tracking-[0.16em] text-slate-500">{UI.challenge_you}</span><strong className="text-xl text-emerald-300 tabular-nums">{completedChallengeScore}</strong></div>
-                            </div>
-                        </div>
-                    )}
-                    <div className="flex flex-col sm:flex-row gap-3">
-                        {isDailyRun && currentDailyId && (
-                            <button
-                                onClick={() => shareDailyChallenge('victory', totalScore)}
-                                className="btn-cyber btn-cyber-ghost flex-1 py-3.5 font-display font-bold tracking-[0.06em] text-amber-200 hover:text-white transition-colors"
-                            >
-                                {challengeShareStatus ? UI.challenge_copied : UI.challenge_share}
-                            </button>
-                        )}
-                        {comicFrames.length > 0 && (
-                            <button
-                                onClick={() => setShowComic(true)}
-                                className="btn-cyber btn-cyber-ghost flex-1 py-3.5 font-display font-bold tracking-[0.06em] text-emerald-200 hover:text-white transition-colors"
-                            >
-                                {UI.share_comic}
-                            </button>
-                        )}
-                        <button
-                            onClick={() => setGameState(GameState.MENU)}
-                            className="btn-cyber btn-cyber-primary flex-1 py-3.5 font-display font-bold tracking-[0.06em] text-[#04120b] flex items-center justify-center gap-3"
-                        >
-                            <span className="keycap">SPACE</span>
-                            <span>{stripKeyHint(UI.new_run)}</span>
-                        </button>
-                    </div>
-                </div>
+                <VictoryScreen
+                    ui={UI}
+                    language={language}
+                    report={victoryReport}
+                    fallbackMission={campaignState}
+                    genrePack={genrePack}
+                    challengeVerdict={challengeVerdict}
+                    challenge={incomingChallenge}
+                    yourScore={completedChallengeScore}
+                    canShareChallenge={isDailyRun && !!currentDailyId}
+                    challengeShared={challengeShareStatus}
+                    hasComic={comicFrames.length > 0}
+                    onShareChallenge={() => shareDailyChallenge('victory', totalScore)}
+                    onShowComic={() => setShowComic(true)}
+                    onMenu={() => setGameState(GameState.MENU)}
+                />
             )}
 
             {gameState === GameState.GAME_OVER && (
-                <div className="screens-cut-panel screens-death-report bg-[#0b101a]/95 p-6 sm:p-8 border border-rose-500/40 backdrop-blur-xl max-w-3xl w-full shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_60px_rgba(244,63,94,0.12)] animate-fade-in-up">
-                    <div className="text-center">
-                        <div className="fs-micro font-bold uppercase tracking-[0.3em] text-rose-400/70">{UI.typing_debrief}</div>
-                        <h2 className="mt-2 font-display text-4xl sm:text-5xl font-bold text-rose-500 tracking-tight">{UI.critical_failure}</h2>
-                        <p className="mt-3 fs-body text-slate-400">{genrePack.ui.connectionSevered[language]}</p>
-                    </div>
-
-                    <div className="screens-debrief-grid mt-6" aria-label={UI.typing_debrief}>
-                        <div className="screens-debrief-primary">
-                            <strong>{Math.round(finalStats?.wpm || 0)}</strong>
-                            <span>{UI.avg_speed} · {UI.wpm}</span>
-                            <small>{language === 'ru' ? `Пик ${Math.round(finalStats?.bestWpm || 0)} СЛ/М` : `Peak ${Math.round(finalStats?.bestWpm || 0)} WPM`}</small>
-                        </div>
-                        <div className="screens-debrief-metric">
-                            <strong>{Math.round(finalStats?.accuracy ?? 100)}%</strong>
-                            <span>{UI.accuracy}</span>
-                        </div>
-                        <div className="screens-debrief-metric">
-                            <strong>{finalStats?.mistakes || 0}</strong>
-                            <span>{UI.mistakes}</span>
-                        </div>
-                        <div className="screens-debrief-metric">
-                            <strong>{(finalStats?.segments || 0) > 1 ? `${Math.round(finalStats?.consistency ?? 100)}%` : '—'}</strong>
-                            <span>{UI.consistency}</span>
-                        </div>
-                    </div>
-
-                    <div className="screens-next-drill mt-4">
-                        <span>{UI.next_drill}</span>
-                        <p>{typingCoachText}</p>
-                    </div>
-
-                    {challengeVerdict && incomingChallenge && (
-                        <div className={`screens-cut-card mt-4 flex items-center justify-between gap-4 border p-4 ${challengeVerdict.outcome === 'beaten' ? 'border-emerald-400/35 bg-emerald-400/[0.06]' : 'border-amber-400/35 bg-amber-400/[0.06]'}`}>
-                            <div>
-                                <div className="fs-micro font-bold uppercase tracking-[0.2em] text-slate-300">{challengeVerdictLabel}</div>
-                                <div className="mt-1 fs-label text-slate-400">
-                                    {challengeVerdict.outcome === 'tied'
-                                        ? (language === 'ru' ? 'Точно в цель — попробуй ещё раз и выйди вперёд.' : 'Exactly on target — run it again to take the lead.')
-                                        : `${Math.abs(challengeVerdict.delta)} ${language === 'ru' ? (challengeVerdict.delta > 0 ? 'очков сверху' : 'очков не хватило') : (challengeVerdict.delta > 0 ? 'points ahead' : 'points short')}`}
-                                </div>
-                            </div>
-                            <div className="flex gap-5 text-right">
-                                <div><span className="block fs-micro uppercase tracking-[0.16em] text-slate-500">{UI.challenge_target}</span><strong className="text-xl text-white tabular-nums">{incomingChallenge.targetScore}</strong></div>
-                                <div><span className="block fs-micro uppercase tracking-[0.16em] text-slate-500">{UI.challenge_you}</span><strong className="text-xl text-rose-200 tabular-nums">{completedChallengeScore}</strong></div>
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 border-y border-white/[0.06] py-3 fs-micro uppercase tracking-[0.16em] text-slate-500">
-                        <span>{UI.reached}: <b className="text-slate-200">{UI.level} {finalStats?.level || 1}</b></span>
-                        <span>{UI.score}: <b className="text-slate-200">{finalStats?.score || 0}</b></span>
-                        <span>{UI.characters_typed}: <b className="text-slate-200">{finalStats?.characters || 0}</b></span>
-                        <span>{UI.evidence}: <b className="text-emerald-300">{finalStats?.mission?.evidence ?? campaignState.evidence}</b></span>
-                        <span>{UI.heat}: <b className="text-amber-300">{finalStats?.mission?.heat ?? campaignState.heat}%</b></span>
-                    </div>
-                    <div className="flex flex-col sm:flex-row gap-3">
-                        {isDailyRun && currentDailyId && (
-                            <button
-                                onClick={() => shareDailyChallenge('defeat', Math.max(totalScore, finalStats?.score || 0))}
-                                className="btn-cyber btn-cyber-ghost flex-1 py-3.5 font-display font-bold tracking-[0.06em] text-amber-200 hover:text-white transition-colors"
-                            >
-                                {challengeShareStatus ? UI.challenge_copied : UI.challenge_share}
-                            </button>
-                        )}
-                        {comicFrames.length > 0 && (
-                            <button
-                                onClick={() => setShowComic(true)}
-                                className="btn-cyber btn-cyber-ghost flex-1 py-3.5 font-display font-bold tracking-[0.06em] text-emerald-200 hover:text-white transition-colors"
-                            >
-                                {UI.share_comic}
-                            </button>
-                        )}
-                        <button
-                            onClick={() => setGameState(GameState.MENU)}
-                            className="btn-cyber btn-cyber-danger flex-1 py-3.5 font-display font-bold tracking-[0.06em] text-rose-200 hover:text-white transition-colors flex items-center justify-center gap-3"
-                        >
-                            <span className="keycap">SPACE</span>
-                            <span>{stripKeyHint(UI.main_menu)}</span>
-                        </button>
-                    </div>
-                </div>
+                <GameOverScreen
+                    ui={UI}
+                    language={language}
+                    stats={finalStats}
+                    coachText={typingCoachText}
+                    fallbackMission={campaignState}
+                    genrePack={genrePack}
+                    challengeVerdict={challengeVerdict}
+                    challenge={incomingChallenge}
+                    yourScore={completedChallengeScore}
+                    canShareChallenge={isDailyRun && !!currentDailyId}
+                    challengeShared={challengeShareStatus}
+                    hasComic={comicFrames.length > 0}
+                    onShareChallenge={() => shareDailyChallenge('defeat', Math.max(totalScore, finalStats?.score || 0))}
+                    onShowComic={() => setShowComic(true)}
+                    onMenu={() => setGameState(GameState.MENU)}
+                />
             )}
         </div>
       </div>
@@ -2769,6 +1487,7 @@ const App: React.FC = () => {
       {showComic && (comicFrames.length > 0) && (() => {
         const data = buildComicData();
         return (
+          <Suspense fallback={null}>
           <RunComic
             frames={comicFrames}
             title={genrePack.ui.mainTitle[language]}
@@ -2792,6 +1511,7 @@ const App: React.FC = () => {
             }}
             onClose={() => setShowComic(false)}
           />
+          </Suspense>
         );
       })()}
     </div>

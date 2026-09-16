@@ -66,33 +66,68 @@ const pruneBefore = (history: RequestHistory, cutoff: number): RequestHistory =>
   return history.slice(firstCurrentIndex);
 };
 
-const isRateLimited = (req: any): boolean => {
+interface RateLimitVerdict {
+  limited: boolean;
+  retryAfterSeconds: number;
+}
+
+const secondsUntil = (timestamp: number, windowMs: number, now: number): number =>
+  Math.max(1, Math.ceil((timestamp + windowMs - now) / 1000));
+
+let globalCapWarned = false;
+
+const checkRateLimit = (req: any): RateLimitVerdict => {
   const now = Date.now();
   const minuteCutoff = now - MINUTE_WINDOW_MS;
   const dayCutoff = now - DAY_WINDOW_MS;
   const clientIp = getClientIp(req);
   const requestHistory = pruneBefore(requestHistoryByIp.get(clientIp) || [], dayCutoff);
   globalRequestHistory = pruneBefore(globalRequestHistory, dayCutoff);
+  if (globalRequestHistory.length < MAX_GLOBAL_REQUESTS_PER_DAY) globalCapWarned = false;
 
   const requestsThisMinute = requestHistory.reduce(
     (count, timestamp) => count + (timestamp > minuteCutoff ? 1 : 0),
     0
   );
 
-  if (
+  const limited =
     requestsThisMinute >= MAX_REQUESTS_PER_MINUTE
     || requestHistory.length >= MAX_REQUESTS_PER_DAY
-    || globalRequestHistory.length >= MAX_GLOBAL_REQUESTS_PER_DAY
-  ) {
-    if (requestHistory.length > 0) requestHistoryByIp.set(clientIp, requestHistory);
-    else requestHistoryByIp.delete(clientIp);
-    return true;
+    || globalRequestHistory.length >= MAX_GLOBAL_REQUESTS_PER_DAY;
+
+  if (!limited) {
+    requestHistory.push(now);
+    globalRequestHistory.push(now);
+    requestHistoryByIp.set(clientIp, requestHistory);
+    return { limited: false, retryAfterSeconds: 0 };
   }
 
-  requestHistory.push(now);
-  globalRequestHistory.push(now);
-  requestHistoryByIp.set(clientIp, requestHistory);
-  return false;
+  if (requestHistory.length > 0) requestHistoryByIp.set(clientIp, requestHistory);
+  else requestHistoryByIp.delete(clientIp);
+
+  // The global cap means AI is dark for every player until the window slides —
+  // it must be loud in logs once, not silent in a 429 nobody reads.
+  if (globalRequestHistory.length >= MAX_GLOBAL_REQUESTS_PER_DAY && !globalCapWarned) {
+    globalCapWarned = true;
+    console.warn('Gemini global daily request cap reached — all players are on local fallback until the window slides');
+  }
+  const oldestInMinute = requestHistory.find((timestamp) => timestamp > minuteCutoff);
+  // Retry-After must reflect whichever window is binding — a per-IP minute cap
+  // frees in seconds, the global day cap can take hours.
+  const retryAfterSeconds = Math.max(
+    1,
+    requestsThisMinute >= MAX_REQUESTS_PER_MINUTE && oldestInMinute
+      ? secondsUntil(oldestInMinute, MINUTE_WINDOW_MS, now)
+      : 0,
+    requestHistory.length >= MAX_REQUESTS_PER_DAY && requestHistory[0]
+      ? secondsUntil(requestHistory[0], DAY_WINDOW_MS, now)
+      : 0,
+    globalRequestHistory.length >= MAX_GLOBAL_REQUESTS_PER_DAY && globalRequestHistory[0]
+      ? secondsUntil(globalRequestHistory[0], DAY_WINDOW_MS, now)
+      : 0
+  );
+
+  return { limited: true, retryAfterSeconds };
 };
 
 const parseBody = async (req: any) => {
@@ -109,6 +144,10 @@ const parseBody = async (req: any) => {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// 503 is a transient outage; 429 is Gemini's own rate limiter, which clears on
+// a short backoff. Anything else (400, 403, …) is a real error — fail fast.
+const RETRYABLE_STATUSES = new Set([429, 503]);
+
 const withTransientRetry = async <T,>(request: () => Promise<T>): Promise<T> => {
   let lastError: unknown;
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -117,7 +156,7 @@ const withTransientRetry = async <T,>(request: () => Promise<T>): Promise<T> => 
     } catch (error) {
       lastError = error;
       const status = (error as { status?: number })?.status;
-      if (status !== 503 || attempt === 2) break;
+      if (!status || !RETRYABLE_STATUSES.has(status) || attempt === 2) break;
       await sleep(350 * (attempt + 1));
     }
   }
@@ -182,8 +221,10 @@ export default async function handler(req: any, res: any) {
     return json(res, browserVerification.status, { error: browserVerification.error });
   }
 
-  if (isRateLimited(req)) {
-    return json(res, 429, { error: 'Rate limited' });
+  const rateLimit = checkRateLimit(req);
+  if (rateLimit.limited) {
+    res.setHeader('Retry-After', String(rateLimit.retryAfterSeconds));
+    return json(res, 429, { error: 'Rate limited', retryAfter: rateLimit.retryAfterSeconds });
   }
 
   if (!API_KEY) {

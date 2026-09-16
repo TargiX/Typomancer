@@ -15,7 +15,14 @@ export type ProductEventName =
   | 'typomancer_drill_started'
   | 'typomancer_drill_completed'
   | 'typomancer_challenge_opened'
-  | 'typomancer_challenge_shared';
+  | 'typomancer_challenge_shared'
+  | 'typomancer_ai_request'
+  | 'typomancer_pact_toggled'
+  | 'typomancer_run_abandoned'
+  | 'typomancer_pact_opened'
+  | 'typomancer_challenge_expired'
+  | 'typomancer_briefing_dismissed'
+  | 'typomancer_install_prompted';
 
 export interface CampaignAttribution {
   source: string;
@@ -85,7 +92,25 @@ const EVENT_PROPERTY_ALLOWLIST: Record<ProductEventName, readonly string[]> = {
   typomancer_drill_started: [...COMMON_PROPERTIES, 'samples_bucket', 'weak_pattern_count'],
   typomancer_drill_completed: [...COMMON_PROPERTIES, 'wpm_bucket', 'accuracy_bucket', 'samples_bucket'],
   typomancer_challenge_opened: [...COMMON_PROPERTIES, 'daily_id_present', 'target_score_bucket'],
-  typomancer_challenge_shared: [...COMMON_PROPERTIES, 'daily', 'outcome', 'target_score_bucket']
+  typomancer_challenge_shared: [...COMMON_PROPERTIES, 'daily', 'outcome', 'target_score_bucket'],
+  // Spend telemetry: counts proxy calls by kind/outcome so AI cost per run is
+  // measurable without ever sending prompts or responses.
+  typomancer_ai_request: [...COMMON_PROPERTIES, 'kind', 'ok'],
+  // Which clause flipped and to what — the Pact is a progression bet, and this
+  // is the only way to see whether anyone takes it.
+  typomancer_pact_toggled: [...COMMON_PROPERTIES, 'clause', 'active'],
+  // pagehide during a run. A tab can come back, but this is still the best
+  // abandon signal available without a server session.
+  typomancer_run_abandoned: [...COMMON_PROPERTIES, 'daily', 'level', 'run_number'],
+  // The Pact panel is collapsed by default — opened is the top of its funnel,
+  // toggled is the bottom.
+  typomancer_pact_opened: COMMON_PROPERTIES,
+  // A shared challenge link that arrived after its daily sector rotated away.
+  typomancer_challenge_expired: [...COMMON_PROPERTIES, 'target_score_bucket'],
+  // The skills/tracer explainer shows once per device; dismissal is the only
+  // moment the player proves they saw it.
+  typomancer_briefing_dismissed: [...COMMON_PROPERTIES, 'level'],
+  typomancer_install_prompted: COMMON_PROPERTIES
 };
 
 const truncateToken = (value: string, fallback: string): string => {

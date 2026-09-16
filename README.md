@@ -47,11 +47,11 @@ The mission uses bundled artwork and authored text, with no AI requests. See [mi
 
 ## Run locally
 
-Prerequisites: Node.js.
+Prerequisites: Node.js and [pnpm](https://pnpm.io).
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 Open the local Vite URL shown in the terminal.
@@ -77,10 +77,27 @@ VITE_POSTHOG_HOST=https://us.i.posthog.com
 
 Analytics is disabled when the token is absent. Events use a random local anonymous ID, do not create person profiles, and accept only allowlisted aggregate properties. Prompts, generated story text, and typed text are never included.
 
+## Optional crash reporting
+
+Set a public Sentry DSN to report unhandled render crashes:
+
+```bash
+VITE_SENTRY_DSN=your_public_dsn
+```
+
+Crash reporting is disabled when the DSN is absent, and the SDK is not bundled into the entry chunk — it is lazy-loaded only when configured. No PII or typed text is attached.
+
 ## Build
 
 ```bash
-npm run build
+pnpm build
+```
+
+Unit tests and browser regression coverage:
+
+```bash
+pnpm test
+pnpm test:e2e
 ```
 
 The production build is generated in `dist/`.

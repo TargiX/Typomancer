@@ -1,5 +1,5 @@
 import { RELAY_SECTORS, isLastRelay, getRelayBranch, getRelayDecision, getRelayBeatImpact } from '../services/lastRelay';
-import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from 'react';
 import { StorySegment, BranchingStory, GameStats, StoryMood, GameModifiers, SegmentType, DecisionPoint, Language, MissionState, DecisionImpact, ComicFrame, StoryGenreId } from '../types';
 import {
   generateNextSegments,
@@ -77,6 +77,30 @@ interface Spark {
   size: number;
   color: string;
 }
+
+/**
+ * Particle layers re-render on every keystroke today even though their inputs
+ * only change on their own timers. Memoized so the typing hot path skips them.
+ */
+const DebrisLayer = React.memo(function DebrisLayer({ debris }: { debris: Debris[] }) {
+    return (
+        <div className="absolute inset-0 pointer-events-none overflow-hidden z-50">
+            {debris.map(d => (
+                <div key={d.id} className="debris rounded-sm shadow-sm" style={{ left: `${d.left}%`, top: '45%', width: `${d.size}px`, height: `${d.size}px`, backgroundColor: d.color, animationDelay: `${d.delay}s` }} />
+            ))}
+        </div>
+    );
+});
+
+const SparkLayer = React.memo(function SparkLayer({ sparks }: { sparks: Spark[] }) {
+    return (
+        <div className="fixed inset-0 pointer-events-none z-[100]">
+            {sparks.map(s => (
+                <div key={s.id} className="char-particle bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,1)]" style={{ left: `${s.left}px`, top: `${s.top}px`, width: `${s.size}px`, height: `${s.size}px`, backgroundColor: s.color, '--tx': s.tx, '--ty': s.ty } as React.CSSProperties} />
+            ))}
+        </div>
+    );
+});
 
 interface DeltaPopup {
   id: string;
@@ -420,6 +444,11 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       } catch {
           // Storage can be unavailable in privacy-restricted browser contexts.
       }
+      captureProductEvent('typomancer_briefing_dismissed', {
+          language,
+          device_class: getDeviceClass(typeof window !== 'undefined' ? window.innerWidth : 1280),
+          level: currentLevel
+      });
       skipTypeCueRef.current = true;
       setShowSkillBriefing(false);
       setStartTime(Date.now());
@@ -601,8 +630,11 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
 
   }, [inputValue, activeSegment, isWaitingForAi, history, mistakesInSegment, overclockCharge, isOverclockActive, modifiers.maxOverclock, firewallGrace]);
 
-  const hasContextualSkill = firewallGrace > 0
-    || getCursorSkillStack(overclockCharge, modifiers.maxOverclock, isOverclockActive).length > 0;
+  const cursorSkillStack = useMemo(
+      () => getCursorSkillStack(overclockCharge, modifiers.maxOverclock, isOverclockActive),
+      [overclockCharge, modifiers.maxOverclock, isOverclockActive]
+  );
+  const hasContextualSkill = firewallGrace > 0 || cursorSkillStack.length > 0;
 
   useEffect(() => {
     let isMounted = true;
@@ -625,29 +657,34 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   }, [activeSegment, characterDescription, genre, round]);
 
   useEffect(() => {
-    if (isWaitingForAi || transitionLockRef.current || isDecisionActive || typeCueActive) return;
+    if (isWaitingForAi || isDecisionActive || typeCueActive) return;
     if (isOverclockActive) return;
 
-    const BASE_INCREMENT = 0.065; 
+    const BASE_INCREMENT = 0.065;
     const stealthDivisor = 1 + (stealthLevel * 0.1);
     // Heat absorbed corruption, so its divisor widened to keep total pressure
     // roughly where it was before the two meters merged.
     const missionPressure = 1 + (missionRef.current.heat / 160) - (missionRef.current.trust / 320);
     const segmentPressure = 1 + ((activeSegment.pressure || 0) * 0.06);
-    const perkMultiplier = modifiers.traceSpeedMultiplier * Math.max(0.45, missionPressure) * segmentPressure; 
+    const perkMultiplier = modifiers.traceSpeedMultiplier * Math.max(0.45, missionPressure) * segmentPressure;
 
+    // inputValue and transitionLock are read through refs: subscribing to them
+    // would tear down and rebuild this clock on every keystroke, which stalls
+    // the trace whenever the player types faster than the tick rate.
     timerRef.current = window.setInterval(() => {
-        setTracePercent(prev => {
-            const increment = (BASE_INCREMENT * perkMultiplier) / stealthDivisor;
-            const newVal = prev + increment;
-            audioEngine.setIntensity(newVal);
-            if (newVal >= 100) {
-                clearInterval(timerRef.current!);
-                return 100;
-            }
-            return newVal;
-        });
-        const chars = inputValue.length;
+        if (!transitionLockRef.current) {
+            setTracePercent(prev => {
+                const increment = (BASE_INCREMENT * perkMultiplier) / stealthDivisor;
+                const newVal = prev + increment;
+                audioEngine.setIntensity(newVal);
+                if (newVal >= 100) {
+                    clearInterval(timerRef.current!);
+                    return 100;
+                }
+                return newVal;
+            });
+        }
+        const chars = inputLengthRef.current;
         const timeMin = (Date.now() - startTime) / 1000 / 60;
         if (timeMin > 0 && chars > 0) {
             setCurrentWPM(Math.round((chars / 5) / timeMin));
@@ -657,7 +694,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     return () => {
         if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isWaitingForAi, transitionLockRef.current, stealthLevel, modifiers.traceSpeedMultiplier, inputValue.length, startTime, isOverclockActive, isDecisionActive, activeSegment.pressure, typeCueActive]); 
+  }, [isWaitingForAi, stealthLevel, modifiers.traceSpeedMultiplier, startTime, isOverclockActive, isDecisionActive, activeSegment.pressure, typeCueActive]);
 
   // Refs the animation frame reads. Reading state inside the loop would pin it to
   // whatever the closure captured on the frame it was created.
@@ -1565,16 +1602,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
               </div>
           </div>
       )}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden z-50">
-          {debris.map(d => (
-              <div key={d.id} className="debris rounded-sm shadow-sm" style={{ left: `${d.left}%`, top: '45%', width: `${d.size}px`, height: `${d.size}px`, backgroundColor: d.color, animationDelay: `${d.delay}s` }} />
-          ))}
-      </div>
-      <div className="fixed inset-0 pointer-events-none z-[100]">
-          {sparks.map(s => (
-              <div key={s.id} className="char-particle bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,1)]" style={{ left: `${s.left}px`, top: `${s.top}px`, width: `${s.size}px`, height: `${s.size}px`, backgroundColor: s.color, '--tx': s.tx, '--ty': s.ty } as any} />
-          ))}
-      </div>
+      <DebrisLayer debris={debris} />
+      <SparkLayer sparks={sparks} />
       {hasContextualSkill && (
           <div className="engine-cursor-skills absolute right-4 bottom-4 z-[60]">
               {firewallGrace > 0 && (
@@ -1582,7 +1611,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                       <span className="engine-cursor-skill-label">{UI.shield_active} ×{firewallGrace}</span>
                   </span>
               )}
-              {getCursorSkillStack(overclockCharge, modifiers.maxOverclock, isOverclockActive).map((skill) => {
+              {cursorSkillStack.map((skill) => {
                   const details = skill === 'focus'
                     ? { key: 'TAB', label: 'FOCUS', effect: UI.skill_focus_short, use: activateOverclock }
                     : skill === 'firewall'
