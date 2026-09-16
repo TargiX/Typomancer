@@ -140,6 +140,7 @@ const App: React.FC = () => {
   const [runCheckpoint, setRunCheckpoint] = useState<RunCheckpoint | null>(() => loadRunCheckpoint());
   const [playerProgress, setPlayerProgressState] = useState(() => loadPlayerProgress());
   const [typingTraining, setTypingTraining] = useState(() => loadTypingTraining());
+  const [drillFocus, setDrillFocus] = useState<string[] | undefined>();
   const [incomingChallenge] = useState(() => parseChallenge(typeof location !== 'undefined' ? location.search : ''));
   const [challengeShareStatus, setChallengeShareStatus] = useState(false);
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
@@ -869,7 +870,8 @@ const App: React.FC = () => {
       setGameState(GameState.CALIBRATION);
   };
 
-  const startTargetedDrill = () => {
+  const startTargetedDrill = (focus?: string[]) => {
+      setDrillFocus(focus);
       sessionRef.current.calibrationMode = 'drill';
       sessionRef.current.calibrationNext = 'record';
       captureProductEvent('typomancer_drill_started', {
@@ -1383,7 +1385,7 @@ const App: React.FC = () => {
                 <CalibrationPanel
                     language={language}
                     mode={sessionRef.current.calibrationMode}
-                    drillPrompt={buildTargetedDrill(language, typingTraining)}
+                    drillPrompt={buildTargetedDrill(language, typingTraining, drillFocus)}
                     onComplete={finishCalibration}
                     onSkip={skipCalibration}
                 />

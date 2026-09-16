@@ -1,0 +1,51 @@
+import { test, expect } from '@playwright/test';
+
+test('Russian empty progress explains missing data without inventing scores', async ({ page }) => {
+  await page.route('**/api/auth/get-session', route => route.fulfill({ json: null }));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'RU', exact: true }).click();
+  await page.getByRole('button', { name: /ДОСЬЕ ОПЕРАТОРА/ }).click();
+  const week = page.getByRole('region', { name: 'ПОСЛЕДНИЕ 7 ДНЕЙ' });
+  await expect(week.locator('tbody tr')).toHaveCount(7);
+  await expect(week.locator('.has-signal')).toHaveCount(0);
+  await expect(week).toContainText('0/7');
+  await page.getByText('Последние тренировки и калибровки', { exact: false }).click();
+  await expect(week).toContainText('Начни точечную тренировку');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: '.context/weekly-progress-desktop-ru.png', fullPage: true });
+});
+
+test('weekly record on mobile opens a selected pattern drill and records completion', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route('**/api/auth/get-session', route => route.fulfill({ json: null }));
+  await page.addInitScript(() => {
+    const now = new Date(Date.now() - 60000).toISOString();
+    localStorage.setItem('typomancerTypingTraining', JSON.stringify({ version: 1, samples: 50,
+      keys: [{ token: 'q', attempts: 30, errors: 10, totalLatencyMs: 12000, timedAttempts: 30 }], bigrams: [],
+      benchmarks: [{ kind: 'drill', wpm: 40, accuracy: 95, completedAt: now }] }));
+    localStorage.setItem('typomancerPlayerProgress', JSON.stringify({ version: 1, calibration: null, runs: [{
+      id: 'weekly-test', endedAt: now, dateKey: now.slice(0, 10), outcome: 'banked', daily: false, genre: 'cyberpunk',
+      level: 1, score: 100, wpm: 50, bestWpm: 60, accuracy: 96, consistency: 90, mistakes: 4,
+      characters: 100, durationSeconds: 30, focus: 'accuracy', pact: []
+    }] }));
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: /OPERATOR RECORD/ }).click();
+  const week = page.getByRole('region', { name: 'LAST 7 DAYS' });
+  await expect(week.locator('tbody tr')).toHaveCount(7);
+  await expect(week.locator('tbody tr.has-signal')).toHaveCount(1);
+  await expect(week).toContainText('96.0%');
+  await page.getByText('Recent drills & calibrations', { exact: false }).click();
+  await expect(page.locator('.operator-practice-history')).toContainText('40 WPM');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: '.context/weekly-progress-mobile.png', fullPage: true });
+  await page.getByRole('button', { name: 'Practice q', exact: true }).click();
+  const prompt = page.locator('.calibration-transmission');
+  await expect(prompt).toContainText('q q q');
+  const input = page.locator('.calibration-panel input');
+  const text = (await prompt.locator('span:not(.calibration-start-cue)').allTextContents()).join('');
+  await input.pressSequentially(text!, { delay: 25 });
+  await expect(page.getByRole('heading', { name: 'Operator Record' })).toBeVisible();
+  const count = await page.evaluate(() => JSON.parse(localStorage.getItem('typomancerTypingTraining')!).benchmarks.filter((x: any) => x.kind === 'drill').length);
+  expect(count).toBe(2);
+});

@@ -1,6 +1,29 @@
 /* Styles owned by the App screens design pass (menu, black market, perks, results, deck frame).
    Keyframe names must be prefixed with `screens-` to avoid collisions. */
 
+/* A seven-day log strip in the existing flight recorder, not a second dashboard.
+   Cyan denotes observed data; muted slate denotes absence, never a zero score. */
+.operator-week { margin: 24px 0; padding: 18px; border: 1px solid #334155; background: #0f172a; }
+.operator-week h3 { margin: 0; font: inherit; }
+.operator-week p { color: #94a3b8; font-size: 12px; line-height: 1.6; margin: 12px 0; }
+.operator-week table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.operator-week th, .operator-week td { padding: 9px 4px; border-bottom: 1px solid #334155; text-align: right; }
+.operator-week th:first-child { text-align: left; }
+.operator-week thead { color: #94a3b8; font-size: 11px; }
+.operator-week tbody { color: #94a3b8; }
+.operator-week .has-signal { color: #e2e8f0; }
+.operator-week .has-signal td:nth-child(3) { color: #38bdf8; font-weight: 700; }
+.operator-practice-history { margin-top: 20px; }
+.operator-practice-history summary { color: #e2e8f0; cursor: pointer; font-size: 13px; padding: 8px 0; }
+.operator-practice-history ul { list-style: none; padding: 0; }
+.operator-practice-history li { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 10px 0; border-top: 1px solid #334155; font-size: 12px; }
+.operator-practice-history li strong { margin-left: auto; color: #38bdf8; }
+.operator-pattern-action { min-height: 44px; padding: 8px 12px; border: 1px solid #38bdf8; color: #e2e8f0; background: #0f172a; cursor: pointer; }
+.operator-pattern-action:hover { background: #1e293b; }
+.operator-pattern-action small { display: block; color: #94a3b8; font-size: 11px; }
+.operator-pattern-action:focus-visible, .operator-practice-history summary:focus-visible { outline: 2px solid #38bdf8; outline-offset: 3px; }
+@media (max-width: 480px) { .operator-week { padding: 12px; } .operator-week .operator-record-section-label { flex-wrap: wrap; gap: 8px; } }
+
 .screens-app-shell {
   position: relative;
   isolation: isolate;

@@ -1,12 +1,13 @@
 import React, { useMemo } from 'react';
 import OperatorTelemetry from './OperatorTelemetry';
+import WeeklyProgress from './WeeklyProgress';
 import { getPactRewardMultiplier } from '../services/pact';
 
 import type { Language, StoryGenreId } from '../types';
 import { getAdaptiveDifficulty, summarizeProgress, type PlayerProgress, type RunRecord,
   MAX_RUN_HISTORY
 } from '../services/playerProgress';
-import { getBenchmarkDelta, getWeakPatterns, type TypingTrainingProfile } from '../services/typingTraining';
+import { getBenchmarkDelta, getDrillPatterns, type TypingTrainingProfile } from '../services/typingTraining';
 
 interface OperatorRecordProps {
   language: Language;
@@ -14,14 +15,14 @@ interface OperatorRecordProps {
   training: TypingTrainingProfile;
   onClose: () => void;
   onRecalibrate: () => void;
-  onStartDrill: () => void;
+  onStartDrill: (focus?: string[]) => void;
 }
 
 const COPY = {
   en: {
-    eyebrow: 'LOCAL FLIGHT RECORDER',
+    eyebrow: 'FLIGHT RECORDER',
     title: 'Operator Record',
-    subtitle: `Your last ${MAX_RUN_HISTORY} operations stay on this device.`,
+    subtitle: `Your last ${MAX_RUN_HISTORY} saved operations. Sign in from the deck to sync across devices.`,
     runs: 'RUNS',
     best: 'PEAK WPM',
     average: 'RECENT AVG',
@@ -54,16 +55,16 @@ const COPY = {
     steady: 'STEADY',
     training: 'TRAINING CORE',
     weakPatterns: 'WEAK PATTERNS',
-    noPatterns: 'Complete a calibration or operation to map your weak keys.',
+    noPatterns: 'Keep typing in this language. A practice suggestion needs at least 6 attempts on a key or pair.',
     samples: 'KEYSTROKES MAPPED',
     startDrill: 'START TARGETED DRILL',
     baseline: 'SINCE BASELINE',
     needBaseline: 'Run two focused drills to reveal measurable improvement.'
   },
   ru: {
-    eyebrow: 'ЛОКАЛЬНЫЙ ЧЁРНЫЙ ЯЩИК',
+    eyebrow: 'ЧЁРНЫЙ ЯЩИК',
     title: 'Досье оператора',
-    subtitle: `Последние ${MAX_RUN_HISTORY} операций остаются на этом устройстве.`,
+    subtitle: `Последние ${MAX_RUN_HISTORY} сохранённых операций. Войди с пульта для синхронизации между устройствами.`,
     runs: 'ЗАБЕГИ',
     best: 'ПИК СЛ/М',
     average: 'СРЕДНЯЯ',
@@ -96,7 +97,7 @@ const COPY = {
     steady: 'РОВНО',
     training: 'ТРЕНИРОВОЧНОЕ ЯДРО',
     weakPatterns: 'СЛАБЫЕ СОЧЕТАНИЯ',
-    noPatterns: 'Пройди калибровку или операцию, чтобы найти слабые клавиши.',
+    noPatterns: 'Продолжай печатать на этом языке. Для рекомендации нужно хотя бы 6 попыток на клавишу или пару.',
     samples: 'НАЖАТИЙ ИЗУЧЕНО',
     startDrill: 'НАЧАТЬ ТОЧЕЧНУЮ ТРЕНИРОВКУ',
     baseline: 'ОТ БАЗОВОГО УРОВНЯ',
@@ -130,7 +131,7 @@ const OperatorRecord: React.FC<OperatorRecordProps> = ({ language, progress, tra
   const difficulty = getAdaptiveDifficulty(progress.calibration);
   const points = useMemo(() => buildSignalPoints(summary.recentRuns), [summary.recentRuns]);
   const trendLabel = summary.wpmDelta > 0.5 ? ui.up : summary.wpmDelta < -0.5 ? ui.down : ui.steady;
-  const weakPatterns = getWeakPatterns(training, 5);
+  const weakPatterns = getDrillPatterns(language, training, 6);
   const benchmarkDelta = getBenchmarkDelta(training);
   const displayPattern = (token: string) => token === ' ' ? (language === 'ru' ? 'ПРОБЕЛ' : 'SPACE') : token;
 
@@ -150,6 +151,7 @@ const OperatorRecord: React.FC<OperatorRecordProps> = ({ language, progress, tra
       </header>
 
       <OperatorTelemetry language={language} progress={progress} training={training} />
+      <WeeklyProgress language={language} progress={progress} training={training} />
 
       <div className="operator-record-stats">
         <div><strong>{summary.totalRuns}</strong><span>{ui.runs}</span></div>
@@ -197,7 +199,10 @@ const OperatorRecord: React.FC<OperatorRecordProps> = ({ language, progress, tra
             {weakPatterns.length > 0 ? (
               <div className="operator-record-patterns">
                 {weakPatterns.map((pattern) => (
-                  <b key={pattern.token}>{displayPattern(pattern.token)} <small>{Math.round((pattern.errors / pattern.attempts) * 100)}%</small></b>
+                  <button type="button" className="operator-pattern-action" key={pattern.token} onClick={() => onStartDrill([pattern.token])}
+                    aria-label={language === 'ru' ? `Тренировать ${pattern.token}` : `Practice ${pattern.token}`}>
+                    <b>{displayPattern(pattern.token)}</b> <small>{pattern.errors}/{pattern.attempts} {language === 'ru' ? 'ошибок' : 'errors'}</small>
+                  </button>
                 ))}
               </div>
             ) : <p>{ui.noPatterns}</p>}
@@ -208,7 +213,7 @@ const OperatorRecord: React.FC<OperatorRecordProps> = ({ language, progress, tra
               <p><strong>{benchmarkDelta.wpm >= 0 ? '+' : ''}{benchmarkDelta.wpm} WPM</strong> · {benchmarkDelta.accuracy >= 0 ? '+' : ''}{Math.round(benchmarkDelta.accuracy)}% · {benchmarkDelta.sessions}</p>
             ) : <p>{ui.needBaseline}</p>}
           </div>
-          <button type="button" onClick={onStartDrill} className="btn-cyber btn-cyber-primary">{ui.startDrill}</button>
+          <button type="button" onClick={() => onStartDrill()} className="btn-cyber btn-cyber-primary">{ui.startDrill}</button>
         </div>
       </div>
 

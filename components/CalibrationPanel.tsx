@@ -27,12 +27,12 @@ const COPY = {
     speed: 'LIVE WPM',
     accuracy: 'ACCURACY',
     skip: 'SKIP · USE BALANCED',
-    note: 'This stays on this device. Recalibrate any time from Operator Record.',
+    note: 'Saved with your progress. Recalibrate any time from Operator Record.',
     drillEyebrow: 'TARGETED DRILL',
     drillTitle: 'Train weak patterns',
     drillDescription: 'This transmission repeats the keys and pairs that cost you the most control.',
     cancel: 'CANCEL DRILL',
-    drillNote: 'Only per-key timing and mistakes stay locally. The words you type are never stored.'
+    drillNote: 'Timing, mistakes and your result are saved with your progress. The words you type are never stored.'
   },
   ru: {
     eyebrow: 'КЛАВИАТУРНАЯ СИГНАТУРА',
@@ -42,12 +42,12 @@ const COPY = {
     speed: 'ТЕКУЩАЯ СКОРОСТЬ',
     accuracy: 'ТОЧНОСТЬ',
     skip: 'ПРОПУСТИТЬ · СРЕДНИЙ РЕЖИМ',
-    note: 'Данные остаются на этом устройстве. Повторить настройку можно в Досье оператора.',
+    note: 'Сохраняется вместе с прогрессом. Повторить настройку можно в Досье оператора.',
     drillEyebrow: 'ТОЧЕЧНАЯ ТРЕНИРОВКА',
     drillTitle: 'Отработай слабые сочетания',
     drillDescription: 'Эта передача повторяет клавиши и пары, на которых ты чаще теряешь контроль.',
     cancel: 'ОТМЕНИТЬ ТРЕНИРОВКУ',
-    drillNote: 'Локально остаются только время клавиш и ошибки. Набранные слова не сохраняются.'
+    drillNote: 'Время нажатий, ошибки и результат сохраняются с прогрессом. Набранные слова не сохраняются.'
   }
 };
 

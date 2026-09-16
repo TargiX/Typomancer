@@ -225,9 +225,17 @@ export const getTrainingFocusTokens = (
     .slice(0, limit);
 };
 
-export const buildTargetedDrill = (language: Language, profile: TypingTrainingProfile): string => {
+export const getDrillPatterns = (language: Language, profile: TypingTrainingProfile, limit = 6, minAttempts = 6): PatternStat[] =>
+  getWeakPatterns(profile, MAX_PATTERN_STATS * 2)
+    .filter(stat => stat.attempts >= minAttempts && (language === 'ru' ? /^[а-я0-9\p{P}\p{S}]{1,2}$/u : /^[a-z0-9\p{P}\p{S}]{1,2}$/u).test(stat.token))
+    .slice(0, limit);
+
+export const buildTargetedDrill = (language: Language, profile: TypingTrainingProfile, focus?: string[]): string => {
   const words = language === 'ru' ? RU_WORDS : EN_WORDS;
-  const weakTokens = getWeakPatterns(profile, 6).map((stat) => stat.token).filter((token) => token.trim());
+  const candidates = getDrillPatterns(language, profile, 6, 0).map(stat => stat.token);
+  const eligible = getDrillPatterns(language, profile).map(stat => stat.token);
+  const selectedFocus = focus?.filter(token => eligible.includes(token));
+  const weakTokens = selectedFocus?.length ? selectedFocus : candidates;
   const ranked = words
     .map((word, index) => ({
       word,
