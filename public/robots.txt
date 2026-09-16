@@ -1,5 +1,7 @@
 User-agent: *
 Allow: /
+Allow: /api/og
+Allow: /api/challenge
 Disallow: /api/
 
 Sitemap: https://typomancer.xyz/sitemap.xml

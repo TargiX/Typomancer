@@ -38,6 +38,25 @@ export const buildChallengeUrl = (
   return url.toString();
 };
 
+/**
+ * The URL that actually gets posted. It routes through /api/challenge so link
+ * unfurlers get a rendered OG card with the score baked in, then the wrapper
+ * bounces humans back into the app with the same validated params.
+ */
+export const buildChallengeShareUrl = (
+  origin: string,
+  dailyId: string,
+  targetScore: number,
+  language: 'en' | 'ru' = 'en'
+): string | null => {
+  if (!DAILY_ID_PATTERN.test(dailyId) || !/^https?:\/\//.test(origin)) return null;
+  const url = new URL('/api/challenge', origin);
+  url.searchParams.set('d', dailyId);
+  url.searchParams.set('s', String(Math.max(0, Math.min(9_999_999, Math.floor(targetScore)))));
+  if (language === 'ru') url.searchParams.set('l', 'ru');
+  return url.toString();
+};
+
 export const getChallengeVerdict = (
   challenge: TypomancerChallenge | null,
   dailyId: string | null,
