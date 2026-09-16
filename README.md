@@ -40,11 +40,11 @@ A consequence-driven RPG typing game. You play as Agent Nox, a field hacker tryi
 
 ## Run locally
 
-Prerequisites: Node.js.
+Prerequisites: Node.js and [pnpm](https://pnpm.io).
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 Open the local Vite URL shown in the terminal.
@@ -73,7 +73,14 @@ Analytics is disabled when the token is absent. Events use a random local anonym
 ## Build
 
 ```bash
-npm run build
+pnpm build
+```
+
+Unit tests and browser regression coverage:
+
+```bash
+pnpm test
+pnpm test:e2e
 ```
 
 The production build is generated in `dist/`.

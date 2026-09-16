@@ -109,6 +109,10 @@ const parseBody = async (req: any) => {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// 503 is a transient outage; 429 is Gemini's own rate limiter, which clears on
+// a short backoff. Anything else (400, 403, …) is a real error — fail fast.
+const RETRYABLE_STATUSES = new Set([429, 503]);
+
 const withTransientRetry = async <T,>(request: () => Promise<T>): Promise<T> => {
   let lastError: unknown;
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -117,7 +121,7 @@ const withTransientRetry = async <T,>(request: () => Promise<T>): Promise<T> => 
     } catch (error) {
       lastError = error;
       const status = (error as { status?: number })?.status;
-      if (status !== 503 || attempt === 2) break;
+      if (!status || !RETRYABLE_STATUSES.has(status) || attempt === 2) break;
       await sleep(350 * (attempt + 1));
     }
   }

@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { initBotId } from 'botid/client/core';
 import App from './App';
+import ErrorBoundary from './components/ErrorBoundary';
 
 if (import.meta.env.PROD) {
   initBotId({
@@ -17,6 +18,8 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>
 );

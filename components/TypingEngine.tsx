@@ -615,29 +615,34 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   }, [activeSegment, characterDescription, genre, round]);
 
   useEffect(() => {
-    if (isWaitingForAi || transitionLockRef.current || isDecisionActive || typeCueActive) return;
+    if (isWaitingForAi || isDecisionActive || typeCueActive) return;
     if (isOverclockActive) return;
 
-    const BASE_INCREMENT = 0.065; 
+    const BASE_INCREMENT = 0.065;
     const stealthDivisor = 1 + (stealthLevel * 0.1);
     // Heat absorbed corruption, so its divisor widened to keep total pressure
     // roughly where it was before the two meters merged.
     const missionPressure = 1 + (missionRef.current.heat / 160) - (missionRef.current.trust / 320);
     const segmentPressure = 1 + ((activeSegment.pressure || 0) * 0.06);
-    const perkMultiplier = modifiers.traceSpeedMultiplier * Math.max(0.45, missionPressure) * segmentPressure; 
+    const perkMultiplier = modifiers.traceSpeedMultiplier * Math.max(0.45, missionPressure) * segmentPressure;
 
+    // inputValue and transitionLock are read through refs: subscribing to them
+    // would tear down and rebuild this clock on every keystroke, which stalls
+    // the trace whenever the player types faster than the tick rate.
     timerRef.current = window.setInterval(() => {
-        setTracePercent(prev => {
-            const increment = (BASE_INCREMENT * perkMultiplier) / stealthDivisor;
-            const newVal = prev + increment;
-            audioEngine.setIntensity(newVal);
-            if (newVal >= 100) {
-                clearInterval(timerRef.current!);
-                return 100;
-            }
-            return newVal;
-        });
-        const chars = inputValue.length;
+        if (!transitionLockRef.current) {
+            setTracePercent(prev => {
+                const increment = (BASE_INCREMENT * perkMultiplier) / stealthDivisor;
+                const newVal = prev + increment;
+                audioEngine.setIntensity(newVal);
+                if (newVal >= 100) {
+                    clearInterval(timerRef.current!);
+                    return 100;
+                }
+                return newVal;
+            });
+        }
+        const chars = inputLengthRef.current;
         const timeMin = (Date.now() - startTime) / 1000 / 60;
         if (timeMin > 0 && chars > 0) {
             setCurrentWPM(Math.round((chars / 5) / timeMin));
@@ -647,7 +652,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     return () => {
         if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isWaitingForAi, transitionLockRef.current, stealthLevel, modifiers.traceSpeedMultiplier, inputValue.length, startTime, isOverclockActive, isDecisionActive, activeSegment.pressure, typeCueActive]); 
+  }, [isWaitingForAi, stealthLevel, modifiers.traceSpeedMultiplier, startTime, isOverclockActive, isDecisionActive, activeSegment.pressure, typeCueActive]);
 
   // Refs the animation frame reads. Reading state inside the loop would pin it to
   // whatever the closure captured on the frame it was created.
