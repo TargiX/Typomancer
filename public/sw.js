@@ -7,6 +7,8 @@
  */
 const CACHE = 'typomancer-v1';
 const SHELL = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
+const canCache = (response) => response.ok
+    && !response.headers.get('Cache-Control')?.toLowerCase().includes('no-store');
 
 self.addEventListener('install', (event) => {
     event.waitUntil(
@@ -25,7 +27,12 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
     const { request } = event;
     const url = new URL(request.url);
-    if (request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) {
+    if (
+        request.method !== 'GET'
+        || url.origin !== self.location.origin
+        || url.pathname.startsWith('/api/')
+        || request.headers.has('Authorization')
+    ) {
         return;
     }
 
@@ -33,7 +40,7 @@ self.addEventListener('fetch', (event) => {
         event.respondWith(
             fetch(request)
                 .then((response) => {
-                    if (response.ok) {
+                    if (canCache(response)) {
                         const copy = response.clone();
                         event.waitUntil(caches.open(CACHE).then((cache) => cache.put(request, copy)));
                     }
@@ -47,7 +54,7 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
         caches.match(request).then((hit) => {
             const refresh = fetch(request).then((response) => {
-                if (response.ok) {
+                if (canCache(response)) {
                     const copy = response.clone();
                     caches.open(CACHE).then((cache) => cache.put(request, copy));
                 }

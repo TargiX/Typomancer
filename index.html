@@ -424,6 +424,13 @@
           97% { opacity: 0.7; }
       }
       .beacon-flicker { animation: beacon-flicker 4s linear infinite; }
+      @media (prefers-reduced-motion: reduce) {
+          .scope-scroll,
+          .beacon-scan,
+          .beacon-flicker {
+              animation: none;
+          }
+      }
 
       /* Focus meter — holographic oil-slick shimmer when the charge is full ("use it now") */
       @keyframes focus-holo {

@@ -8,9 +8,19 @@ const BEACON_SCRAMBLE = "ABCDEF0123456789#%&/\\<>[]{}=+*!?";
 const SystemBeacon: React.FC<{ label: string }> = ({ label }) => {
     const [text, setText] = useState(label);
     const [ping, setPing] = useState(4);
+    const [reducedMotion, setReducedMotion] = useState(() =>
+        typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    );
 
     useEffect(() => {
-        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        const preference = window.matchMedia('(prefers-reduced-motion: reduce)');
+        const updatePreference = () => setReducedMotion(preference.matches);
+        preference.addEventListener('change', updatePreference);
+        return () => preference.removeEventListener('change', updatePreference);
+    }, []);
+
+    useEffect(() => {
+        if (reducedMotion) {
             setText(label);
             return;
         }
@@ -30,12 +40,16 @@ const SystemBeacon: React.FC<{ label: string }> = ({ label }) => {
             setText(out);
         }, 55);
         return () => window.clearInterval(id);
-    }, [label]);
+    }, [label, reducedMotion]);
 
     useEffect(() => {
+        if (reducedMotion) {
+            setPing(4);
+            return;
+        }
         const id = window.setInterval(() => setPing(2 + Math.floor(Math.random() * 8)), 700);
         return () => window.clearInterval(id);
-    }, []);
+    }, [reducedMotion]);
 
     const wave = useMemo(() => {
         const pts: string[] = [];
@@ -65,7 +79,7 @@ const SystemBeacon: React.FC<{ label: string }> = ({ label }) => {
 
             {/* REC dot */}
             <span className="relative z-20 flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-70" />
+                <span className="animate-ping motion-reduce:animate-none absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-70" />
                 <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
             </span>
 
