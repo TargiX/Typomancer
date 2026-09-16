@@ -29,6 +29,7 @@ interface MenuScreenProps {
     pactRewardMultiplier: number;
     activePact: PactClauseId[];
     onTogglePactClause: (id: PactClauseId) => void;
+    onPactOpened?: () => void;
     onInitialize: () => void;
     onDaily: () => void;
     onResume: () => void;
@@ -52,6 +53,7 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
     pactRewardMultiplier,
     activePact,
     onTogglePactClause,
+    onPactOpened,
     onInitialize,
     onDaily,
     onResume,
@@ -62,6 +64,11 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
     // screen a newcomer sees, and it pushed the menu past the fold on a laptop.
     // A returning player opens it deliberately.
     const [pactOpen, setPactOpen] = useState(false);
+    // The on-screen keyboard fights the game's case sensitivity and speed. Say
+    // so honestly on touch devices instead of letting the tracer teach it.
+    const [isTouchDevice] = useState(() =>
+        typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
+    );
 
     return (
         <div className="text-center space-y-7 max-w-md animate-fade-in-up">
@@ -72,6 +79,9 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                     {ui.intro_desc}<br/>
                     <span className="text-amber-400/90">{ui.mistakes_warn}</span>
                 </p>
+                {isTouchDevice && (
+                    <p className="fs-micro uppercase tracking-[0.18em] text-slate-500">{ui.keyboard_notice}</p>
+                )}
             </div>
             <div className="flex flex-col gap-3.5">
                 {incomingChallenge && (
@@ -176,7 +186,10 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
             <div className="screens-pact mx-auto">
                 <button
                     type="button"
-                    onClick={() => setPactOpen(open => !open)}
+                    onClick={() => {
+                        if (!pactOpen) onPactOpened?.();
+                        setPactOpen(!pactOpen);
+                    }}
                     aria-expanded={pactOpen}
                     className="flex w-full items-baseline justify-between gap-3 text-left"
                 >
