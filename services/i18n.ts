@@ -1,4 +1,5 @@
 import type { Language } from '../types.ts';
+import type { PactClauseId } from './pact.ts';
 
 /**
  * Menu/hub copy. Simulation copy that changes with the world lives in
@@ -269,3 +270,15 @@ export const TRANSLATIONS = {
 } satisfies Record<Language, Record<string, string>>;
 
 export type UITranslations = (typeof TRANSLATIONS)['en'];
+
+/**
+ * Pact clause ids map to fixed translation keys. An explicit record keeps the
+ * link typed — a renamed key fails typecheck instead of rendering undefined.
+ */
+export const PACT_CLAUSE_TEXT_KEYS: Record<PactClauseId, { name: keyof UITranslations; desc: keyof UITranslations }> = {
+    hot_start: { name: 'pact_hot_start', desc: 'pact_hot_start_desc' },
+    no_grace: { name: 'pact_no_grace', desc: 'pact_no_grace_desc' },
+    exacting: { name: 'pact_exacting', desc: 'pact_exacting_desc' },
+    strict_case: { name: 'pact_strict_case', desc: 'pact_strict_case_desc' },
+    hunted: { name: 'pact_hunted', desc: 'pact_hunted_desc' }
+};

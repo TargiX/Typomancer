@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { Language } from '../../types';
-import type { UITranslations } from '../../services/i18n';
+import { PACT_CLAUSE_TEXT_KEYS, type UITranslations } from '../../services/i18n';
 import type { DailyBrief, DailyState } from '../../services/dailyMode';
 import { DAILY_MAX_ATTEMPTS } from '../../services/dailyMode';
 import type { GenrePack } from '../../services/genreConfig';
@@ -219,10 +219,10 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                                 className={`screens-pact-clause ${active ? 'is-active' : ''}`}
                             >
                                 <span className="screens-pact-clause-name">
-                                    {ui[`pact_${clause.id}` as keyof typeof ui]}
+                                    {ui[PACT_CLAUSE_TEXT_KEYS[clause.id].name]}
                                 </span>
                                 <span className="screens-pact-clause-desc">
-                                    {ui[`pact_${clause.id}_desc` as keyof typeof ui]}
+                                    {ui[PACT_CLAUSE_TEXT_KEYS[clause.id].desc]}
                                 </span>
                                 <span className="screens-pact-clause-reward">+{Math.round(clause.reward * 100)}%</span>
                             </button>
