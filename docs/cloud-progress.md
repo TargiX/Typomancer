@@ -59,9 +59,13 @@ Frontend: `VITE_CLOUD_PROGRESS=true` at build time. Local Vite can proxy the API
 with `PROGRESS_API_URL`; launch both services through `dev-safe`, using their
 actual printed URLs, and add the exact frontend origin to the backend config.
 
-Email verification/password recovery are not enabled until an approved mail
-provider is configured. The account form discloses this limitation; use a
-password manager. Do not claim that an unverified email proves ownership.
+Password recovery uses Resend with runtime-only `RESEND_API_KEY` and
+`AUTH_EMAIL_FROM`. The account panel offers a neutral, account-existence-safe
+reset request. Links expire after 30 minutes and are single-use; resetting
+revokes all existing sessions. The recovery screen removes the token from the
+URL, disables telemetry/challenge initialization, and uses a no-referrer policy.
+Email verification at signup remains disabled; do not claim that an unverified
+email proves ownership. Never log reset links or tokens.
 
 ## Backup policy
 
@@ -105,8 +109,13 @@ requires stopping writers, backing up the current state, and explicit approval.
   Preserve that key independently; database backups do not replace it.
   A downloaded encrypted archive was successfully decrypted and its contents
   verified. Never extract recovery archives over a running installation.
-- Email alerts and password-reset delivery remain unconfigured: no SMTP
-  service was present in either instance or team notification settings.
+- Team notification settings use Resend directly for database backup failures;
+  recipients are the Coolify team members (currently the owner). Success emails
+  are disabled. `apps-recovery-backup.service` has an `OnFailure` hook to
+  `apps-recovery-alert.service` for encrypted configuration backup failures.
+  The latter retries delivery three times and includes no secrets/log output.
+  These alerts require the server, Docker, Coolify and internet to be available;
+  they are not an independent off-server heartbeat monitor.
 - Vercel OG functions use a plain `.ts` entrypoint and `React.createElement`.
   A `.tsx` entrypoint was incorrectly loaded as CommonJS, and a `.js` import of
   a `.tsx` renderer was not traced. A deployed preview now returns a real

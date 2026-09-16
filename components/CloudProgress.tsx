@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { Language } from '../types';
+import { PasswordRecovery } from './PasswordRecovery';
 import { playerStorage, setPlayerAccount } from '../services/playerStorage';
 import { api, ApiError, downloadSnapshot, fingerprint, isDirty, META_KEY, readMeta, readSnapshot,
   writeMeta, writeSnapshot, type CloudSave, type SaveMeta } from '../services/cloudProgress';
@@ -15,7 +16,12 @@ const Context = createContext<AccountContext | null>(null);
 const LAST_ACCOUNT = 'typomancer:last-account';
 
 export function CloudProgressProvider({ children }: { children: React.ReactNode }) {
+  const [recovery] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    return params.has('reset-password') ? { token: params.get('token') } : null;
+  });
   if (import.meta.env.VITE_CLOUD_PROGRESS !== 'true') return <>{children}</>;
+  if (recovery) return <PasswordRecovery token={recovery.token} />;
   return <EnabledProvider>{children}</EnabledProvider>;
 }
 function EnabledProvider({ children }: { children: React.ReactNode }) {
@@ -183,6 +189,9 @@ export function AccountPanel({ language }: { language: Language }) {
   const [signup, setSignup] = useState(false);
   const [importGuest, setImportGuest] = useState(true);
   const [error, setError] = useState('');
+  const [recovery, setRecovery] = useState(false);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [recoverySent, setRecoverySent] = useState(false);
   const ru = language === 'ru';
   if (!account) return null;
   const text = (en: string, russian: string) => ru ? russian : en;
@@ -231,17 +240,29 @@ export function AccountPanel({ language }: { language: Language }) {
     </div>}
     {(open || account.status === 'expired') && <form className="space-y-3" onSubmit={event => {
       event.preventDefault(); const form = new FormData(event.currentTarget);
+      if (recovery) {
+        if (recoveryBusy) return;
+        setRecoveryBusy(true);
+        void execute(async () => {
+          try {
+            await api('/api/auth/request-password-reset', { email: String(form.get('email')), redirectTo: `${location.origin}/?reset-password=1` });
+            setRecoverySent(true);
+          } finally { setRecoveryBusy(false); }
+        });
+        return;
+      }
       void execute(() => account.login(String(form.get('email')), String(form.get('password')), signup && !account.user, importGuest));
     }}>
       <p className="text-xs leading-relaxed text-slate-400">{text('Save speed, accuracy, training patterns and upgrades across devices. No typed text is uploaded. In-progress sectors stay on this device.', 'Скорость, точность, слабые сочетания и улучшения — между устройствами. Введённый текст не отправляется. Незавершённый забег остаётся на устройстве.')}</p>
       <label className="block text-sm text-slate-300">Email<input name="email" type="email" autoComplete="email" required maxLength={254} defaultValue={account.user?.email} className="mt-1 w-full border border-slate-600 bg-slate-900 p-2 text-white focus:outline-emerald-300" /></label>
-      <label className="block text-sm text-slate-300">{text('Password (12+ characters)', 'Пароль (от 12 символов)')}<input name="password" type="password" autoComplete={signup ? 'new-password' : 'current-password'} required minLength={12} maxLength={128} className="mt-1 w-full border border-slate-600 bg-slate-900 p-2 text-white focus:outline-emerald-300" /></label>
-      {signup && !account.user && <label className="flex gap-2 text-xs text-slate-300"><input type="checkbox" checked={importGuest} onChange={event => setImportGuest(event.target.checked)} />{text('Copy this device’s guest progress into my new account', 'Перенести гостевой прогресс этого устройства в новый аккаунт')}</label>}
+      {!recovery && <label className="block text-sm text-slate-300">{text('Password (12+ characters)', 'Пароль (от 12 символов)')}<input name="password" type="password" autoComplete={signup ? 'new-password' : 'current-password'} required minLength={12} maxLength={128} className="mt-1 w-full border border-slate-600 bg-slate-900 p-2 text-white focus:outline-emerald-300" /></label>}
+      {!recovery && signup && !account.user && <label className="flex gap-2 text-xs text-slate-300"><input type="checkbox" checked={importGuest} onChange={event => setImportGuest(event.target.checked)} />{text('Copy this device’s guest progress into my new account', 'Перенести гостевой прогресс этого устройства в новый аккаунт')}</label>}
       <div className="flex flex-wrap gap-2">
-        <button type="submit" disabled={account.busy} className={button}>{signup && !account.user ? text('Create account', 'Создать аккаунт') : text('Sign in', 'Войти')}</button>
-        {!account.user && <button type="button" className={button} onClick={() => { setSignup(!signup); setError(''); }}>{signup ? text('Already have an account', 'Уже есть аккаунт') : text('New account', 'Новый аккаунт')}</button>}
+        <button type="submit" disabled={account.busy || recoveryBusy} className={button}>{recovery ? text('Send reset link', 'Отправить ссылку') : signup && !account.user ? text('Create account', 'Создать аккаунт') : text('Sign in', 'Войти')}</button>
+        {!recovery && !account.user && <button type="button" className={button} onClick={() => { setSignup(!signup); setError(''); }}>{signup ? text('Already have an account', 'Уже есть аккаунт') : text('New account', 'Новый аккаунт')}</button>}
+        <button type="button" disabled={recoveryBusy} className={button} onClick={() => { setRecovery(!recovery); setRecoverySent(false); setError(''); }}>{recovery ? text('Back to sign in', 'Назад ко входу') : text('Forgot password?', 'Забыл пароль?')}</button>
       </div>
-      <p className="text-xs text-slate-500">{text('Keep your password in a password manager. Email recovery is not available yet.', 'Сохрани пароль в менеджере паролей. Восстановление по почте пока недоступно.')}</p>
+      {recoverySent && <p role="status" className="text-xs text-emerald-200">{text('If an account exists for this email, a reset link will arrive shortly. Check your spam folder too.', 'Если аккаунт с этой почтой существует, скоро придёт ссылка. Проверь также папку «Спам».')}</p>}
     </form>}
     {error && <p role="alert" className="text-sm text-amber-200">{error}</p>}
   </section>;

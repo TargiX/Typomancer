@@ -6,9 +6,12 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { CloudProgressProvider } from './components/CloudProgress';
 import { initErrorReporting } from './services/errorReporting';
 
-initErrorReporting();
+// Recovery URLs carry a short-lived credential: do not initialize telemetry or
+// third-party challenge scripts on this dedicated screen.
+const isPasswordRecovery = new URLSearchParams(location.search).has('reset-password');
+if (!isPasswordRecovery) initErrorReporting();
 
-if (import.meta.env.PROD) {
+if (import.meta.env.PROD && !isPasswordRecovery) {
   initBotId({
     protect: [{ path: '/api/gemini', method: 'POST' }]
   });

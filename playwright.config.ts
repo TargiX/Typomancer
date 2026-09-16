@@ -16,6 +16,7 @@ export default defineConfig({
     viewport: { width: 1280, height: 900 }
   },
   webServer: externalBaseUrl ? undefined : {
+    env: { VITE_CLOUD_PROGRESS: 'true' },
     command: 'pnpm dev --host 127.0.0.1 --port 4173',
     url: baseURL,
     reuseExistingServer: false,
