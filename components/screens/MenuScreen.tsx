@@ -30,6 +30,8 @@ interface MenuScreenProps {
     activePact: PactClauseId[];
     onTogglePactClause: (id: PactClauseId) => void;
     onPactOpened?: () => void;
+    canInstall?: boolean;
+    onInstall?: () => void;
     onInitialize: () => void;
     onDaily: () => void;
     onResume: () => void;
@@ -54,6 +56,8 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
     activePact,
     onTogglePactClause,
     onPactOpened,
+    canInstall,
+    onInstall,
     onInitialize,
     onDaily,
     onResume,
@@ -232,6 +236,15 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                 <span className="text-emerald-400/80">◆</span> {ui.accuracy_hook}
             </p>
 
+            {canInstall && (
+                <button
+                    type="button"
+                    onClick={onInstall}
+                    className="fs-label text-slate-500 hover:text-emerald-300 transition-colors underline underline-offset-4 decoration-slate-700 mx-auto"
+                >
+                    {ui.install_app}
+                </button>
+            )}
             <div className="fs-label text-slate-600 pt-2">
                 {ui.powered_by}
             </div>

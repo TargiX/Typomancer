@@ -85,6 +85,11 @@ interface RoundData {
     characters: number;
 }
 
+// beforeinstallprompt isn't in lib.dom yet — the browser fires it with this shape.
+interface BeforeInstallPromptEvent extends Event {
+    prompt(): Promise<void>;
+}
+
 const App: React.FC = () => {
   const [dailyBrief, setDailyBrief] = useState(() => getDailyBrief());
   const [gameState, setGameStateUnchecked] = useState<GameState>(GameState.MENU);
@@ -134,6 +139,7 @@ const App: React.FC = () => {
   const [typingTraining, setTypingTraining] = useState(() => loadTypingTraining());
   const [incomingChallenge] = useState(() => parseChallenge(typeof location !== 'undefined' ? location.search : ''));
   const [challengeShareStatus, setChallengeShareStatus] = useState(false);
+  const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const sessionRef = useRef(createSessionFlow(storedBoot.lastGenre ?? 'cyberpunk', dailyBrief));
   const dailyAttemptRecordedRef = useRef(false);
   const runRecordedRef = useRef(false);
@@ -283,6 +289,15 @@ const App: React.FC = () => {
     window.addEventListener('pagehide', onPageHide);
     return () => window.removeEventListener('pagehide', onPageHide);
   }, [gameState, isDailyRun, currentLevel, playerProgress.runs.length]);
+
+  useEffect(() => {
+    const onInstallPrompt = (event: Event) => {
+        event.preventDefault();
+        setInstallPromptEvent(event as BeforeInstallPromptEvent);
+    };
+    window.addEventListener('beforeinstallprompt', onInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', onInstallPrompt);
+  }, []);
 
   useEffect(() => {
     if (!incomingChallenge || challengeTrackedRef.current) return;
@@ -569,6 +584,12 @@ const App: React.FC = () => {
           window.removeEventListener('keydown', unlock);
       };
   }, []);
+
+  const handleInstallApp = () => {
+      if (!installPromptEvent) return;
+      captureProductEvent('typomancer_install_prompted', getAnalyticsContext());
+      void installPromptEvent.prompt().finally(() => setInstallPromptEvent(null));
+  };
 
   const handleToggleMusic = () => {
       const active = audioEngine.toggle();
@@ -1275,6 +1296,8 @@ const App: React.FC = () => {
                     onInitialize={initializeSession}
                     onDaily={initializeDailySession}
                     onResume={resumeSession}
+                    canInstall={installPromptEvent !== null}
+                    onInstall={handleInstallApp}
                     onBlackMarket={() => setGameState(GameState.BLACK_MARKET)}
                     onOperatorRecord={() => setGameState(GameState.OPERATOR_RECORD)}
                 />

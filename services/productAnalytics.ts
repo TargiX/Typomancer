@@ -21,7 +21,8 @@ export type ProductEventName =
   | 'typomancer_run_abandoned'
   | 'typomancer_pact_opened'
   | 'typomancer_challenge_expired'
-  | 'typomancer_briefing_dismissed';
+  | 'typomancer_briefing_dismissed'
+  | 'typomancer_install_prompted';
 
 export interface CampaignAttribution {
   source: string;
@@ -107,7 +108,8 @@ const EVENT_PROPERTY_ALLOWLIST: Record<ProductEventName, readonly string[]> = {
   typomancer_challenge_expired: [...COMMON_PROPERTIES, 'target_score_bucket'],
   // The skills/tracer explainer shows once per device; dismissal is the only
   // moment the player proves they saw it.
-  typomancer_briefing_dismissed: [...COMMON_PROPERTIES, 'level']
+  typomancer_briefing_dismissed: [...COMMON_PROPERTIES, 'level'],
+  typomancer_install_prompted: COMMON_PROPERTIES
 };
 
 const truncateToken = (value: string, fallback: string): string => {
