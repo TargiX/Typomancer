@@ -70,6 +70,7 @@ import {
   type TypingObservation
 } from './services/typingTraining';
 import { buildChallengeUrl, getChallengeVerdict, parseChallenge } from './services/challenge';
+import { createSessionFlow, isLegalGameTransition } from './services/gameFlow';
 
 // Secondary screens are route-gated and heavy (telemetry charts, comic canvas,
 // the calibration typing test) — they ship as their own chunks.
@@ -86,7 +87,17 @@ interface RoundData {
 
 const App: React.FC = () => {
   const [dailyBrief, setDailyBrief] = useState(() => getDailyBrief());
-  const [gameState, setGameState] = useState<GameState>(GameState.MENU);
+  const [gameState, setGameStateUnchecked] = useState<GameState>(GameState.MENU);
+  // Legal edges live in services/gameFlow.ts. Going through this setter means
+  // an impossible jump warns instead of rendering a half-initialised screen.
+  const setGameState = (next: GameState) => {
+      setGameStateUnchecked(prev => {
+          if (!isLegalGameTransition(prev, next)) {
+              console.warn(`[flow] illegal transition ${prev} -> ${next}`);
+          }
+          return next;
+      });
+  };
   const [storyLog, setStoryLog] = useState<StoryLogItem[]>([]);
   const [initialSegment, setInitialSegment] = useState<StorySegment | null>(null);
   const [characterDesc, setCharacterDesc] = useState<string>("");
@@ -123,15 +134,11 @@ const App: React.FC = () => {
   const [typingTraining, setTypingTraining] = useState(() => loadTypingTraining());
   const [incomingChallenge] = useState(() => parseChallenge(typeof location !== 'undefined' ? location.search : ''));
   const [challengeShareStatus, setChallengeShareStatus] = useState(false);
-  const runGenreRef = useRef<StoryGenreId>(storedBoot.lastGenre ?? 'cyberpunk');
-  const isDailyRunRef = useRef(false);
-  const currentDailyIdRef = useRef<string | null>(null);
-  const activeDailyBriefRef = useRef<DailyBrief>(dailyBrief);
+  const sessionRef = useRef(createSessionFlow(storedBoot.lastGenre ?? 'cyberpunk', dailyBrief));
   const dailyAttemptRecordedRef = useRef(false);
   const runRecordedRef = useRef(false);
   const runStartedAtRef = useRef(Date.now());
-  const calibrationNextRef = useRef<'campaign' | 'daily' | 'record'>('campaign');
-  const calibrationModeRef = useRef<'calibration' | 'drill'>('calibration');
+
   const runTrainingObservationsRef = useRef<TypingObservation[]>([]);
   const totalScoreRef = useRef(0);
   const deathSequenceTimerRef = useRef<number | null>(null);
@@ -406,8 +413,8 @@ const App: React.FC = () => {
       endedAt: endedAt.toISOString(),
       dateKey: getLocalDateKey(endedAt),
       outcome: stats.outcome,
-      daily: isDailyRunRef.current,
-      genre: runGenreRef.current,
+      daily: sessionRef.current.isDaily,
+      genre: sessionRef.current.genre,
       level: stats.level,
       score: stats.score,
       wpm: stats.wpm,
@@ -435,8 +442,8 @@ const App: React.FC = () => {
     const eventContext = getAnalyticsContext();
     captureProductEvent('typomancer_run_completed', {
       ...eventContext,
-      daily: isDailyRunRef.current,
-      genre: runGenreRef.current,
+      daily: sessionRef.current.isDaily,
+      genre: sessionRef.current.genre,
       level: stats.level,
       outcome: stats.outcome,
       wpm_bucket: getMetricBucket(stats.wpm),
@@ -447,7 +454,7 @@ const App: React.FC = () => {
     });
     captureProductEvent('typomancer_debrief_viewed', {
       ...eventContext,
-      daily: isDailyRunRef.current,
+      daily: sessionRef.current.isDaily,
       outcome: stats.outcome,
       focus,
       run_number: runNumber
@@ -608,14 +615,14 @@ const App: React.FC = () => {
   };
 
   const initializeSession = () => {
-      calibrationModeRef.current = 'calibration';
+      sessionRef.current.calibrationMode = 'calibration';
       clearRunCheckpoint();
       setRunCheckpoint(null);
       prepareSession();
       setIsDailyRun(false);
-      isDailyRunRef.current = false;
+      sessionRef.current.isDaily = false;
       setCurrentDailyId(null);
-      currentDailyIdRef.current = null;
+      sessionRef.current.dailyId = null;
       setCurrentDailyDateLabel(null);
       // A newcomer meets the story first. Calibration used to be the very first
       // thing a stranger saw: a 93-character typing test, before the game had
@@ -655,11 +662,11 @@ const App: React.FC = () => {
       setTotalScore(checkpoint.totalScore);
       totalScoreRef.current = checkpoint.totalScore;
       setSelectedGenre(checkpoint.genre);
-      runGenreRef.current = checkpoint.genre;
+      sessionRef.current.genre = checkpoint.genre;
       setIsDailyRun(false);
-      isDailyRunRef.current = false;
+      sessionRef.current.isDaily = false;
       setCurrentDailyId(null);
-      currentDailyIdRef.current = null;
+      sessionRef.current.dailyId = null;
       setCurrentDailyDateLabel(null);
       setGameState(GameState.LOADING);
       audioEngine.unlock();
@@ -691,7 +698,7 @@ const App: React.FC = () => {
   };
 
   const initializeDailySession = () => {
-      calibrationModeRef.current = 'calibration';
+      sessionRef.current.calibrationMode = 'calibration';
       const brief = getDailyBrief();
       const latestState = getDailyState(brief.dailyId);
       setDailyBrief(brief);
@@ -699,20 +706,20 @@ const App: React.FC = () => {
       if (latestState.attemptsUsed >= DAILY_MAX_ATTEMPTS) return;
 
       prepareSession(brief.dailyId);
-      activeDailyBriefRef.current = brief;
+      sessionRef.current.dailyBrief = brief;
       setIsDailyRun(true);
-      isDailyRunRef.current = true;
+      sessionRef.current.isDaily = true;
       setCurrentDailyId(brief.dailyId);
-      currentDailyIdRef.current = brief.dailyId;
+      sessionRef.current.dailyId = brief.dailyId;
       setCurrentDailyDateLabel(brief.dateLabel);
       setSelectedGenre(brief.genre);
-      runGenreRef.current = brief.genre;
+      sessionRef.current.genre = brief.genre;
       setGameState(GameState.STARTER_PERK_SELECTION);
       audioEngine.unlock();
   };
 
   const finishCalibration = (result: CalibrationResult, observations: TypingObservation[] = [], skipped = false) => {
-      const mode = calibrationModeRef.current;
+      const mode = sessionRef.current.calibrationMode;
       setTypingTraining((current) => saveTypingTraining(recordTypingSession(
           current,
           observations,
@@ -730,27 +737,27 @@ const App: React.FC = () => {
               accuracy_bucket: getAccuracyBucket(result.accuracy),
               samples_bucket: getMetricBucket(observations.length, 25, 500)
           });
-          calibrationModeRef.current = 'calibration';
+          sessionRef.current.calibrationMode = 'calibration';
           setGameState(GameState.OPERATOR_RECORD);
           return;
       }
       setPlayerProgressState((current) => savePlayerProgress(setCalibration(current, result)));
       captureProductEvent('typomancer_calibration_completed', {
           ...getAnalyticsContext(),
-          recalibration: calibrationNextRef.current === 'record',
+          recalibration: sessionRef.current.calibrationNext === 'record',
           skipped,
           wpm_bucket: getMetricBucket(result.wpm),
           accuracy_bucket: getAccuracyBucket(result.accuracy),
           preset: result.preset
       });
-      if (calibrationNextRef.current === 'daily') setGameState(GameState.STARTER_PERK_SELECTION);
-      else if (calibrationNextRef.current === 'record') setGameState(GameState.OPERATOR_RECORD);
+      if (sessionRef.current.calibrationNext === 'daily') setGameState(GameState.STARTER_PERK_SELECTION);
+      else if (sessionRef.current.calibrationNext === 'record') setGameState(GameState.OPERATOR_RECORD);
       else setGameState(GameState.GENRE_SELECTION);
   };
 
   const skipCalibration = () => {
-      if (calibrationModeRef.current === 'drill') {
-          calibrationModeRef.current = 'calibration';
+      if (sessionRef.current.calibrationMode === 'drill') {
+          sessionRef.current.calibrationMode = 'calibration';
           setGameState(GameState.OPERATOR_RECORD);
           return;
       }
@@ -758,8 +765,8 @@ const App: React.FC = () => {
   };
 
   const recalibrate = () => {
-      calibrationModeRef.current = 'calibration';
-      calibrationNextRef.current = 'record';
+      sessionRef.current.calibrationMode = 'calibration';
+      sessionRef.current.calibrationNext = 'record';
       captureProductEvent('typomancer_calibration_started', {
           ...getAnalyticsContext(),
           recalibration: true
@@ -768,8 +775,8 @@ const App: React.FC = () => {
   };
 
   const startTargetedDrill = () => {
-      calibrationModeRef.current = 'drill';
-      calibrationNextRef.current = 'record';
+      sessionRef.current.calibrationMode = 'drill';
+      sessionRef.current.calibrationNext = 'record';
       captureProductEvent('typomancer_drill_started', {
           ...getAnalyticsContext(),
           samples_bucket: getMetricBucket(typingTraining.samples, 100, 2000),
@@ -779,8 +786,8 @@ const App: React.FC = () => {
   };
 
   const shareDailyChallenge = async (outcome: 'victory' | 'defeat', score: number) => {
-      if (!isDailyRunRef.current || !currentDailyIdRef.current || typeof location === 'undefined') return;
-      const url = buildChallengeUrl(location.origin + location.pathname, currentDailyIdRef.current, score);
+      if (!sessionRef.current.isDaily || !sessionRef.current.dailyId || typeof location === 'undefined') return;
+      const url = buildChallengeUrl(location.origin + location.pathname, sessionRef.current.dailyId, score);
       if (!url) return;
       const text = language === 'ru'
           ? `Я набрал ${score} в Дневном секторе Typomancer. Сможешь побить мой результат?`
@@ -803,39 +810,47 @@ const App: React.FC = () => {
 
   const handleGenreSelect = (genre: StoryGenreId) => {
       setSelectedGenre(genre);
-      runGenreRef.current = genre;
+      sessionRef.current.genre = genre;
       setGameState(GameState.STARTER_PERK_SELECTION);
   };
 
   const handleStarterPerkSelect = (perk: Perk) => {
       setActivePerks([perk]);
-      beginStoryGeneration(runGenreRef.current);
+      beginStoryGeneration(sessionRef.current.genre);
   };
 
-  const beginStoryGeneration = async (genre: StoryGenreId = runGenreRef.current) => {
+  const beginStoryGeneration = async (genre: StoryGenreId = sessionRef.current.genre) => {
     setGameState(GameState.LOADING);
     captureProductEvent('typomancer_run_started', {
       ...getAnalyticsContext(),
-      daily: isDailyRunRef.current,
+      daily: sessionRef.current.isDaily,
       genre,
       preset: adaptiveDifficulty.preset,
       run_number: playerProgress.runs.length + 1,
       returning_player: playerProgress.runs.length > 0
     });
-    const activeBrief = activeDailyBriefRef.current;
-    const startRequest = isDailyRunRef.current && currentDailyIdRef.current === activeBrief.dailyId
+    const activeBrief = sessionRef.current.dailyBrief;
+    const startRequest = sessionRef.current.isDaily && sessionRef.current.dailyId === activeBrief.dailyId
       ? Promise.resolve<StorySegment>({
           text: activeBrief.opening[language],
           mood: StoryMood.TENSE,
           type: SegmentType.NARRATIVE
         })
       : generateStoryStart(language, genre);
-    const [start, charProfile] = await Promise.all([
-        startRequest,
-        generateCharacterProfile(language, genre)
-    ]);
-    setInitialSegment(start);
-    setCharacterDesc(charProfile);
+    try {
+        const [start, charProfile] = await Promise.all([
+            startRequest,
+            generateCharacterProfile(language, genre)
+        ]);
+        setInitialSegment(start);
+        setCharacterDesc(charProfile);
+    } catch {
+        // A rejection here must not strand the player on LOADING — fall back to
+        // the authored opening like every other generation path does.
+        const local = getGenrePack(genre).local[language];
+        setInitialSegment({ text: local.start, mood: StoryMood.TENSE, type: SegmentType.NARRATIVE, skill: 'flow' });
+        setCharacterDesc(local.protagonist);
+    }
     setGameState(GameState.PLAYING);
   };
 
@@ -901,7 +916,7 @@ const App: React.FC = () => {
           route: mission.route
       };
 
-      const isFinal = isDailyRunRef.current || finalRoundStats.level >= CAMPAIGN_SECTORS;
+      const isFinal = sessionRef.current.isDaily || finalRoundStats.level >= CAMPAIGN_SECTORS;
       const upgradeOptions = isFinal ? [] : getUpgradeOptions(performanceRating, activePerks, hubSkin, language);
       setLastLevelReport(report);
       if (isFinal) {
@@ -914,7 +929,7 @@ const App: React.FC = () => {
           setGameState(GameState.LEVEL_COMPLETE);
       }
 
-      const summary = await generateLevelSummary(finalRoundStats.level, report, storyLog.map(l => l.text).join(" "), language, runGenreRef.current);
+      const summary = await generateLevelSummary(finalRoundStats.level, report, storyLog.map(l => l.text).join(" "), language, sessionRef.current.genre);
       const completedReport = { ...report, narrativeSummary: summary, endingTitle: getEndingTitle({ ...report, narrativeSummary: summary }) };
       setNarrativeContext(summary);
       addToLog(`[${UI.level.toUpperCase()} ${finalRoundStats.level} ${UI.seq_complete}]: ${summary}`, 'neutral', 0, 0, 0, `${UI.evidence}: ${mission.evidence} · ${UI.heat}: ${mission.heat}%`);
@@ -928,7 +943,7 @@ const App: React.FC = () => {
           const checkpoint = saveRunCheckpoint({
               nextLevel: finalRoundStats.level + 1,
               health: finalRoundStats.health,
-              genre: runGenreRef.current,
+              genre: sessionRef.current.genre,
               narrativeContext: summary,
               totalScore: totalScoreRef.current,
               perks: activePerks.map((perk) => ({ groupId: perk.groupId, tier: perk.tier })),
@@ -962,11 +977,11 @@ const App: React.FC = () => {
       setCurrentLevel(nextLvl);
       setLevelBuffer([]);
       try {
-          const nextStartSegment = await generateNextLevelStart(nextLvl, narrativeContext, language, campaignState, runGenreRef.current);
+          const nextStartSegment = await generateNextLevelStart(nextLvl, narrativeContext, language, campaignState, sessionRef.current.genre);
           setInitialSegment(nextStartSegment);
           setGameState(GameState.PLAYING);
         } catch (e) {
-          const fallback = getGenrePack(runGenreRef.current).local[language].levelStart[nextLvl - 1]
+          const fallback = getGenrePack(sessionRef.current.genre).local[language].levelStart[nextLvl - 1]
               || (language === 'ru' ? "Связь разорвана. Вы в новом секторе." : "The connection resets. You are in a new sector.");
           setInitialSegment({ 
               text: fallback,
@@ -1010,7 +1025,7 @@ const App: React.FC = () => {
           dateKey: getLocalDateKey(endedAt),
           outcome: 'banked',
           daily: false,
-          genre: runGenreRef.current,
+          genre: sessionRef.current.genre,
           level: lastLevelReport.level,
           score,
           wpm,
@@ -1036,7 +1051,7 @@ const App: React.FC = () => {
       captureProductEvent('typomancer_run_completed', {
           ...eventContext,
           daily: false,
-          genre: runGenreRef.current,
+          genre: sessionRef.current.genre,
           level: lastLevelReport.level,
           outcome: 'banked',
           wpm_bucket: getMetricBucket(wpm),
@@ -1128,8 +1143,8 @@ const App: React.FC = () => {
         firstSegmentTrackedRef.current = true;
         captureProductEvent('typomancer_first_segment_completed', {
           ...getAnalyticsContext(),
-          daily: isDailyRunRef.current,
-          genre: runGenreRef.current,
+          daily: sessionRef.current.isDaily,
+          genre: sessionRef.current.genre,
           level: currentLevel,
           wpm_bucket: getMetricBucket(wpm),
           accuracy_bucket: getAccuracyBucket(getTypingAccuracy(mistakes, text.length))
@@ -1262,7 +1277,7 @@ const App: React.FC = () => {
                 <Suspense fallback={null}>
                 <CalibrationPanel
                     language={language}
-                    mode={calibrationModeRef.current}
+                    mode={sessionRef.current.calibrationMode}
                     drillPrompt={buildTargetedDrill(language, typingTraining)}
                     onComplete={finishCalibration}
                     onSkip={skipCalibration}
