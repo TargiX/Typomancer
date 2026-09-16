@@ -18,7 +18,10 @@ export type ProductEventName =
   | 'typomancer_challenge_shared'
   | 'typomancer_ai_request'
   | 'typomancer_pact_toggled'
-  | 'typomancer_run_abandoned';
+  | 'typomancer_run_abandoned'
+  | 'typomancer_pact_opened'
+  | 'typomancer_challenge_expired'
+  | 'typomancer_briefing_dismissed';
 
 export interface CampaignAttribution {
   source: string;
@@ -96,7 +99,15 @@ const EVENT_PROPERTY_ALLOWLIST: Record<ProductEventName, readonly string[]> = {
   typomancer_pact_toggled: [...COMMON_PROPERTIES, 'clause', 'active'],
   // pagehide during a run. A tab can come back, but this is still the best
   // abandon signal available without a server session.
-  typomancer_run_abandoned: [...COMMON_PROPERTIES, 'daily', 'level', 'run_number']
+  typomancer_run_abandoned: [...COMMON_PROPERTIES, 'daily', 'level', 'run_number'],
+  // The Pact panel is collapsed by default — opened is the top of its funnel,
+  // toggled is the bottom.
+  typomancer_pact_opened: COMMON_PROPERTIES,
+  // A shared challenge link that arrived after its daily sector rotated away.
+  typomancer_challenge_expired: [...COMMON_PROPERTIES, 'target_score_bucket'],
+  // The skills/tracer explainer shows once per device; dismissal is the only
+  // moment the player proves they saw it.
+  typomancer_briefing_dismissed: [...COMMON_PROPERTIES, 'level']
 };
 
 const truncateToken = (value: string, fallback: string): string => {

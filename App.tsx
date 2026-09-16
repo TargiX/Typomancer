@@ -292,7 +292,13 @@ const App: React.FC = () => {
       daily_id_present: true,
       target_score_bucket: getMetricBucket(incomingChallenge.targetScore, 500, 10_000)
     });
-  }, [incomingChallenge]);
+    if (incomingChallenge.dailyId !== dailyBrief.dailyId) {
+      captureProductEvent('typomancer_challenge_expired', {
+        ...getAnalyticsContext(),
+        target_score_bucket: getMetricBucket(incomingChallenge.targetScore, 500, 10_000)
+      });
+    }
+  }, [incomingChallenge, dailyBrief.dailyId]);
 
   useEffect(() => {
     // The profile is read synchronously into state, so by the time this runs it
@@ -1265,6 +1271,7 @@ const App: React.FC = () => {
                     pactRewardMultiplier={pactRewardMultiplier}
                     activePact={activePact}
                     onTogglePactClause={handleTogglePactClause}
+                    onPactOpened={() => captureProductEvent('typomancer_pact_opened', getAnalyticsContext())}
                     onInitialize={initializeSession}
                     onDaily={initializeDailySession}
                     onResume={resumeSession}
