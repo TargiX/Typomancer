@@ -20,6 +20,7 @@ interface VictoryScreenProps {
     challengeShared: boolean;
     hasComic: boolean;
     onShareChallenge: () => void;
+    onShareScore: () => void;
     onShowComic: () => void;
     onMenu: () => void;
 }
@@ -37,6 +38,7 @@ const VictoryScreen: React.FC<VictoryScreenProps> = ({
     challengeShared,
     hasComic,
     onShareChallenge,
+    onShareScore,
     onShowComic,
     onMenu
 }) => (
@@ -98,6 +100,12 @@ const VictoryScreen: React.FC<VictoryScreenProps> = ({
                     {ui.share_comic}
                 </button>
             )}
+            <button
+                onClick={onShareScore}
+                className="btn-cyber btn-cyber-ghost flex-1 py-3.5 font-display font-bold tracking-[0.06em] text-emerald-200 hover:text-white transition-colors"
+            >
+                {ui.share_score}
+            </button>
             <button
                 onClick={onMenu}
                 className="btn-cyber btn-cyber-primary flex-1 py-3.5 font-display font-bold tracking-[0.06em] text-[#04120b] flex items-center justify-center gap-3"

@@ -44,6 +44,10 @@ export default defineConfig(({ mode }) => ({
   envDir: projectDir,
   plugins: [react(), localGeminiApi(mode)],
   server: {
+    proxy: process.env.PROGRESS_API_URL ? {
+      '/api/auth': { target: process.env.PROGRESS_API_URL, changeOrigin: true },
+      '/api/progress': { target: process.env.PROGRESS_API_URL, changeOrigin: true }
+    } : undefined,
     host: process.env.HOST || '127.0.0.1',
     port: Number(process.env.PORT) || 8080,
     strictPort: true,

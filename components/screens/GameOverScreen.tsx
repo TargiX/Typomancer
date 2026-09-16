@@ -20,6 +20,7 @@ interface GameOverScreenProps {
     challengeShared: boolean;
     hasComic: boolean;
     onShareChallenge: () => void;
+    onShareScore: () => void;
     onShowComic: () => void;
     onMenu: () => void;
 }
@@ -38,6 +39,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     challengeShared,
     hasComic,
     onShareChallenge,
+    onShareScore,
     onShowComic,
     onMenu
 }) => (
@@ -109,6 +111,12 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                     {ui.share_comic}
                 </button>
             )}
+            <button
+                onClick={onShareScore}
+                className="btn-cyber btn-cyber-ghost flex-1 py-3.5 font-display font-bold tracking-[0.06em] text-emerald-200 hover:text-white transition-colors"
+            >
+                {ui.share_score}
+            </button>
             <button
                 onClick={onMenu}
                 className="btn-cyber btn-cyber-danger flex-1 py-3.5 font-display font-bold tracking-[0.06em] text-rose-200 hover:text-white transition-colors flex items-center justify-center gap-3"

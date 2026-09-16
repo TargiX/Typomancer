@@ -70,8 +70,10 @@ import {
   snapshotTypingObservations,
   type TypingObservation
 } from './services/typingTraining';
-import { buildChallengeUrl, getChallengeVerdict, parseChallenge } from './services/challenge';
+import { buildChallengeShareUrl, getChallengeVerdict, parseChallenge } from './services/challenge';
+import { shareScoreCardImage } from './services/scoreCard';
 import { createSessionFlow, isLegalGameTransition } from './services/gameFlow';
+import { playerStorage } from './services/playerStorage';
 
 // Secondary screens are route-gated and heavy (telemetry charts, comic canvas,
 // the calibration typing test) — they ship as their own chunks.
@@ -324,7 +326,7 @@ const App: React.FC = () => {
     // anything persisted.
     const profileToSave = { ...userProfile, language, lastGenre: selectedGenre };
     try {
-      localStorage.setItem('narrativeFlowProfile', JSON.stringify(profileToSave));
+      playerStorage()?.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profileToSave));
     } catch (e) {
       console.error("Profile save fail", e);
     }
@@ -523,6 +525,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.defaultPrevented || (e.target instanceof Element && e.target.closest('input,textarea,select,[contenteditable="true"],[data-account-panel]'))) return;
         if (deathSequenceActive) return;
         // Consuming a shortcut must also swallow the key. Otherwise the same
         // keypress that opens a screen is delivered again to whatever input that
@@ -587,6 +590,41 @@ const App: React.FC = () => {
           window.removeEventListener('keydown', unlock);
       };
   }, []);
+
+  const handleShareScore = () => {
+      const isVictory = gameState === GameState.VICTORY;
+      const score = Math.max(totalScore, finalStats?.score || 0);
+      const runPact = activePactRef.current;
+      const badge = runPact.length > 0
+          ? `PACT ×${getPactRewardMultiplier(runPact).toFixed(2)}`
+          : sessionRef.current.isDaily ? UI.daily_sector : undefined;
+      const title = isVictory
+          ? (victoryReport?.endingTitle || genrePack.ui.victoryTitle[language])
+          : genrePack.ui.connectionSevered[language];
+      const subtitle = sessionRef.current.isDaily && currentDailyDateLabel
+          ? `${UI.daily_sector} · ${currentDailyDateLabel}`
+          : genrePack.name[language];
+      const shareText = sessionRef.current.isDaily && sessionRef.current.dailyId
+          ? (() => {
+              const url = buildChallengeShareUrl(location.origin, sessionRef.current.dailyId, score, language);
+              return language === 'ru'
+                  ? `Я набрал ${score} в Дневном секторе Typomancer. Сможешь побить? ${url}`
+                  : `I scored ${score} in Typomancer's Daily Sector. Can you beat it? ${url}`;
+          })()
+          : language === 'ru'
+            ? `Мой счёт ${score} в Typomancer: ${location.origin}`
+            : `I scored ${score} in Typomancer: ${location.origin}`;
+      void shareScoreCardImage({
+          outcome: isVictory ? 'victory' : 'defeat',
+          title,
+          subtitle,
+          score,
+          wpm: Math.round(isVictory ? victoryReport?.avgWpm ?? 0 : finalStats?.wpm ?? 0),
+          accuracy: isVictory ? victoryReport?.accuracy ?? 100 : finalStats?.accuracy ?? 100,
+          badge,
+          language
+      }, shareText);
+  };
 
   const handleInstallApp = () => {
       if (!installPromptEvent) return;
@@ -844,7 +882,7 @@ const App: React.FC = () => {
 
   const shareDailyChallenge = async (outcome: 'victory' | 'defeat', score: number) => {
       if (!sessionRef.current.isDaily || !sessionRef.current.dailyId || typeof location === 'undefined') return;
-      const url = buildChallengeUrl(location.origin + location.pathname, sessionRef.current.dailyId, score);
+      const url = buildChallengeShareUrl(location.origin, sessionRef.current.dailyId, score, language);
       if (!url) return;
       const text = language === 'ru'
           ? `Я набрал ${score} в Дневном секторе Typomancer. Сможешь побить мой результат?`
@@ -1457,6 +1495,7 @@ const App: React.FC = () => {
                     challengeShared={challengeShareStatus}
                     hasComic={comicFrames.length > 0}
                     onShareChallenge={() => shareDailyChallenge('victory', totalScore)}
+                    onShareScore={handleShareScore}
                     onShowComic={() => setShowComic(true)}
                     onMenu={() => setGameState(GameState.MENU)}
                 />
@@ -1477,6 +1516,7 @@ const App: React.FC = () => {
                     challengeShared={challengeShareStatus}
                     hasComic={comicFrames.length > 0}
                     onShareChallenge={() => shareDailyChallenge('defeat', Math.max(totalScore, finalStats?.score || 0))}
+                    onShareScore={handleShareScore}
                     onShowComic={() => setShowComic(true)}
                     onMenu={() => setGameState(GameState.MENU)}
                 />

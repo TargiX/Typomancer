@@ -17,6 +17,7 @@ export interface DailyState {
 }
 
 const DAILY_STORAGE_PREFIX = 'nfDaily:';
+import { playerStorage } from './playerStorage.ts';
 const EMPTY_DAILY_STATE: DailyState = {
   attemptsUsed: 0,
   bestScore: 0,
@@ -179,11 +180,12 @@ const normalizeDailyState = (value: unknown): DailyState => {
 };
 
 const cleanupOldDailyKeys = (activeKey: string): void => {
-  if (typeof localStorage === 'undefined') return;
-  for (let index = localStorage.length - 1; index >= 0; index -= 1) {
-    const key = localStorage.key(index);
+  const storage = playerStorage();
+  if (!storage) return;
+  for (let index = storage.length - 1; index >= 0; index -= 1) {
+    const key = storage.key(index);
     if (key?.startsWith(DAILY_STORAGE_PREFIX) && key !== activeKey) {
-      localStorage.removeItem(key);
+      storage.removeItem(key);
     }
   }
 };
@@ -193,7 +195,7 @@ export const getDailyState = (dailyId: string): DailyState => {
   const key = `${DAILY_STORAGE_PREFIX}${dailyId}`;
   try {
     cleanupOldDailyKeys(key);
-    const stored = localStorage.getItem(key);
+    const stored = playerStorage()?.getItem(key);
     return stored ? normalizeDailyState(JSON.parse(stored)) : { ...EMPTY_DAILY_STATE };
   } catch {
     return { ...EMPTY_DAILY_STATE };
@@ -212,7 +214,7 @@ export const recordDailyAttempt = (dailyId: string, score: number, endingTitle: 
 
   if (typeof localStorage !== 'undefined') {
     try {
-      localStorage.setItem(`${DAILY_STORAGE_PREFIX}${dailyId}`, JSON.stringify(next));
+      playerStorage()?.setItem(`${DAILY_STORAGE_PREFIX}${dailyId}`, JSON.stringify(next));
     } catch {
       // Storage can be unavailable in privacy modes; the run should still finish.
     }
