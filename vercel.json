@@ -26,6 +26,11 @@
   ],
   "headers": [
     {
+      "source": "/",
+      "has": [{ "type": "query", "key": "reset-password" }],
+      "headers": [{ "key": "Cache-Control", "value": "private, no-store" }]
+    },
+    {
       "source": "/(.*)",
       "headers": [{ "key": "Referrer-Policy", "value": "no-referrer" }]
     },

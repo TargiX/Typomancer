@@ -31,6 +31,8 @@ self.addEventListener('fetch', (event) => {
         request.method !== 'GET'
         || url.origin !== self.location.origin
         || url.pathname.startsWith('/api/')
+        || url.searchParams.has('reset-password')
+        || url.searchParams.has('token')
         || request.headers.has('Authorization')
     ) {
         return;
