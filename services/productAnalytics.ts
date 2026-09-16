@@ -15,7 +15,8 @@ export type ProductEventName =
   | 'typomancer_drill_started'
   | 'typomancer_drill_completed'
   | 'typomancer_challenge_opened'
-  | 'typomancer_challenge_shared';
+  | 'typomancer_challenge_shared'
+  | 'typomancer_ai_request';
 
 export interface CampaignAttribution {
   source: string;
@@ -84,7 +85,10 @@ const EVENT_PROPERTY_ALLOWLIST: Record<ProductEventName, readonly string[]> = {
   typomancer_drill_started: [...COMMON_PROPERTIES, 'samples_bucket', 'weak_pattern_count'],
   typomancer_drill_completed: [...COMMON_PROPERTIES, 'wpm_bucket', 'accuracy_bucket', 'samples_bucket'],
   typomancer_challenge_opened: [...COMMON_PROPERTIES, 'daily_id_present', 'target_score_bucket'],
-  typomancer_challenge_shared: [...COMMON_PROPERTIES, 'daily', 'outcome', 'target_score_bucket']
+  typomancer_challenge_shared: [...COMMON_PROPERTIES, 'daily', 'outcome', 'target_score_bucket'],
+  // Spend telemetry: counts proxy calls by kind/outcome so AI cost per run is
+  // measurable without ever sending prompts or responses.
+  typomancer_ai_request: [...COMMON_PROPERTIES, 'kind', 'ok']
 };
 
 const truncateToken = (value: string, fallback: string): string => {

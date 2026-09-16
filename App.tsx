@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback} from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import { GameState, StorySegment, GameStats, StoryLogItem, UserProfile, Perk, GameModifiers, LevelReport, UserUpgrades, StoryMood, SegmentType, Language, MissionState, ComicFrame, StoryGenreId } from './types';
 import { generateStoryStart, generateCharacterProfile, generateLevelSummary, generateNextLevelStart } from './services/geminiService';
 import { GENRE_ORDER, getGenrePack } from './services/genreConfig';
@@ -42,9 +42,6 @@ import {
 } from './services/perks';
 import { audioEngine } from './services/audioEngine';
 import TypingEngine from './components/TypingEngine';
-import RunComic from './components/RunComic';
-import CalibrationPanel from './components/CalibrationPanel';
-import OperatorRecord from './components/OperatorRecord';
 import HudStrip from './components/HudStrip';
 import DeathSequence from './components/DeathSequence';
 import MenuScreen from './components/screens/MenuScreen';
@@ -73,6 +70,13 @@ import {
   type TypingObservation
 } from './services/typingTraining';
 import { buildChallengeUrl, getChallengeVerdict, parseChallenge } from './services/challenge';
+
+// Secondary screens are route-gated and heavy (telemetry charts, comic canvas,
+// the calibration typing test) — they ship as their own chunks.
+const RunComic = lazy(() => import('./components/RunComic'));
+const CalibrationPanel = lazy(() => import('./components/CalibrationPanel'));
+const OperatorRecord = lazy(() => import('./components/OperatorRecord'));
+
 interface RoundData {
     wpm: number;
     mistakes: number;
@@ -1234,6 +1238,7 @@ const App: React.FC = () => {
             )}
 
             {gameState === GameState.CALIBRATION && (
+                <Suspense fallback={null}>
                 <CalibrationPanel
                     language={language}
                     mode={calibrationModeRef.current}
@@ -1241,9 +1246,11 @@ const App: React.FC = () => {
                     onComplete={finishCalibration}
                     onSkip={skipCalibration}
                 />
+                </Suspense>
             )}
 
             {gameState === GameState.OPERATOR_RECORD && (
+                <Suspense fallback={null}>
                 <OperatorRecord
                     language={language}
                     progress={playerProgress}
@@ -1252,6 +1259,7 @@ const App: React.FC = () => {
                     onRecalibrate={recalibrate}
                     onStartDrill={startTargetedDrill}
                 />
+                </Suspense>
             )}
 
             {gameState === GameState.BLACK_MARKET && (
@@ -1376,6 +1384,7 @@ const App: React.FC = () => {
       {showComic && (comicFrames.length > 0) && (() => {
         const data = buildComicData();
         return (
+          <Suspense fallback={null}>
           <RunComic
             frames={comicFrames}
             title={genrePack.ui.mainTitle[language]}
@@ -1399,6 +1408,7 @@ const App: React.FC = () => {
             }}
             onClose={() => setShowComic(false)}
           />
+          </Suspense>
         );
       })()}
     </div>

@@ -18,6 +18,7 @@ import { getRecentConsequences } from "./missionLog.ts";
 import { isProseSegmentType, repairProseLine } from "./proseRepair.ts";
 import { clampDecisionImpact } from "./decisionImpact.ts";
 import { getBeatDirection, getRoundShape } from "./sectorRhythm.ts";
+import { captureProductEvent } from "./productAnalytics.ts";
 
 type Schema = Record<string, unknown>;
 
@@ -37,6 +38,10 @@ const callGemini = async (model: string, contents: string, config?: Record<strin
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model, contents, config })
   });
+
+  // Spend telemetry: which kind of call went out and whether it worked. Prompts
+  // and responses never leave this function.
+  captureProductEvent('typomancer_ai_request', { kind: model === TEXT_MODEL ? 'text' : 'image', ok: response.ok });
 
   if (!response.ok) return null;
   return response.json();
