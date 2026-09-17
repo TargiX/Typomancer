@@ -178,6 +178,11 @@
   filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.45));
 }
 
+.engine-cursor-skills--under {
+  flex-direction: column-reverse;
+  transform: translateX(-50%);
+}
+
 .engine-cursor-skill {
   position: relative;
   display: inline-flex;

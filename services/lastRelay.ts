@@ -4,6 +4,7 @@ import type { BranchingStory, DecisionImpact, DecisionPoint, Language, MissionSt
 /** Authored events live in the existing checkpointed mission flags. */
 export const LAST_RELAY = 'last-relay:v1';
 export const RELAY_SECTORS = 2;
+export const RELAY_CHARACTER = 'Agent Nox and Mira, a courier in a yellow raincoat carrying a witness key';
 export const isLastRelay = (mission?: MissionState): boolean => Boolean(mission?.flags.includes(LAST_RELAY));
 const has = (mission: MissionState, flag: string) => mission.flags.includes(`relay:${flag}`);
 const copy = (language: Language, en: string, ru: string) => language === 'ru' ? ru : en;

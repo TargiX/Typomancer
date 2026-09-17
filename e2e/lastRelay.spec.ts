@@ -27,8 +27,18 @@ for (const path of [
   { name: 'rescue Mira but damage the upload', rescue: true, redact: false, spotted: false, fragment: true, resume: false, ending: 'A surviving fragment' }
 ]) {
   test(`last relay: ${path.name}`, async ({ page }) => {
-    let aiRequests = 0;
-    page.on('request', request => { if (request.url().includes('/api/gemini')) aiRequests++; });
+    let textRequests = 0;
+    let imageRequests = 0;
+    page.on('request', request => {
+      if (request.method() !== 'POST' || !request.url().includes('/api/gemini')) return;
+      try {
+        const model = JSON.parse(request.postData() || '{}').model || '';
+        if (String(model).includes('image')) imageRequests += 1;
+        else textRequests += 1;
+      } catch {
+        textRequests += 1;
+      }
+    });
     await page.goto('/');
     await page.getByRole('button', { name: '5 THE LAST RELAY', exact: true }).click();
     await expect(active(page)).toContainText('Mira whispers');
@@ -62,7 +72,8 @@ for (const path of [
     }));
     expect(persisted.checkpoint).toBeNull();
     expect(persisted.progress.runs.at(-1).level).toBe(2);
-    expect(aiRequests).toBe(0);
+    expect(textRequests).toBe(0);
+    expect(imageRequests).toBeGreaterThan(0);
     if (path.redact) {
       await page.screenshot({ path: '.context/last-relay-ending.png', fullPage: true });
       await page.keyboard.press('Space');
@@ -73,7 +84,7 @@ for (const path of [
       await page.locator('.engine-skill-briefing-start').click();
       await expect(input(page)).toBeEnabled();
       await expect(active(page)).not.toContainText('Mira whispers');
-      expect(aiRequests).toBeGreaterThan(0);
+      expect(textRequests).toBeGreaterThan(0);
     }
   });
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
-import { LAST_RELAY, RELAY_SECTORS, isLastRelay, getRelayStart, getRelaySummary, getRelayEnding } from './services/lastRelay';
+import { LAST_RELAY, RELAY_CHARACTER, RELAY_SECTORS, isLastRelay, getRelayStart, getRelaySummary, getRelayEnding } from './services/lastRelay';
 import { GameState, StorySegment, GameStats, StoryLogItem, UserProfile, Perk, GameModifiers, LevelReport, UserUpgrades, StoryMood, SegmentType, Language, MissionState, ComicFrame, StoryGenreId } from './types';
 import { generateStoryStart, generateCharacterProfile, generateLevelSummary, generateNextLevelStart } from './services/geminiService';
 import { GENRE_ORDER, getGenrePack } from './services/genreConfig';
@@ -42,6 +42,7 @@ import {
   getUpgradeOptions
 } from './services/perks';
 import { audioEngine } from './services/audioEngine';
+import { readSkillStackAnchor, toggleSkillStackAnchor, writeSkillStackAnchor, type SkillStackAnchor } from './services/skillStackAnchor';
 import TypingEngine from './components/TypingEngine';
 import HudStrip from './components/HudStrip';
 import DeathSequence from './components/DeathSequence';
@@ -115,6 +116,9 @@ const App: React.FC = () => {
   const [currentLevel, setCurrentLevel] = useState(1);
   const [currentHealth, setCurrentHealth] = useState(20);
   const [musicActive, setMusicActive] = useState(() => audioEngine.isEnabled());
+  const [skillStackAnchor, setSkillStackAnchor] = useState<SkillStackAnchor>(() => (
+    readSkillStackAnchor(typeof window === 'undefined' ? null : window.localStorage)
+  ));
   const [storedBoot] = useState(loadStoredProfile);
   const [language, setLanguage] = useState<Language>(storedBoot.language ?? 'en'); // Global Language State
   
@@ -638,6 +642,12 @@ const App: React.FC = () => {
       setMusicActive(active);
   };
 
+  const handleToggleSkillStack = () => {
+      const next = toggleSkillStackAnchor(skillStackAnchor);
+      writeSkillStackAnchor(next, window.localStorage);
+      setSkillStackAnchor(next);
+  };
+
   const handleToggleLanguage = () => {
       setLanguage(prev => prev === 'en' ? 'ru' : 'en');
   };
@@ -716,7 +726,7 @@ const App: React.FC = () => {
       sessionRef.current.dailyId = null;
       setCurrentDailyDateLabel(null);
       setInitialSegment(getRelayStart(1, language, mission));
-      setCharacterDesc('Agent Nox and Mira, a courier in a yellow raincoat carrying a witness key');
+      setCharacterDesc(RELAY_CHARACTER);
       setGameState(GameState.PLAYING);
       audioEngine.unlock();
       captureProductEvent('typomancer_run_started', {
@@ -773,6 +783,8 @@ const App: React.FC = () => {
           returning_player: playerProgress.runs.length > 0,
           resumed: true
       });
+
+      if (isLastRelay(checkpoint.mission)) setCharacterDesc(RELAY_CHARACTER);
 
       try {
           const nextStart = isLastRelay(checkpoint.mission)
@@ -1338,8 +1350,10 @@ const App: React.FC = () => {
           credits={userProfile.credits}
           perks={activePerks}
           musicActive={musicActive}
+          skillStackAnchor={skillStackAnchor}
           language={language}
           onToggleMusic={handleToggleMusic}
+          onToggleSkillStack={handleToggleSkillStack}
           onToggleLanguage={handleToggleLanguage}
         />
       )}
@@ -1479,6 +1493,7 @@ const App: React.FC = () => {
                     baselineWpm={effectiveBaseline.wpm}
                     trainingFocus={trainingFocusTokens}
                     branchThresholds={branchThresholds}
+                    skillStackAnchor={skillStackAnchor}
                     onTypingObservation={(observation) => runTrainingObservationsRef.current.push(observation)}
                 />
             )}
