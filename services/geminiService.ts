@@ -339,7 +339,7 @@ const generateLocalSceneImage = (sceneDescription: string, characterDescription:
     return `<circle cx="${x}" cy="${y}" r="${r}" fill="hsla(${i % 2 ? hueA : hueB}, 90%, 70%, .65)"/>`;
   }).join('');
   return svgToDataUri(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540">
+    <svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
       <defs>
         <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
           <stop offset="0%" stop-color="hsl(${hueB}, 75%, 12%)"/>

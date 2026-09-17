@@ -44,6 +44,7 @@ import { captureProductEvent, getDeviceClass } from '../services/productAnalytic
 import { formatImpactValue, getDecisionImpactChips } from '../services/decisionImpact';
 import { getRoundShape } from '../services/sectorRhythm';
 import type { TypingObservation } from '../services/typingTraining';
+import type { SkillStackAnchor } from '../services/skillStackAnchor';
 
 const CRACK_PATHS = [
     "M 10,10 L 30,30 L 25,45", 
@@ -137,6 +138,8 @@ interface TypingEngineProps {
   trainingFocus?: string[];
   /** Accuracy demanded for each branch; the Exacting Pact clause tightens these. */
   branchThresholds?: BranchThresholds;
+  /** Where ready skills sit: under the caret, or in the corner of the deck. */
+  skillStackAnchor?: SkillStackAnchor;
 }
 
 const TYPE_CUE_MS = 1500;
@@ -213,7 +216,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     onTypingObservation,
     baselineWpm,
     trainingFocus,
-    branchThresholds = DEFAULT_BRANCH_THRESHOLDS
+    branchThresholds = DEFAULT_BRANCH_THRESHOLDS,
+    skillStackAnchor = 'caret'
 }) => {
   const [history, setHistory] = useState<StorySegment[]>([]);
   const [activeSegment, setActiveSegment] = useState<StorySegment>(initialSegment);
@@ -276,6 +280,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const activeRef = useRef<HTMLSpanElement>(null); 
   const cursorRef = useRef<HTMLSpanElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [skillAnchor, setSkillAnchor] = useState<{ left: number; top: number } | null>(null);
   const transitionLockRef = useRef(false); 
   const gameOverTriggeredRef = useRef(false);
   const forgivenMistakesRef = useRef(0);
@@ -621,6 +626,12 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       }
   }, [currentLevel, isOverclockActive, modifiers.maxOverclock, overclockCharge]);
 
+  const cursorSkillStack = useMemo(
+      () => getCursorSkillStack(overclockCharge, modifiers.maxOverclock, isOverclockActive),
+      [overclockCharge, modifiers.maxOverclock, isOverclockActive]
+  );
+  const hasContextualSkill = firewallGrace > 0 || cursorSkillStack.length > 0;
+
   useLayoutEffect(() => {
     if (activeRef.current) {
         activeRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -628,24 +639,28 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         textContainerRef.current.scrollTop = textContainerRef.current.scrollHeight;
     }
 
-  }, [inputValue, activeSegment, isWaitingForAi, history, mistakesInSegment, overclockCharge, isOverclockActive, modifiers.maxOverclock, firewallGrace]);
+    const updateSkillAnchor = () => {
+      if (skillStackAnchor === 'caret' && hasContextualSkill && cursorRef.current) {
+        const rect = cursorRef.current.getBoundingClientRect();
+        setSkillAnchor({ left: rect.left + rect.width / 2, top: rect.bottom + 6 });
+      } else {
+        setSkillAnchor(null);
+      }
+    };
 
-  const cursorSkillStack = useMemo(
-      () => getCursorSkillStack(overclockCharge, modifiers.maxOverclock, isOverclockActive),
-      [overclockCharge, modifiers.maxOverclock, isOverclockActive]
-  );
-  const hasContextualSkill = firewallGrace > 0 || cursorSkillStack.length > 0;
+    updateSkillAnchor();
+    const scroller = textContainerRef.current;
+    scroller?.addEventListener('scroll', updateSkillAnchor, { passive: true });
+    window.addEventListener('resize', updateSkillAnchor);
+    return () => {
+      scroller?.removeEventListener('scroll', updateSkillAnchor);
+      window.removeEventListener('resize', updateSkillAnchor);
+    };
+  }, [inputValue, activeSegment, isWaitingForAi, history, mistakesInSegment, overclockCharge, isOverclockActive, modifiers.maxOverclock, firewallGrace, hasContextualSkill, skillStackAnchor]);
 
   useEffect(() => {
     let isMounted = true;
     const fetchImage = async () => {
-        if (isLastRelay(missionRef.current)) {
-            const image = '/assets/worlds/cyberpunk.png';
-            setCurrentImage(image);
-            currentImageRef.current = image;
-            setIsImageLoading(false);
-            return;
-        }
         setIsImageLoading(true);
         const isStoryBeat = round === 1 || round === DECISION_ROUND + 1 || round === SECTOR_ROUNDS;
         const base64 = await generateSceneImage(activeSegment.text, characterDescription, genre, isStoryBeat);
@@ -1604,8 +1619,13 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       )}
       <DebrisLayer debris={debris} />
       <SparkLayer sparks={sparks} />
-      {hasContextualSkill && (
-          <div className="engine-cursor-skills absolute right-4 bottom-4 z-[60]">
+      {hasContextualSkill && (skillStackAnchor === 'corner' || skillAnchor) && (
+          <div
+              className={skillStackAnchor === 'corner'
+                ? 'engine-cursor-skills absolute right-4 bottom-4 z-[60]'
+                : 'engine-cursor-skills engine-cursor-skills--under fixed z-[110]'}
+              style={skillStackAnchor === 'caret' && skillAnchor ? { left: skillAnchor.left, top: skillAnchor.top } : undefined}
+          >
               {firewallGrace > 0 && (
                   <span className="engine-cursor-skill engine-cursor-skill--active" aria-live="polite">
                       <span className="engine-cursor-skill-label">{UI.shield_active} ×{firewallGrace}</span>

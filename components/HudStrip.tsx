@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Language, Perk } from '../types';
 import type { UITranslations } from '../services/i18n';
+import type { SkillStackAnchor } from '../services/skillStackAnchor';
 import { stripLeadingGlyph } from '../services/text';
 
 interface HudStripProps {
@@ -8,8 +9,10 @@ interface HudStripProps {
     credits: number;
     perks: Perk[];
     musicActive: boolean;
+    skillStackAnchor: SkillStackAnchor;
     language: Language;
     onToggleMusic: () => void;
+    onToggleSkillStack: () => void;
     onToggleLanguage: () => void;
 }
 
@@ -17,7 +20,7 @@ interface HudStripProps {
    screens already show. No document column: the wordmark repeats the title on
    screen, the mission meters live on the run HUD and in the debrief tiles, and
    the log moved into the debrief where reading a feed makes sense. */
-const HudStrip: React.FC<HudStripProps> = ({ ui, credits, perks, musicActive, language, onToggleMusic, onToggleLanguage }) => (
+const HudStrip: React.FC<HudStripProps> = ({ ui, credits, perks, musicActive, skillStackAnchor, language, onToggleMusic, onToggleSkillStack, onToggleLanguage }) => (
     <div className="hud-strip">
         <div className="flex items-center gap-3">
             <span className="fs-micro uppercase tracking-[0.22em] text-slate-500">{ui.wallet}</span>
@@ -39,6 +42,9 @@ const HudStrip: React.FC<HudStripProps> = ({ ui, credits, perks, musicActive, la
         <div className="flex items-center gap-2">
             <button onClick={onToggleMusic} className="hud-strip-button">
                 {musicActive ? stripLeadingGlyph(ui.audio_active) : ui.audio_muted}
+            </button>
+            <button type="button" onClick={onToggleSkillStack} className="hud-strip-button">
+                {skillStackAnchor === 'caret' ? ui.skill_stack_caret : ui.skill_stack_corner}
             </button>
             <button onClick={onToggleLanguage} className="hud-strip-button">
                 {language === 'en' ? 'RU' : 'EN'}

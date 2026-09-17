@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { checkBotId } from 'botid/server';
+import { extractInteractionImage } from '../services/geminiImage.js';
 import { GEMINI_IMAGE_SIZE, isAllowedRequestSourceHeaders } from '../services/geminiPolicy.js';
 import { verifyBrowserRequest } from '../services/botProtection.js';
 
@@ -163,43 +164,6 @@ const withTransientRetry = async <T,>(request: () => Promise<T>): Promise<T> => 
   throw lastError;
 };
 
-const normalizeInlineImage = (part: any) => {
-  if (!part || typeof part !== 'object') return null;
-  const inline = part.inlineData || part.inline_data;
-  if (inline?.data) {
-    return {
-      data: inline.data,
-      mimeType: inline.mimeType || inline.mime_type || 'image/png'
-    };
-  }
-  if (part.type === 'image' && part.data) {
-    return {
-      data: part.data,
-      mimeType: part.mime_type || part.mimeType || 'image/png'
-    };
-  }
-  return null;
-};
-
-const extractInteractionImage = (interaction: any) => {
-  const direct = normalizeInlineImage(interaction?.output_image || interaction?.outputImage || interaction?.image);
-  if (direct) return direct;
-
-  const outputs = Array.isArray(interaction?.outputs) ? interaction.outputs : [];
-  for (const output of outputs) {
-    const outputImage = normalizeInlineImage(output);
-    if (outputImage) return outputImage;
-
-    const parts = Array.isArray(output?.parts) ? output.parts : [];
-    for (const part of parts) {
-      const partImage = normalizeInlineImage(part);
-      if (partImage) return partImage;
-    }
-  }
-
-  return null;
-};
-
 export default async function handler(req: any, res: any) {
   let requestedModel: string | undefined;
 
@@ -245,22 +209,23 @@ export default async function handler(req: any, res: any) {
 
     if (imageModels.has(model)) {
       const imageModel = model === LEGACY_IMAGE_MODEL ? IMAGE_MODEL : model;
-      const interaction = await ai.interactions.create({
+      const interaction = await withTransientRetry(() => ai.interactions.create({
         model: imageModel,
         input: contents,
         response_format: {
           type: 'image',
+          mime_type: 'image/png',
           aspect_ratio: '16:9',
           image_size: GEMINI_IMAGE_SIZE
-        },
-        response_modalities: ['image']
-      } as any);
+        }
+      } as any));
       const inlineImage = extractInteractionImage(interaction);
 
       if (!inlineImage) {
         console.error('Gemini image response missing image', {
           model: requestedModel,
           status: (interaction as any)?.status,
+          steps: Array.isArray((interaction as any)?.steps) ? (interaction as any).steps.length : 0,
           outputs: Array.isArray((interaction as any)?.outputs) ? (interaction as any).outputs.length : 0
         });
         return json(res, 502, { error: 'Gemini image response missing image' });

@@ -90,10 +90,10 @@ test('the caret only offers skills the player can cast, and unlocks stack upward
     bottomLabel: element.lastElementChild?.querySelector('.engine-cursor-skill-label')?.textContent,
     bottomEdge: element.lastElementChild?.getBoundingClientRect().bottom ?? 0
   }));
-  expect(geometry.direction).toBe('column');
-  // The cheapest unlock stays put by the caret; PURGE arrived above it. The stack
+  expect(geometry.direction).toBe('column-reverse');
+  // The cheapest unlock stays put by the caret; PURGE arrived below it. The stack
   // is anchored to the caret, which drifts sub-pixel as the line advances, so the
-  // claim worth testing is that FIREWALL did not get pushed up by a whole row.
+  // claim worth testing is that FIREWALL did not get pushed by a whole row.
   expect(geometry.bottomLabel).toBe('FIREWALL');
   expect(Math.abs(geometry.bottomEdge - before.bottom)).toBeLessThan(before.rowHeight / 2);
 
@@ -157,25 +157,55 @@ test('a clean line is never told what it missed', async ({ page }) => {
   await expect(reveal.locator('.engine-fork-missed-text')).toHaveCount(0);
 });
 
-test('nothing covers the line the player is reading', async ({ page }) => {
+test('ready skills sit under the caret, not in the corner', async ({ page }) => {
   await startCampaign(page);
   const input = page.getByRole('textbox', { name: 'Typing practice input' });
   const activeText = await page.locator('.engine-type-scroll span.relative.inline-block').innerText();
 
-  // Type far enough to unlock two protocols, which is when the floating stack
-  // used to settle on top of the words above the caret.
   await input.pressSequentially(activeText.slice(0, 32), { delay: 5 });
   await expect(page.locator('.engine-cursor-skills')).toBeVisible();
 
-  const covered = await page.evaluate(() => {
+  const geometry = await page.evaluate(() => {
     const stack = document.querySelector('.engine-cursor-skills')?.getBoundingClientRect();
-    if (!stack) return -1;
-    return [...document.querySelectorAll('span[data-index]')].filter((c) => {
-      const r = c.getBoundingClientRect();
-      return r.right > stack.left && r.left < stack.right && r.bottom > stack.top && r.top < stack.bottom;
-    }).length;
+    const caret = document.querySelector('.engine-caret')?.getBoundingClientRect();
+    if (!stack || !caret) return null;
+    return {
+      dx: Math.abs((stack.left + stack.width / 2) - (caret.left + caret.width / 2)),
+      belowCaret: stack.top >= caret.bottom - 2,
+      inCorner: stack.right > window.innerWidth - 48 && stack.bottom > window.innerHeight - 48
+    };
   });
-  expect(covered).toBe(0);
+  expect(geometry).not.toBeNull();
+  expect(geometry!.inCorner).toBe(false);
+  expect(geometry!.belowCaret).toBe(true);
+  expect(geometry!.dx).toBeLessThan(80);
+});
+
+test('ready skills can sit in the corner when that layout is chosen', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'FOCUS: CURSOR' }).click();
+  await expect(page.getByRole('button', { name: 'FOCUS: CORNER' })).toBeVisible();
+  await startCampaign(page);
+  const input = page.getByRole('textbox', { name: 'Typing practice input' });
+  const activeText = await page.locator('.engine-type-scroll span.relative.inline-block').innerText();
+  await input.pressSequentially(activeText.slice(0, 32), { delay: 5 });
+  await expect(page.locator('.engine-cursor-skills')).toBeVisible();
+
+  const geometry = await page.evaluate(() => {
+    const stack = document.querySelector('.engine-cursor-skills')?.getBoundingClientRect();
+    const panel = document.querySelector('.engine-type-panel')?.getBoundingClientRect();
+    const caret = document.querySelector('.engine-caret')?.getBoundingClientRect();
+    if (!stack || !panel || !caret) return null;
+    return {
+      inPanelCorner: stack.right > panel.right - 40 && stack.bottom > panel.bottom - 40,
+      dx: Math.abs((stack.left + stack.width / 2) - (caret.left + caret.width / 2)),
+      direction: getComputedStyle(document.querySelector('.engine-cursor-skills')!).flexDirection
+    };
+  });
+  expect(geometry).not.toBeNull();
+  expect(geometry!.inPanelCorner).toBe(true);
+  expect(geometry!.dx).toBeGreaterThan(80);
+  expect(geometry!.direction).toBe('column');
 });
 
 test('a newcomer reaches the story without sitting a typing test first', async ({ page }) => {
