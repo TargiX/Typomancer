@@ -111,10 +111,15 @@ test('the tracer eats the line behind a stalled player and PURGE throws it back'
   await expect(burned).toHaveCount(0);
 
   // Build a lead, then stop dead. TRACER_GRACE_MS is 3s from the first keystroke.
+  // Keep Date.now fixed while typing: a busy CI runner can take more than the
+  // grace period to deliver 40 key events. Animation frames still run normally.
+  const typingStartedAt = Date.now();
+  await page.clock.setFixedTime(typingStartedAt);
   await input.pressSequentially(activeText.slice(0, 40), { delay: 5 });
   await expect(burned).toHaveCount(0);
 
   // The burn front now marches into the lead we just built.
+  await page.clock.setFixedTime(typingStartedAt + 4000);
   await expect
     .poll(async () => burned.count(), { timeout: 20_000, message: 'tracer should consume the line behind a stalled caret' })
     .toBeGreaterThan(4);

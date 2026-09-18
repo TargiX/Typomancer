@@ -64,8 +64,22 @@ Password recovery uses Resend with runtime-only `RESEND_API_KEY` and
 reset request. Links expire after 30 minutes and are single-use; resetting
 revokes all existing sessions. The recovery screen removes the token from the
 URL, disables telemetry/challenge initialization, and uses a no-referrer policy.
-Email verification at signup remains disabled; do not claim that an unverified
-email proves ownership. Never log reset links or tokens.
+Email verification is sent on signup when mail is configured and can be resent
+from the account panel. Links expire after 30 minutes; automatic sign-in after
+verification is disabled. Verification is currently non-blocking for both new
+and existing users: the UI distinguishes verified email from unverified email,
+but login and progress synchronization remain available. Never log email tokens.
+
+Account deletion requires an authenticated session, the current password even
+for fresh sessions, and a header binding the request to the displayed account
+ID. The UI additionally requires typing DELETE and offers export first. Auth
+credentials/sessions, cloud saves and run history are deleted; recovery tokens
+are removed. Guest data and other account namespaces are preserved. The current
+browser account namespace and conflict copy are cleared; other tabs/devices may
+retain offline copies and exported files cannot be recalled. Backup retention
+still applies (7 days local, 30 days external); deletion does not rewrite dumps.
+When restoring backups, reconcile subsequent account deletions before reopening
+the restored service. No independent deletion-replay ledger is implemented yet.
 
 ## Backup policy
 
@@ -124,6 +138,13 @@ requires stopping writers, backing up the current state, and explicit approval.
 ## Verification
 
 - `pnpm test`, `pnpm typecheck`, `pnpm build`.
+- Account lifecycle: `ACCOUNT_TEST_DATABASE_URL=<disposable local PostgreSQL URL> pnpm exec tsx --test tests/account.integration.ts`.
+  The database must be named `typomancer_account_test` on `127.0.0.1`. This test
+  runs the real auth handler and migrations, intercepts email transport, checks
+  verified status, password/account/Origin deletion guards, session revocation,
+  reset-token cleanup and cascading save/history deletion. CI provisions its own
+  PostgreSQL service; the test does not send real emails.
+- Account controls: `E2E_BASE_URL=<printed frontend URL> pnpm exec playwright test e2e/accountSettings.spec.ts` (mocked API, isolated browser storage).
 - Disposable DB/API: `PROGRESS_TEST_URL=<printed API URL> pnpm exec tsx --test tests/progress.integration.ts`.
 - Browser: `E2E_CLOUD_PROGRESS=true E2E_BASE_URL=<printed frontend URL> pnpm exec playwright test e2e/cloudProgress.spec.ts`.
 - OG compatibility: `pnpm exec tsx --test tests/og.integration.ts`.

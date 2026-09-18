@@ -11,6 +11,17 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      accounts-db:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_PASSWORD: isolated-ci-test-only
+          POSTGRES_DB: typomancer_account_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d typomancer_account_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -22,6 +33,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
+      - run: pnpm exec tsx --test tests/account.integration.ts
+        env:
+          ACCOUNT_TEST_DATABASE_URL: postgresql://postgres:isolated-ci-test-only@127.0.0.1:5432/typomancer_account_test
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium

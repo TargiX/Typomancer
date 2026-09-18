@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sendPasswordReset } from '../server/email.ts';
+import { sendPasswordReset, sendEmailVerification } from '../server/email.ts';
 
 test('password recovery uses Resend, stable hashed idempotency and a bounded timeout', async () => {
   process.env.RESEND_API_KEY = 'test-secret'; process.env.AUTH_EMAIL_FROM = 'Typomancer <no-reply@example.com>';
@@ -28,4 +28,21 @@ test('provider failure does not expose secret response bodies', async () => {
   { message: 'Password recovery email failed (403)' });
   delete process.env.RESEND_API_KEY;
   await assert.rejects(sendPasswordReset('player@example.com', 'url', 'token'), /not configured/);
+});
+
+test('verification email has its own idempotency namespace and bilingual expiration copy', async () => {
+  process.env.RESEND_API_KEY = 'test-secret'; process.env.AUTH_EMAIL_FROM = 'no-reply@example.com';
+  await sendEmailVerification('player@example.com', 'https://example.com/verify?token=test', 'test', async (_url, init) => {
+    const payload = JSON.parse(init!.body as string);
+    assert.match(payload.subject, /confirm your email/);
+    assert.match(payload.text, /30 minutes/); assert.match(payload.text, /Подтверди/);
+    assert.match((init!.headers as Record<string, string>)['Idempotency-Key'], /^email-verification\//);
+    return new Response('{}');
+  });
+  await assert.rejects(sendEmailVerification('player@example.com', 'secret-url', 'secret-token',
+    async () => new Response('secret-token test-secret player@example.com', { status: 403 })),
+  { message: 'Email verification email failed (403)' });
+  delete process.env.RESEND_API_KEY; delete process.env.AUTH_EMAIL_FROM;
+  await assert.rejects(sendEmailVerification('player@example.com', 'url', 'token'),
+    { message: 'Email verification email is not configured' });
 });

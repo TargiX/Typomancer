@@ -3,6 +3,13 @@
 let accountId: string | null = null;
 export const setPlayerAccount = (id: string | null) => { accountId = id; };
 export const getPlayerAccount = () => accountId;
+export function clearAccountDeviceData(id: string, storage: Storage = localStorage) {
+  if (!id) throw new Error('Account id is required');
+  playerStorage(id, storage)!.clear();
+  storage.removeItem(`typomancer:recovery:${id}`);
+  const cached = storage.getItem('typomancer:last-account');
+  if (cached && JSON.parse(cached)?.id === id) storage.removeItem('typomancer:last-account');
+}
 export const playerStorage = (id: string | null = accountId, source?: Storage): Storage | undefined => {
   const storage = source ?? (typeof localStorage === 'undefined' ? undefined : localStorage);
   if (!storage) return undefined;
