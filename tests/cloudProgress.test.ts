@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { playerStorage } from '../services/playerStorage.ts';
+import { playerStorage, clearAccountDeviceData } from '../services/playerStorage.ts';
 import { readSnapshot, writeSnapshot, fingerprint, isDirty, readMeta, writeMeta } from '../services/cloudProgress.ts';
 import { snapshotSchema, saveRequestSchema } from '../services/progressSchema.ts';
 
@@ -10,6 +10,21 @@ function memoryStorage(): Storage {
     getItem: k => data.get(k) ?? null, setItem: (k, v) => { data.set(k, String(v)); },
     removeItem: k => { data.delete(k); }, clear: () => data.clear() };
 }
+test('deletion cleanup preserves guest data and a different last-account identity', () => {
+  const raw = memoryStorage();
+  raw.setItem('guest', 'keep');
+  playerStorage('A', raw)!.setItem('save', 'delete');
+  playerStorage('B', raw)!.setItem('save', 'keep');
+  raw.setItem('typomancer:last-account', JSON.stringify({ id: 'B' }));
+  raw.setItem('typomancer:recovery:A', 'delete');
+  clearAccountDeviceData('A', raw);
+  assert.equal(playerStorage('A', raw)!.length, 0);
+  assert.equal(raw.getItem('typomancer:recovery:A'), null);
+  assert.equal(raw.getItem('guest'), 'keep');
+  assert.equal(playerStorage('B', raw)!.getItem('save'), 'keep');
+  assert.equal(JSON.parse(raw.getItem('typomancer:last-account')!).id, 'B');
+  assert.throws(() => clearAccountDeviceData('', raw));
+});
 test('guest, A and B storage stay isolated including checkpoint and daily cleanup', () => {
   const raw = memoryStorage();
   const a = playerStorage('a', raw)!; const b = playerStorage('b', raw)!;

@@ -43,10 +43,10 @@ export function isDirty(snapshot: ProgressSnapshot, meta: SaveMeta | null) {
 export class ApiError extends Error {
   constructor(public status: number, public code?: string) { super(`Request failed (${status})`); }
 }
-export async function api<T>(path: string, body?: unknown, method = 'POST'): Promise<T> {
+export async function api<T>(path: string, body?: unknown, method = 'POST', headers: Record<string, string> = {}): Promise<T> {
   const response = await fetch(path, { credentials: 'same-origin', cache: 'no-store',
     method: body === undefined ? 'GET' : method,
-    headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+    headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...headers },
     body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(12000) });
   const data = await response.json();
   if (!response.ok) throw new ApiError(response.status, data.code);

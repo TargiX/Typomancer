@@ -1,16 +1,17 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { Language } from '../types';
 import { PasswordRecovery } from './PasswordRecovery';
-import { playerStorage, setPlayerAccount } from '../services/playerStorage';
+import { clearAccountDeviceData, playerStorage, setPlayerAccount } from '../services/playerStorage';
 import { api, ApiError, downloadSnapshot, fingerprint, isDirty, META_KEY, readMeta, readSnapshot,
   writeMeta, writeSnapshot, type CloudSave, type SaveMeta } from '../services/cloudProgress';
 
-type User = { id: string; email: string };
+type User = { id: string; email: string; emailVerified?: boolean };
 type Status = 'guest' | 'saved' | 'saving' | 'offline' | 'conflict' | 'expired' | 'invalid';
 type AccountContext = {
-  user: User | null; status: Status; busy: boolean;
+  user: User | null; status: Status; busy: boolean; deleted: boolean; cleanupFailed: boolean;
   login: (email: string, password: string, signup: boolean, importGuest: boolean) => Promise<void>;
   logout: () => Promise<void>; resolve: (useCloud: boolean) => Promise<void>; retry: () => Promise<void>;
+  verifyEmail: () => Promise<void>; refreshUser: () => Promise<void>; deleteAccount: (password: string) => Promise<void>;
 };
 const Context = createContext<AccountContext | null>(null);
 const LAST_ACCOUNT = 'typomancer:last-account';
@@ -29,12 +30,16 @@ function EnabledProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [status, setStatus] = useState<Status>('guest');
   const [busy, setBusy] = useState(false);
+  const [deleted, setDeleted] = useState(false);
+  const [cleanupFailed, setCleanupFailed] = useState(false);
+  const acting = useRef(false);
   const [epoch, setEpoch] = useState(0);
   const current = useRef<{ user: User; meta: SaveMeta; verified: boolean } | null>(null);
   const saving = useRef(false);
   const blocked = useRef(false);
 
   const enter = async (nextUser: User, importGuest = false) => {
+    setDeleted(false);
     const cloud = await api<CloudSave>('/api/progress');
     if (cloud.userId !== nextUser.id) throw new ApiError(409, 'ACCOUNT_CHANGED');
     const storage = playerStorage(nextUser.id)!;
@@ -131,13 +136,14 @@ function EnabledProvider({ children }: { children: React.ReactNode }) {
   }, [ready]);
 
   const action = async (callback: () => Promise<void>) => {
-    if (saving.current) throw new Error('saving');
+    if (saving.current || acting.current) throw new Error('saving');
+    acting.current = true;
     setBusy(true);
-    try { await callback(); } finally { setBusy(false); }
+    try { await callback(); } finally { acting.current = false; setBusy(false); }
   };
   const login = async (email: string, password: string, signup: boolean, importGuest: boolean) => action(async () => {
     const response = await api<{ user: User }>(`/api/auth/${signup ? 'sign-up' : 'sign-in'}/email`, {
-      email, password, ...(signup ? { name: email.split('@')[0] } : {})
+      email, password, ...(signup ? { name: email.split('@')[0], callbackURL: `${location.origin}/?email-verification=1` } : {})
     });
     await enter(response.user, signup && importGuest);
     await sync();
@@ -152,6 +158,32 @@ function EnabledProvider({ children }: { children: React.ReactNode }) {
     current.current = null; blocked.current = false;
     localStorage.removeItem(LAST_ACCOUNT); setPlayerAccount(null);
     setUser(null); setStatus('guest'); setEpoch(value => value + 1);
+  });
+  const refreshUser = async () => action(async () => {
+    const active = current.current;
+    const session = await api<{ user: User } | null>('/api/auth/get-session');
+    if (!active || !session?.user || session.user.id !== active.user.id) throw new ApiError(409, 'ACCOUNT_CHANGED');
+    active.user = session.user; setUser(session.user);
+    localStorage.setItem(LAST_ACCOUNT, JSON.stringify(session.user));
+  });
+  const verifyEmail = async () => action(async () => {
+    if (!current.current) throw new ApiError(401);
+    await api('/api/auth/send-verification-email', { email: current.current.user.email, callbackURL: `${location.origin}/?email-verification=1` });
+  });
+  const deleteAccount = async (password: string) => action(async () => {
+    const active = current.current;
+    if (!active) throw new ApiError(401);
+    const previousBlock = blocked.current;
+    blocked.current = true;
+    try {
+      await api('/api/auth/delete-user', { password }, 'POST', { 'x-typomancer-delete-account': active.user.id });
+    } catch (cause) { blocked.current = previousBlock; throw cause; }
+    // Never erase the guest namespace or another account's device copy.
+    try { clearAccountDeviceData(active.user.id); setCleanupFailed(false); }
+    catch { setCleanupFailed(true); }
+    current.current = null; blocked.current = false;
+    setPlayerAccount(null); setUser(null); setStatus('guest'); setEpoch(value => value + 1);
+    setDeleted(true);
   });
   const resolve = async (useCloud: boolean) => action(async () => {
     const active = current.current;
@@ -178,7 +210,7 @@ function EnabledProvider({ children }: { children: React.ReactNode }) {
     await sync();
   });
   if (!ready) return <div role="status" className="min-h-screen bg-slate-950 text-slate-300 grid place-items-center font-mono">Loading saved progress…</div>;
-  return <Context.Provider value={{ user, status, busy, login, logout, resolve, retry }}>
+  return <Context.Provider value={{ user, status, busy, deleted, cleanupFailed, login, logout, resolve, retry, verifyEmail, refreshUser, deleteAccount }}>
     <React.Fragment key={epoch}>{children}</React.Fragment>
   </Context.Provider>;
 }
@@ -192,6 +224,9 @@ export function AccountPanel({ language }: { language: Language }) {
   const [recovery, setRecovery] = useState(false);
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [recoverySent, setRecoverySent] = useState(false);
+  const [verificationSent, setVerificationSent] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const ru = language === 'ru';
   if (!account) return null;
   const text = (en: string, russian: string) => ru ? russian : en;
@@ -210,6 +245,10 @@ export function AccountPanel({ language }: { language: Language }) {
     catch (cause) {
       setError(cause instanceof Error && cause.message === 'unsaved'
         ? text('Sync or resolve your save before signing out. Your local copy is safe.', 'Сначала синхронизируй прогресс или разреши конфликт. Локальная копия сохранена.')
+        : cause instanceof ApiError && cause.code === 'INVALID_PASSWORD'
+          ? text('Incorrect current password. Your account was not deleted.', 'Неверный текущий пароль. Аккаунт не удалён.')
+        : cause instanceof ApiError && cause.code === 'ACCOUNT_CHANGED'
+          ? text('The signed-in account changed. Reload and check which account is active.', 'Аккаунт изменился. Перезагрузи страницу и проверь, кто сейчас вошёл.')
         : cause instanceof ApiError && cause.status === 429
           ? text('Too many attempts. Wait a few minutes and retry.', 'Слишком много попыток. Подожди несколько минут.')
           : text('Could not complete this. Check your details and connection, then retry.', 'Не удалось выполнить действие. Проверь данные и соединение и повтори.'));
@@ -217,6 +256,11 @@ export function AccountPanel({ language }: { language: Language }) {
   };
   const button = 'btn-cyber btn-cyber-ghost px-3 py-2 text-sm text-emerald-200 disabled:opacity-50';
   return <section data-account-panel className="border border-emerald-300/20 bg-slate-950/60 p-4 text-left space-y-3" aria-label={text('Progress saving', 'Сохранение прогресса')}>
+    {account.deleted && <p role="status" className="text-sm text-emerald-200">{text('Account deleted. You are now playing as a guest.', 'Аккаунт удалён. Теперь ты играешь как гость.')}</p>}
+    {account.deleted && account.cleanupFailed && <p role="alert" className="text-sm text-amber-200">{text('The server account is deleted, but this browser blocked device cleanup. Clear this site’s stored data manually; this also removes guest progress.', 'Аккаунт на сервере удалён, но браузер не разрешил очистить локальные данные. Очисти данные сайта вручную; это также удалит гостевой прогресс.')}</p>}
+    {!account.user && new URLSearchParams(location.search).has('email-verification') && <p role="status" className="text-sm text-slate-300">{new URLSearchParams(location.search).has('error')
+      ? text('This confirmation link could not be used. Sign in and request a new one.', 'Не удалось использовать ссылку подтверждения. Войди и запроси новую.')
+      : text('You returned from email confirmation. Sign in to check your email status.', 'Ты вернулся с подтверждения почты. Войди, чтобы проверить её статус.')}</p>}
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="min-w-0"><h3 className="font-display text-sm text-white">{text('Progress saving', 'Сохранение прогресса')}</h3>
         <p role="status" className="text-xs leading-relaxed text-slate-400 mt-1">{labels[account.status]}</p></div>
@@ -224,12 +268,32 @@ export function AccountPanel({ language }: { language: Language }) {
     </div>
     {account.user && <>
       <p className="text-xs text-slate-400 break-all">{account.user.email}</p>
+      <p className="text-xs text-slate-300">{account.user.emailVerified ? text('Email confirmed', 'Почта подтверждена') : text('Email not confirmed · your progress is still available', 'Почта не подтверждена · прогресс остаётся доступен')}</p>
+      {!account.user.emailVerified && <div className="flex flex-wrap gap-2">
+        <button disabled={account.busy} className={button} onClick={() => void execute(async () => { await account.verifyEmail(); setVerificationSent(true); })}>{text('Send confirmation email', 'Отправить подтверждение')}</button>
+        <button disabled={account.busy} className={button} onClick={() => void execute(account.refreshUser)}>{text('I confirmed — check status', 'Я подтвердил — проверить')}</button>
+      </div>}
+      {verificationSent && !account.user.emailVerified && <p role="status" className="text-xs text-emerald-200">{text('Confirmation requested. Check your inbox and spam folder; the link lasts 30 minutes.', 'Подтверждение запрошено. Проверь почту и спам; ссылка действует 30 минут.')}</p>}
+      {new URLSearchParams(location.search).has('email-verification') && !account.user.emailVerified && <p role="status" className="text-xs text-amber-200">{text('Email is not confirmed yet. If the link expired, request another above.', 'Почта пока не подтверждена. Если ссылка устарела, запроси новую выше.')}</p>}
       <div className="flex flex-wrap gap-2">
         <button disabled={account.busy || account.status === 'saving'} className={button} onClick={() => void execute(account.retry)}>{text('Sync now', 'Синхронизировать')}</button>
         <button disabled={account.busy || account.status === 'saving'} className={button} onClick={() => void execute(account.logout)}>{text('Sign out', 'Выйти')}</button>
         <button className={button} onClick={() => downloadSnapshot(readSnapshot(playerStorage()!))}>{text('Export device copy', 'Скачать локальную копию')}</button>
         <a href="/api/progress/export" className={button}>{text('Export full history', 'Скачать всю историю')}</a>
+        <button disabled={account.busy} className={button} onClick={() => { setDeleting(!deleting); setDeleteConfirmation(''); setError(''); }} aria-expanded={deleting}>{text('Delete account', 'Удалить аккаунт')}</button>
       </div>
+      {deleting && <form className="border border-rose-400/40 p-3 space-y-3" onSubmit={event => {
+        event.preventDefault(); if (deleteConfirmation !== 'DELETE' || account.busy) return;
+        const password = String(new FormData(event.currentTarget).get('delete-password'));
+        void execute(() => account.deleteAccount(password));
+      }}>
+        <p className="text-sm text-rose-200">{text('This permanently deletes your account, cloud progress and run history. Export anything you want to keep first.', 'Аккаунт, облачный прогресс и история забегов будут удалены без возможности отмены. Сначала скачай данные, которые хочешь сохранить.')}</p>
+        <p className="text-xs text-slate-400">{text('The account copy on this browser is cleared; guest progress is kept. Other devices may retain offline copies. Backups expire under the retention policy (up to 30 days); deletion does not erase backup files immediately.', 'Копия аккаунта в этом браузере очистится, гостевой прогресс останется. На других устройствах могут остаться офлайн-копии. Бэкапы истекают по политике хранения (до 30 дней), а не удаляются мгновенно.')}</p>
+        <label className="block text-sm">{text('Current password', 'Текущий пароль')}<input name="delete-password" type="password" required minLength={12} maxLength={128} autoComplete="current-password" className="mt-1 w-full border border-slate-600 bg-slate-900 p-2 text-white" /></label>
+        <label className="block text-sm">{text('Type DELETE to confirm', 'Введи DELETE для подтверждения')}<input value={deleteConfirmation} onChange={event => setDeleteConfirmation(event.target.value)} autoComplete="off" spellCheck={false} className="mt-1 w-full border border-slate-600 bg-slate-900 p-2 text-white" /></label>
+        <div className="flex flex-wrap gap-2"><button type="submit" disabled={account.busy || account.status === 'saving' || deleteConfirmation !== 'DELETE'} className="btn-cyber px-3 py-2 text-rose-200 border border-rose-400 disabled:opacity-50">{text('Permanently delete account', 'Удалить аккаунт навсегда')}</button>
+          <button type="button" disabled={account.busy} className={button} onClick={() => setDeleting(false)}>{text('Cancel', 'Отмена')}</button></div>
+      </form>}
     </>}
     {account.status === 'conflict' && <div className="space-y-2 text-sm text-amber-200">
       <p>{text('Choose which save to continue. Both copies will be downloaded before anything is replaced.', 'Выбери сохранение для продолжения. Перед заменой обе копии будут скачаны.')}</p>
