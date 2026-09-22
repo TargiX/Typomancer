@@ -37,7 +37,7 @@ type GeminiResponse = {
 type FallbackReason = 'http' | 'network' | 'timeout' | 'empty' | 'parse' | 'cooldown';
 
 class GeminiRequestError extends Error {
-  constructor(public readonly reason: 'http' | 'network') {
+  constructor(public readonly reason: 'http' | 'network' | 'timeout') {
     super(`Gemini request failed: ${reason}`);
   }
 }
@@ -50,13 +50,21 @@ const fallbackReason = (error: unknown): FallbackReason => (
   error instanceof GeminiRequestError ? error.reason : 'parse'
 );
 
+/* Every generator gets the same ceiling: a hung proxy must never pin the
+   player on a loading line. next_segments keeps its own 10s race on top of
+   this — it is the hot path and deserves the tighter bound. */
+const GEMINI_REQUEST_TIMEOUT_MS = 15_000;
+
 const callGemini = async ({ model, contents, config }: { model: string; contents: string; config?: Record<string, unknown> }): Promise<GeminiResponse> => {
   const kind = model === TEXT_MODEL ? 'text' : 'image';
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), GEMINI_REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch('/api/gemini', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, contents, config })
+      body: JSON.stringify({ model, contents, config }),
+      signal: abort.signal
     });
 
     if (!response.ok) {
@@ -70,10 +78,11 @@ const callGemini = async ({ model, contents, config }: { model: string; contents
     captureProductEvent('typomancer_ai_request', { kind, ok: true });
     return result;
   } catch (error) {
-    if (!(error instanceof GeminiRequestError)) {
-      captureProductEvent('typomancer_ai_request', { kind, ok: false });
-    }
-    throw error instanceof GeminiRequestError ? error : new GeminiRequestError('network');
+    if (error instanceof GeminiRequestError) throw error;
+    captureProductEvent('typomancer_ai_request', { kind, ok: false });
+    throw new GeminiRequestError(abort.signal.aborted ? 'timeout' : 'network');
+  } finally {
+    clearTimeout(timer);
   }
 };
 
