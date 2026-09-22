@@ -46,14 +46,7 @@ import TypingEngine from './components/TypingEngine';
 import HudStrip from './components/HudStrip';
 import DeathSequence from './components/DeathSequence';
 import MenuScreen from './components/screens/MenuScreen';
-import BlackMarketScreen from './components/screens/BlackMarketScreen';
-import AccountScreen from './components/screens/AccountScreen';
-import GenreSelectionScreen from './components/screens/GenreSelectionScreen';
-import StarterPerkScreen from './components/screens/StarterPerkScreen';
-import SectorCompleteScreen from './components/screens/SectorCompleteScreen';
 import LoadingScreen from './components/screens/LoadingScreen';
-import VictoryScreen from './components/screens/VictoryScreen';
-import GameOverScreen from './components/screens/GameOverScreen';
 import {
   captureProductEvent,
   getAccuracyBucket,
@@ -75,12 +68,41 @@ import { buildChallengeShareUrl, getChallengeVerdict, parseChallenge } from './s
 import { shareScoreCardImage } from './services/scoreCard';
 import { createSessionFlow, isLegalGameTransition } from './services/gameFlow';
 import { playerStorage } from './services/playerStorage';
+import SectorCompleteScreen from './components/screens/SectorCompleteScreen';
+import VictoryScreen from './components/screens/VictoryScreen';
+import GameOverScreen from './components/screens/GameOverScreen';
 
-// Secondary screens are route-gated and heavy (telemetry charts, comic canvas,
-// the calibration typing test) — they ship as their own chunks.
-const RunComic = lazy(() => import('./components/RunComic'));
-const CalibrationPanel = lazy(() => import('./components/CalibrationPanel'));
-const OperatorRecord = lazy(() => import('./components/OperatorRecord'));
+// Menu-reachable screens ship as their own chunks and are warmed on idle —
+// the player dwells on the menu long enough for the prefetch to land.
+// End-of-run screens (SectorComplete/Victory/GameOver) stay eager: the typing
+// engine unmounts in the same commit that mounts them, so a cold chunk would
+// leave a blank frame exactly where the debrief should be.
+const loadRunComic = () => import('./components/RunComic');
+const loadCalibrationPanel = () => import('./components/CalibrationPanel');
+const loadOperatorRecord = () => import('./components/OperatorRecord');
+const loadAccountScreen = () => import('./components/screens/AccountScreen');
+const loadBlackMarketScreen = () => import('./components/screens/BlackMarketScreen');
+const loadGenreSelectionScreen = () => import('./components/screens/GenreSelectionScreen');
+const loadStarterPerkScreen = () => import('./components/screens/StarterPerkScreen');
+const RunComic = lazy(loadRunComic);
+const CalibrationPanel = lazy(loadCalibrationPanel);
+const OperatorRecord = lazy(loadOperatorRecord);
+const AccountScreen = lazy(loadAccountScreen);
+const BlackMarketScreen = lazy(loadBlackMarketScreen);
+const GenreSelectionScreen = lazy(loadGenreSelectionScreen);
+const StarterPerkScreen = lazy(loadStarterPerkScreen);
+const prefetchSecondaryScreens = () => {
+    const warm = () => {
+        loadRunComic(); loadCalibrationPanel(); loadOperatorRecord(); loadAccountScreen();
+        loadBlackMarketScreen(); loadGenreSelectionScreen(); loadStarterPerkScreen();
+    };
+    if ('requestIdleCallback' in window) {
+        (window as Window & { requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => void })
+            .requestIdleCallback(warm, { timeout: 4000 });
+    } else {
+        setTimeout(warm, 1500);
+    }
+};
 
 interface RoundData {
     wpm: number;
@@ -278,6 +300,10 @@ const App: React.FC = () => {
     if (landingTrackedRef.current) return;
     landingTrackedRef.current = true;
     captureProductEvent('typomancer_landing_viewed', getAnalyticsContext());
+  }, []);
+
+  useEffect(() => {
+    prefetchSecondaryScreens();
   }, []);
 
   // A tab closing mid-run is the only abandon signal available without a server
@@ -1390,7 +1416,6 @@ const App: React.FC = () => {
                     onInitialize={initializeSession}
                     onDaily={initializeDailySession}
                     onResume={resumeSession}
-                    canInstall={installPromptEvent !== null}
                     onInstall={handleInstallApp}
                     onBlackMarket={() => setGameState(GameState.BLACK_MARKET)}
                     onOperatorRecord={() => setGameState(GameState.OPERATOR_RECORD)}
@@ -1398,10 +1423,12 @@ const App: React.FC = () => {
             )}
 
             {gameState === GameState.ACCOUNT && (
+                <Suspense fallback={null}>
                 <AccountScreen
                     language={language}
                     onClose={() => setGameState(GameState.MENU)}
                 />
+                </Suspense>
             )}
 
             {gameState === GameState.CALIBRATION && (
@@ -1430,6 +1457,7 @@ const App: React.FC = () => {
             )}
 
             {gameState === GameState.BLACK_MARKET && (
+                <Suspense fallback={null}>
                 <BlackMarketScreen
                     ui={UI}
                     language={language}
@@ -1438,18 +1466,22 @@ const App: React.FC = () => {
                     onBuy={handleBuyUpgrade}
                     onClose={() => setGameState(GameState.MENU)}
                 />
+                </Suspense>
             )}
 
             {gameState === GameState.GENRE_SELECTION && (
+                <Suspense fallback={null}>
                 <GenreSelectionScreen
                     ui={UI}
                     language={language}
                     onSelect={handleGenreSelect}
                     onBack={() => setGameState(GameState.MENU)}
                 />
+                </Suspense>
             )}
 
             {gameState === GameState.STARTER_PERK_SELECTION && (
+                <Suspense fallback={null}>
                 <StarterPerkScreen
                     ui={UI}
                     language={language}
@@ -1458,6 +1490,7 @@ const App: React.FC = () => {
                     genre={selectedGenre}
                     onSelect={handleStarterPerkSelect}
                 />
+                </Suspense>
             )}
 
             {gameState === GameState.LEVEL_COMPLETE && lastLevelReport && (
@@ -1527,7 +1560,6 @@ const App: React.FC = () => {
                     onMenu={() => setGameState(GameState.MENU)}
                 />
             )}
-
             {gameState === GameState.GAME_OVER && (
                 <GameOverScreen
                     ui={UI}
