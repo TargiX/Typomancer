@@ -17,6 +17,7 @@ export type ProductEventName =
   | 'typomancer_challenge_opened'
   | 'typomancer_challenge_shared'
   | 'typomancer_ai_request'
+  | 'typomancer_ai_fallback'
   | 'typomancer_pact_toggled'
   | 'typomancer_run_abandoned'
   | 'typomancer_pact_opened'
@@ -96,6 +97,10 @@ const EVENT_PROPERTY_ALLOWLIST: Record<ProductEventName, readonly string[]> = {
   // Spend telemetry: counts proxy calls by kind/outcome so AI cost per run is
   // measurable without ever sending prompts or responses.
   typomancer_ai_request: [...COMMON_PROPERTIES, 'kind', 'ok'],
+  // Fallback telemetry: ai_request says a call failed; this says which
+  // generator served local content instead and why — the difference between
+  // "the proxy is down" and "the model returned unparseable JSON".
+  typomancer_ai_fallback: [...COMMON_PROPERTIES, 'generator', 'reason'],
   // Which clause flipped and to what — the Pact is a progression bet, and this
   // is the only way to see whether anyone takes it.
   typomancer_pact_toggled: [...COMMON_PROPERTIES, 'clause', 'active'],

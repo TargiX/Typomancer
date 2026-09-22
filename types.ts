@@ -4,6 +4,7 @@ export type Language = 'en' | 'ru';
 
 export enum GameState {
   MENU = 'MENU',
+  ACCOUNT = 'ACCOUNT',
   CALIBRATION = 'CALIBRATION',
   OPERATOR_RECORD = 'OPERATOR_RECORD',
   GENRE_SELECTION = 'GENRE_SELECTION',

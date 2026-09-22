@@ -10,6 +10,7 @@ import type {
   Language,
   MissionState,
   TypingSkill,
+  DecisionOption,
   StoryGenreId
 } from "../types.ts";
 import { getGenrePack, type LocalBranchTemplate } from "./genreConfig.ts";
@@ -32,7 +33,24 @@ type GeminiResponse = {
   candidates?: Array<{ content?: { parts?: Array<{ inlineData?: { mimeType?: string; data?: string } }> } }>;
 };
 
-const callGemini = async (model: string, contents: string, config?: Record<string, unknown>): Promise<GeminiResponse | null> => {
+/** Why a generator served local content instead of model output. */
+type FallbackReason = 'http' | 'network' | 'timeout' | 'empty' | 'parse' | 'cooldown';
+
+class GeminiRequestError extends Error {
+  constructor(public readonly reason: 'http' | 'network') {
+    super(`Gemini request failed: ${reason}`);
+  }
+}
+
+const reportFallback = (generator: string, reason: FallbackReason) => {
+  captureProductEvent('typomancer_ai_fallback', { generator, reason });
+};
+
+const fallbackReason = (error: unknown): FallbackReason => (
+  error instanceof GeminiRequestError ? error.reason : 'parse'
+);
+
+const callGemini = async ({ model, contents, config }: { model: string; contents: string; config?: Record<string, unknown> }): Promise<GeminiResponse> => {
   const kind = model === TEXT_MODEL ? 'text' : 'image';
   try {
     const response = await fetch('/api/gemini', {
@@ -43,7 +61,7 @@ const callGemini = async (model: string, contents: string, config?: Record<strin
 
     if (!response.ok) {
       captureProductEvent('typomancer_ai_request', { kind, ok: false });
-      return null;
+      throw new GeminiRequestError('http');
     }
 
     const result = await response.json();
@@ -52,20 +70,14 @@ const callGemini = async (model: string, contents: string, config?: Record<strin
     captureProductEvent('typomancer_ai_request', { kind, ok: true });
     return result;
   } catch (error) {
-    captureProductEvent('typomancer_ai_request', { kind, ok: false });
-    throw error;
+    if (!(error instanceof GeminiRequestError)) {
+      captureProductEvent('typomancer_ai_request', { kind, ok: false });
+    }
+    throw error instanceof GeminiRequestError ? error : new GeminiRequestError('network');
   }
 };
 
-const ai = {
-  models: {
-    generateContent: async ({ model, contents, config }: { model: string; contents: string; config?: Record<string, unknown> }) => {
-      const response = await callGemini(model, contents, config);
-      if (!response) throw new Error('Gemini proxy unavailable');
-      return response;
-    }
-  }
-};
+
 
 const TEXT_MODEL = "gemini-flash-lite-latest";
 const FINAL_LEVEL = 4;
@@ -363,14 +375,17 @@ const generateLocalSceneImage = (sceneDescription: string, characterDescription:
 
 export const generateCharacterProfile = async (language: Language, genre: StoryGenreId = 'cyberpunk'): Promise<string> => {
   const pack = getGenrePack(genre);
-  if (!ai) return pack.local[language].protagonist;
+
   const model = TEXT_MODEL;
   const prompt = `Create a concise visual description of a unique ${pack.characterPrompt}. Distinctive physical features, clothes, and mood. Max 10-15 words. OUTPUT LANGUAGE: ${language === 'ru' ? 'Russian' : 'English'}. Return ONLY the text string.`;
 
   try {
-    const response = await ai.models.generateContent({ model, contents: prompt, config: { temperature: 1.2 } });
-    return response.text?.trim() || pack.local[language].protagonist;
+    const response = await callGemini({ model, contents: prompt, config: { temperature: 1.2 } });
+    const text = response.text?.trim();
+    if (!text) reportFallback('character_profile', 'empty');
+    return text || pack.local[language].protagonist;
   } catch (error) {
+    reportFallback('character_profile', fallbackReason(error));
     return pack.local[language].protagonist;
   }
 };
@@ -378,24 +393,16 @@ export const generateCharacterProfile = async (language: Language, genre: StoryG
 export const generateStoryStart = async (language: Language, genre: StoryGenreId = 'cyberpunk'): Promise<StorySegment> => {
   const pack = getGenrePack(genre);
   const local = pack.local[language];
-  if (!ai) {
-    return sanitizeSegment({
-      text: local.start,
-      mood: StoryMood.TENSE,
-      type: SegmentType.NARRATIVE,
-      skill: 'flow',
-      objective: local.warmObjective,
-      pressure: 1,
-      consequenceHint: local.warmHint
-    });
-  }
+
   const model = TEXT_MODEL;
   const prompt = `You are the Game Master of a ${pack.storyGenre}. WORLD RULES (follow strictly): ${pack.worldRules} Write the first sentence. The player is ${pack.heroName}, a ${pack.heroBrief[language]}. Action-oriented. 10-16 words. OUTPUT LANGUAGE: ${language === 'ru' ? 'Russian' : 'English'}. Return ONLY the raw text string.`;
 
   try {
-    const response = await ai.models.generateContent({ model, contents: prompt, config: { temperature: 1.0 } });
+    const response = await callGemini({ model, contents: prompt, config: { temperature: 1.0 } });
+    const text = response.text?.trim();
+    if (!text) reportFallback('story_start', 'empty');
     return sanitizeSegment({
-      text: response.text?.trim() || local.start,
+      text: text || local.start,
       mood: StoryMood.TENSE,
       type: SegmentType.NARRATIVE,
       skill: 'flow',
@@ -403,6 +410,7 @@ export const generateStoryStart = async (language: Language, genre: StoryGenreId
       pressure: 1
     });
   } catch (error) {
+    reportFallback('story_start', fallbackReason(error));
     return sanitizeSegment({ text: local.start, mood: StoryMood.TENSE, type: SegmentType.NARRATIVE, skill: 'flow' });
   }
 };
@@ -417,23 +425,17 @@ export const generateNextLevelStart = async (
   const pack = getGenrePack(genre);
   const local = pack.local[language];
   const fallback = pick(local.levelStart, nextLevel - 1);
-  if (!ai) {
-    return sanitizeSegment({
-      text: fallback,
-      mood: mission?.heat && mission.heat > 60 ? StoryMood.DARK : StoryMood.TENSE,
-      type: SegmentType.NARRATIVE,
-      skill: 'flow',
-      objective: local.sectorObjective(nextLevel),
-      pressure: Math.min(5, 1 + nextLevel)
-    });
-  }
+
   const model = TEXT_MODEL;
   const prompt = `CONTEXT: The player is starting Level ${nextLevel} of a ${pack.storyGenre}. WORLD RULES (follow strictly): ${pack.worldRules} HERO: ${pack.heroName}. PREVIOUS OUTCOME: "${prevSummary}" MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, route=${mission?.route ?? 'balanced'}. TASK: Write the first sentence of Level ${nextLevel}. Establish the new location/danger and reflect the meters. Immediate action. 10-16 words. OUTPUT LANGUAGE: ${language === 'ru' ? 'Russian' : 'English'}. Return ONLY text.`;
 
   try {
-    const response = await ai.models.generateContent({ model, contents: prompt, config: { temperature: 1.0 } });
-    return sanitizeSegment({ text: response.text?.trim() || fallback, mood: StoryMood.TENSE, type: SegmentType.NARRATIVE, skill: 'flow' });
+    const response = await callGemini({ model, contents: prompt, config: { temperature: 1.0 } });
+    const text = response.text?.trim();
+    if (!text) reportFallback('level_start', 'empty');
+    return sanitizeSegment({ text: text || fallback, mood: StoryMood.TENSE, type: SegmentType.NARRATIVE, skill: 'flow' });
   } catch (e) {
+    reportFallback('level_start', fallbackReason(e));
     return sanitizeSegment({ text: fallback, mood: StoryMood.TENSE, type: SegmentType.NARRATIVE, skill: 'flow' });
   }
 };
@@ -446,7 +448,7 @@ export const generateLevelSummary = async (
   genre: StoryGenreId = 'cyberpunk'
 ): Promise<string> => {
   const pack = getGenrePack(genre);
-  if (!ai) return localSummary(genre, level, stats, language);
+
   const model = TEXT_MODEL;
 
   let performanceDesc = "average";
@@ -459,12 +461,14 @@ export const generateLevelSummary = async (
   const prompt = `CONTEXT: The player finished Level ${level} of a ${pack.storyGenre}. WORLD RULES (follow strictly): ${pack.worldRules} HERO: ${pack.heroName}. STORY SO FAR: ${prevStoryContext.slice(-360)}... PLAYER PERFORMANCE: speed=${Math.round(stats.avgWpm)} WPM, mistakes=${stats.totalMistakes}, status=${performanceDesc}. MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, route=${mission?.route ?? 'balanced'}, flags=${(mission?.flags || []).slice(-5).join(',')}. BEATS THE PLAYER LIVED (oldest to newest, tagged by how cleanly they typed them)=${getRecentConsequences(mission?.consequenceLog || [], 4).join(' | ')}. TASK: Write a punchy 2-sentence summary. Sentence 1: consequences of this level, naming at least one specific beat above rather than describing performance in the abstract. Sentence 2: setup for ${level >= FINAL_LEVEL ? 'the ending' : `Level ${level + 1}`}. OUTPUT LANGUAGE: ${language === 'ru' ? 'Russian' : 'English'}. Return ONLY text.`;
 
   try {
-    const response = await ai.models.generateContent({ model, contents: prompt, config: { temperature: 1.0 } });
+    const response = await callGemini({ model, contents: prompt, config: { temperature: 1.0 } });
     const summary = response.text?.trim();
+    if (!summary) reportFallback('level_summary', 'empty');
     // Read rather than typed, but it headlines the debrief screen, so it gets the
     // same mechanical repair as anything else the player is shown.
     return summary ? repairProseLine(summary) : localSummary(genre, level, stats, language);
   } catch (e) {
+    reportFallback('level_summary', fallbackReason(e));
     return localSummary(genre, level, stats, language);
   }
 };
@@ -482,7 +486,7 @@ export const generateNextSegments = async (
 ): Promise<BranchingStory> => {
   const pack = getGenrePack(genre);
   const fallback = getLocalBranch(genre, level, round, language, mission);
-  if (!ai) return fallback;
+
 
   const model = TEXT_MODEL;
   const recentHistory = fullHistory.slice(-6).join(" ");
@@ -517,7 +521,7 @@ export const generateNextSegments = async (
   const prompt = `SETTING: ${pack.storyGenre}. WORLD RULES (follow strictly, never drift into another genre): ${pack.worldRules} HERO: ${pack.heroName}.${focusRule} CURRENT STATUS: Level ${level} | Round ${round}/${SECTOR_ROUNDS}. RECENT CONTEXT: "...${recentHistory}" LAST EVENT: "${lastSentence}" MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, route=${mission?.route ?? 'balanced'}, recent consequences (oldest to newest)=${getRecentConsequences(mission?.consequenceLog || [], 3).join(' | ')}. TASK: Generate the next story segment options. CORE LOOP: the player TYPES the sentence you write and the branch reflects their typing — so the main content is readable story prose, NOT puzzles. INSTRUCTION: ${narrativeInstruction} ${typeRule} RULES: 1. No repeated events. 2. NARRATIVE/DIALOG: ${shape.minWords}-${shape.maxWords} words${shape.isClimax ? ' (this is the sector climax, so use the upper end of that range)' : ''}, and a complete grammatical sentence — it must begin with a capital letter and end with . ? or !. Ordinary sentence case; never all-caps, never a bare fragment, never open with a lowercase pronoun. The player types this text character by character, so an ungrammatical line is a defect they are forced to copy. 3. If (and only if) a BREACH/SIGNAL drill is allowed here: 2-6 short tokens whose content matches the WORLD RULES for this world (never terminal/hex code unless the world is cyberpunk). 4. goodPath rewards clean play with control/evidence/trust. mediumPath shows messy survival. badPath shows concrete consequences that can echo later. 5. Include objective, skill, and a short consequenceHint. 6. Every sentence must stay strictly inside the SETTING's world and era — respect the FORBIDDEN vocabulary. 7. RECENT CONSEQUENCES are beats the player already lived, tagged CLEAN, MESSY or BLOWN by how they typed them. If the newest is MESSY or BLOWN, this segment must show its aftermath concretely — a guard who is now looking, a door that no longer opens — instead of resetting the scene. If it is CLEAN, let the player feel the advantage they earned. 8. OUTPUT LANGUAGE FOR NARRATIVE/DIALOG: ${language === 'ru' ? 'Russian' : 'English'}. Keep BREACH/SIGNAL tokens in English. Return JSON only.`;
 
   try {
-    const apiCall = ai.models.generateContent({
+    const apiCall = callGemini({
       model,
       contents: prompt,
       config: {
@@ -529,12 +533,16 @@ export const generateNextSegments = async (
       }
     });
 
-    const response = await withTimeout(apiCall, 10000, null as any);
-    if (!response || !response.text) return fallback;
+    const response = await withTimeout<GeminiResponse | null>(apiCall, 10000, null);
+    if (!response || !response.text) {
+      reportFallback('next_segments', response ? 'empty' : 'timeout');
+      return fallback;
+    }
     const data = cleanAndParseJSON<BranchingStory>(response.text);
     return sanitizeBranch(data, shape.pressure);
   } catch (error) {
     console.error("Gemini API Error:", error);
+    reportFallback('next_segments', fallbackReason(error));
     return fallback;
   }
 };
@@ -548,7 +556,7 @@ export const generateStrategicDecision = async (
 ): Promise<DecisionPoint> => {
   const pack = getGenrePack(genre);
   const fallback = getLocalDecision(genre, language, level, mission);
-  if (!ai) return fallback;
+
   const model = TEXT_MODEL;
   const recentHistory = fullHistory.slice(-6).join(" ");
   const lastSentence = fullHistory[fullHistory.length - 1] || "You encounter a new obstacle.";
@@ -556,11 +564,11 @@ export const generateStrategicDecision = async (
   const prompt = `SETTING: ${pack.storyGenre}. WORLD RULES (follow strictly, never drift into another genre): ${pack.worldRules} HERO: ${pack.heroName}. STATUS: Level ${level} | Mid-Level Branching Point. RECENT CONTEXT: "${recentHistory}" LAST EVENT: "${lastSentence}" MISSION METERS: heat=${mission?.heat ?? 0}, trust=${mission?.trust ?? 0}, evidence=${mission?.evidence ?? 0}, route=${mission?.route ?? 'balanced'}. TASK: Create a major tactical decision with two approaches. Aggressive: loud, risky, stronger evidence/credits, raises heat. Stealth: quiet, technical, lowers heat, raises trust, usually less loot. OUTCOMES: text they must type next. Aggressive outcome is action text. Stealth outcome can be code/BREACH. Include preview and impact numbers. OUTPUT LANGUAGE: ${language === 'ru' ? 'Russian' : 'English'}. Keep code in English. JSON schema: { "introText": string, "options": [ { "id":"aggressive", "text": string, "type":"aggressive", "preview": string, "impact": {"heat":number,"trust":number,"evidence":number,"trace":number,"health":number,"credits":number,"route":"loud","flag":string}, "outcome": StorySegment }, { "id":"stealth", "text": string, "type":"stealth", "preview": string, "impact": {"heat":number,"trust":number,"evidence":number,"trace":number,"health":number,"credits":number,"route":"silent","flag":string}, "outcome": StorySegment } ] }`;
 
   try {
-    const response = await ai.models.generateContent({ model, contents: prompt, config: { responseMimeType: "application/json", temperature: 1.0 } });
-    if (!response.text) return fallback;
+    const response = await callGemini({ model, contents: prompt, config: { responseMimeType: "application/json", temperature: 1.0 } });
+    if (!response.text) { reportFallback('strategic_decision', 'empty'); return fallback; }
     const data = cleanAndParseJSON<DecisionPoint>(response.text);
-    if (!Array.isArray(data.options) || data.options.length < 2) return fallback;
-    data.options = [data.options[0], data.options[1]] as any;
+    if (!Array.isArray(data.options) || data.options.length < 2) { reportFallback('strategic_decision', 'parse'); return fallback; }
+    data.options = [data.options[0], data.options[1]] as [DecisionOption, DecisionOption];
     data.options.forEach((opt, index) => {
       opt.id = opt.id || (index === 0 ? 'aggressive' : 'stealth');
       opt.type = opt.type || (index === 0 ? 'aggressive' : 'stealth');
@@ -571,6 +579,7 @@ export const generateStrategicDecision = async (
     return data as DecisionPoint;
   } catch (e) {
     console.error("Decision Gen Error", e);
+    reportFallback('strategic_decision', fallbackReason(e));
     return fallback;
   }
 };
@@ -592,14 +601,17 @@ export const generateSceneImage = async (
   const shouldGenerateRemotely = genreChanged || isStoryBeat;
   if (!shouldGenerateRemotely && lastImageDataUrl) return lastImageDataUrl;
 
-  if (Date.now() < remoteImageRetryAfter || !ai) {
-    return lastImageDataUrl || sceneImageCache.get(cacheKey) || generateLocalSceneImage(sceneDescription, characterDescription, genre);
+  if (Date.now() < remoteImageRetryAfter) {
+    const held = lastImageDataUrl || sceneImageCache.get(cacheKey);
+    if (held) return held;
+    reportFallback('scene_image', 'cooldown');
+    return generateLocalSceneImage(sceneDescription, characterDescription, genre);
   }
   const model = 'gemini-3.1-flash-lite-image';
   const prompt = `${pack.artStyle}. Character: ${characterDescription}. Scene: ${sceneDescription}. Readable silhouette, high contrast, dramatic angle. Do not render any words, captions, letters, or watermarks.`;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await callGemini({
       model,
       contents: prompt
     });
@@ -621,6 +633,7 @@ export const generateSceneImage = async (
       return cachedImage;
     }
     remoteImageRetryAfter = Date.now() + 30_000;
+    reportFallback('scene_image', 'empty');
     return lastImageDataUrl || generateLocalSceneImage(sceneDescription, characterDescription, genre);
   } catch (error) {
     const cachedImage = sceneImageCache.get(cacheKey);
@@ -629,6 +642,7 @@ export const generateSceneImage = async (
       return cachedImage;
     }
     remoteImageRetryAfter = Date.now() + 30_000;
+    reportFallback('scene_image', fallbackReason(error));
     return lastImageDataUrl || generateLocalSceneImage(sceneDescription, characterDescription, genre);
   }
 };

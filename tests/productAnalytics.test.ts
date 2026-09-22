@@ -99,6 +99,24 @@ test('ai request telemetry keeps only kind and outcome', () => {
   });
 });
 
+test('ai fallback telemetry keeps only generator and reason', () => {
+  const safe = sanitizeEventProperties('typomancer_ai_fallback', {
+    generator: 'next_segments',
+    reason: 'timeout',
+    prompt: 'never send this',
+    response: 'nor this'
+  });
+
+  assert.deepEqual(safe, {
+    source: 'direct',
+    medium: 'none',
+    campaign: 'none',
+    challenge: false,
+    generator: 'next_segments',
+    reason: 'timeout'
+  });
+});
+
 test('PostHog payload is anonymous and does not create a person profile', () => {
   const identity = getAnalyticsIdentity({
     storage: new MemoryStorage(),

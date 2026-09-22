@@ -3,6 +3,7 @@ import type { Language, Perk } from '../types';
 import type { UITranslations } from '../services/i18n';
 import type { SkillStackAnchor } from '../services/skillStackAnchor';
 import { stripLeadingGlyph } from '../services/text';
+import { AccountChip } from './CloudProgress';
 
 interface HudStripProps {
     ui: UITranslations;
@@ -14,13 +15,14 @@ interface HudStripProps {
     onToggleMusic: () => void;
     onToggleSkillStack: () => void;
     onToggleLanguage: () => void;
+    onAccount?: () => void;
 }
 
 /* Status strip — what the shell column was actually for, minus the parts other
    screens already show. No document column: the wordmark repeats the title on
    screen, the mission meters live on the run HUD and in the debrief tiles, and
    the log moved into the debrief where reading a feed makes sense. */
-const HudStrip: React.FC<HudStripProps> = ({ ui, credits, perks, musicActive, skillStackAnchor, language, onToggleMusic, onToggleSkillStack, onToggleLanguage }) => (
+const HudStrip: React.FC<HudStripProps> = ({ ui, credits, perks, musicActive, skillStackAnchor, language, onToggleMusic, onToggleSkillStack, onToggleLanguage, onAccount }) => (
     <div className="hud-strip">
         <div className="flex items-center gap-3">
             <span className="fs-micro uppercase tracking-[0.22em] text-slate-500">{ui.wallet}</span>
@@ -40,6 +42,7 @@ const HudStrip: React.FC<HudStripProps> = ({ ui, credits, perks, musicActive, sk
             ))}
         </div>
         <div className="flex items-center gap-2">
+            {onAccount && <AccountChip language={language} onOpen={onAccount} />}
             <button onClick={onToggleMusic} className="hud-strip-button">
                 {musicActive ? stripLeadingGlyph(ui.audio_active) : ui.audio_muted}
             </button>

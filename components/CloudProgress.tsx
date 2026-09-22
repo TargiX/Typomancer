@@ -331,3 +331,49 @@ export function AccountPanel({ language }: { language: Language }) {
     {error && <p role="alert" className="text-sm text-amber-200">{error}</p>}
   </section>;
 }
+
+/** Compact status chip for the deck's status strip. One glance: who you are and
+    whether the save is safe; everything else lives on the account screen.
+    Renders even when cloud sync is disabled — local progress still exists. */
+export function AccountChip({ language, onOpen }: { language: Language; onOpen: () => void }) {
+  const account = useContext(Context);
+  const ru = language === 'ru';
+  const label = account?.user
+    ? account.user.email
+    : ru ? 'ЛОКАЛЬНО' : 'LOCAL SAVE';
+  const tone = !account || account.status === 'guest' || account.status === 'offline'
+    ? 'bg-slate-500'
+    : account.status === 'conflict' || account.status === 'expired' || account.status === 'invalid'
+      ? 'bg-amber-400'
+      : 'bg-emerald-400';
+  return (
+    <button type="button" onClick={onOpen} aria-label={ru ? 'Аккаунт' : 'Account'}
+      className="hud-strip-button flex max-w-44 items-center gap-1.5">
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${tone}`} aria-hidden="true" />
+      <span className="account-chip-label truncate">{label}</span>
+    </button>
+  );
+}
+
+/** Post-deletion confirmation. Deleting an account remounts the app (epoch
+    bump), which lands the user back on the menu — the notice lives there,
+    not inside the panel that just unmounted. */
+export function AccountDeletedNotice({ language }: { language: Language }) {
+  const account = useContext(Context);
+  if (!account?.deleted) return null;
+  const ru = language === 'ru';
+  return (
+    <div className="space-y-2">
+      <p role="status" className="fs-label text-emerald-200">
+        {ru ? 'Аккаунт удалён. Теперь ты играешь как гость.' : 'Account deleted. You are now playing as a guest.'}
+      </p>
+      {account.cleanupFailed && (
+        <p role="alert" className="fs-label text-amber-200">
+          {ru
+            ? 'Аккаунт на сервере удалён, но браузер не разрешил очистить локальные данные. Очисти данные сайта вручную; это также удалит гостевой прогресс.'
+            : 'The server account is deleted, but this browser blocked device cleanup. Clear this site’s stored data manually; this also removes guest progress.'}
+        </p>
+      )}
+    </div>
+  );
+}

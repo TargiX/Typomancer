@@ -9,6 +9,7 @@ test('guest import, independent device login, conflicting save and guest restora
     localStorage.setItem('narrativeFlowProfile', JSON.stringify({ ...profile, credits: 321, totalXp: 150 }));
   }, DEFAULT_PROFILE);
   await page.goto('/');
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
   const panel = page.getByRole('region', { name: 'Progress saving' });
   await panel.getByRole('button', { name: 'Sign in', exact: true }).click();
   await panel.getByRole('button', { name: 'New account', exact: true }).click();
@@ -22,6 +23,7 @@ test('guest import, independent device login, conflicting save and guest restora
   const second = await device.newPage();
   try {
     await second.goto('/');
+    await second.getByRole('button', { name: 'Account', exact: true }).click();
     const account = second.getByRole('region', { name: 'Progress saving' });
     await account.getByRole('button', { name: 'Sign in', exact: true }).click();
     await account.getByLabel('Email', { exact: true }).fill(email);
