@@ -2,6 +2,8 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import type { Language } from '../../types';
 import { AccountPanel } from '../CloudProgress';
+import { downloadSnapshot, readSnapshot } from '../../services/cloudProgress';
+import { playerStorage } from '../../services/playerStorage';
 
 const COPY = {
     en: {
@@ -9,6 +11,7 @@ const COPY = {
         title: 'Account',
         subtitle: 'Sync progress across devices, export a copy, or delete the account. Nothing here affects the current run.',
         localOnly: 'Progress is stored on this device. Cloud sync is not enabled in this build.',
+        exportCopy: 'Export device copy',
         close: 'BACK TO DECK'
     },
     ru: {
@@ -16,6 +19,7 @@ const COPY = {
         title: 'Аккаунт',
         subtitle: 'Синхронизация прогресса между устройствами, экспорт копии или удаление аккаунта. На текущий забег это не влияет.',
         localOnly: 'Прогресс хранится на этом устройстве. Облачная синхронизация в этой сборке выключена.',
+        exportCopy: 'Скачать локальную копию',
         close: 'ВЕРНУТЬСЯ К ПУЛЬТУ'
     }
 };
@@ -24,9 +28,17 @@ const COPY = {
     needs to say where progress lives instead of rendering an empty page. */
 const AccountBody: React.FC<{ language: Language }> = ({ language }) => {
     if (import.meta.env.VITE_CLOUD_PROGRESS === 'true') return <AccountPanel language={language} />;
+    const ui = COPY[language];
     return (
-        <section className="border border-white/10 bg-white/[0.02] p-4 text-left" aria-label={COPY[language].title}>
-            <p className="text-sm leading-relaxed text-slate-400">{COPY[language].localOnly}</p>
+        <section className="border border-white/10 bg-white/[0.02] p-4 text-left space-y-3" aria-label={ui.title}>
+            <p className="text-sm leading-relaxed text-slate-400">{ui.localOnly}</p>
+            <button
+                type="button"
+                className="btn-cyber btn-cyber-ghost px-3 py-2 text-sm text-emerald-200"
+                onClick={() => downloadSnapshot(readSnapshot(playerStorage()!))}
+            >
+                {ui.exportCopy}
+            </button>
         </section>
     );
 };
