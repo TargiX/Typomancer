@@ -399,6 +399,19 @@ const App: React.FC = () => {
     if (currentDailyId === dailyBrief.dailyId) setDailyState(recorded);
   }, [currentDailyId, dailyBrief.dailyId, finalStats, gameState, genrePack, isDailyRun, language, totalScore, victoryReport]);
 
+  // The comic is the reward for finishing, not an opt-in panel: on victory it
+  // opens itself after the debrief has had a beat to land. Once per run.
+  const comicAutoShownRef = useRef(false);
+  useEffect(() => {
+    if (gameState !== GameState.VICTORY || comicFrames.length === 0 || comicAutoShownRef.current) return;
+    comicAutoShownRef.current = true;
+    const timer = window.setTimeout(() => setShowComic(true), 1600);
+    return () => window.clearTimeout(timer);
+  }, [gameState, comicFrames.length]);
+  useEffect(() => {
+    if (gameState === GameState.MENU) comicAutoShownRef.current = false;
+  }, [gameState]);
+
   useEffect(() => {
     if (runRecordedRef.current) return;
 
