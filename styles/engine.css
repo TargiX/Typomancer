@@ -284,6 +284,22 @@ button.engine-cursor-skill:disabled {
 .engine-type-panel {
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  /* The art shows through the top of the panel and sinks under the text:
+     a gradient scrim instead of a flat fill. */
+  background: linear-gradient(to bottom, rgba(11, 16, 26, 0.55) 0%, rgba(11, 16, 26, 0.92) 22%, rgba(11, 16, 26, 0.97) 100%);
+}
+
+/* During a decision the backdrop glitches — the world reacts to the pause. */
+.engine-scene-bezel--decision .engine-scene-image {
+  animation: engine-scene-glitch 900ms steps(2, end) infinite;
+  filter: saturate(1.4) contrast(1.1);
+}
+
+@keyframes engine-scene-glitch {
+  0%, 100% { transform: scale(1.03) translateX(0); }
+  25% { transform: scale(1.03) translateX(-3px); }
+  50% { transform: scale(1.04) translateX(2px); }
+  75% { transform: scale(1.03) translateX(-1px); }
 }
 
 @keyframes engine-kenburns {

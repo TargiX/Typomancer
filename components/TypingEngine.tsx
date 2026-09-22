@@ -224,6 +224,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const [nextBranch, setNextBranch] = useState<BranchingStory | null>(null);
   const [nextDecision, setNextDecision] = useState<DecisionPoint | null>(null);
   const [isDecisionActive, setIsDecisionActive] = useState(false);
+  // Hesitation is a choice: the intervention window is finite, and letting it
+  // lapse picks the aggressive option for you.
+  const DECISION_WINDOW_MS = 12_000;
+  const [decisionRemaining, setDecisionRemaining] = useState(DECISION_WINDOW_MS);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const currentImageRef = useRef<string | null>(null);
   // The outgoing frame stays mounted one transition so a new scene fades in
@@ -1188,7 +1192,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       addToLog(activeSegment.text, performance, calculateSegmentScore(reward), wpm, totalErrors, outcome.meta, activeSegment.type);
       onCaptureFrame?.({ image: currentImageRef.current, caption: activeSegment.text, performance, level: currentLevel });
       setHistory(h => [...h, { ...activeSegment, performance }]);
-      audioEngine.segmentClear(performance);
   };
 
   const handleDecisionSelect = (index: number) => {
@@ -1210,6 +1213,23 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           inputRef.current?.focus();
       }, 50);
   };
+
+  // The intervention window ticks down in view; at zero the aggressive option
+  // fires on its own — hesitation is itself a choice.
+  useEffect(() => {
+      if (!isDecisionActive) return;
+      setDecisionRemaining(DECISION_WINDOW_MS);
+      const startedAt = Date.now();
+      const tick = window.setInterval(() => {
+          const left = DECISION_WINDOW_MS - (Date.now() - startedAt);
+          setDecisionRemaining(Math.max(0, left));
+          if (left <= 0) {
+              window.clearInterval(tick);
+              handleDecisionSelect(0);
+          }
+      }, 100);
+      return () => window.clearInterval(tick);
+  }, [isDecisionActive]);
 
   const spawnOverclockSparkBurst = (charIndex: number) => {
       const charEl = document.querySelector(`span[data-index="${charIndex}"]`);
@@ -1482,7 +1502,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const getContainerStyles = () => {
     // Wrapper only (border/surface). Padding, scroll and text sizing live on the
     // inner scroll element so the HP/EN edge-rails can sit still (scrollbar-style).
-    let base = "engine-type-panel relative flex-1 min-h-0 border-x border-b bg-[#0b101a]/95";
+    let base = "engine-type-panel relative z-10 flex-1 min-h-0 border-x border-b";
 
     // Trace effect logic
     if (tracePercent > 80) base += " shadow-[inset_0_0_50px_rgba(244,63,94,0.2)]";
@@ -1559,6 +1579,14 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
 
       {isDecisionActive && nextDecision && (
            <div className="engine-decision-overlay absolute inset-0 z-[80] bg-[#070a11]/95 backdrop-blur-md flex flex-col items-center justify-center p-5 md:p-8 animate-fade-in-up">
+               {/* The window is finite: the bar drains, and at zero hesitation
+                   itself picks the aggressive option. */}
+               <div className="absolute top-0 inset-x-0 h-1 bg-white/[0.06]">
+                   <div
+                       className="h-full bg-rose-400 transition-[width] duration-100 ease-linear"
+                       style={{ width: `${(decisionRemaining / DECISION_WINDOW_MS) * 100}%` }}
+                   />
+               </div>
                <div className="w-full max-w-3xl space-y-8">
                    <div className="text-center border-b border-white/[0.06] pb-6">
                         <div className="mb-4 fs-micro font-bold uppercase tracking-[0.22em] text-emerald-400 animate-pulse">{UI.tactical_intervention}</div>
@@ -1667,7 +1695,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
               })}
           </div>
       )}
-      <div className="engine-hud flex flex-col font-mono px-4 py-3 bg-white/[0.02] border border-white/[0.06] mb-2 gap-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+      <div className="engine-hud relative z-10 flex flex-col font-mono px-4 py-3 bg-[#0b101a]/85 backdrop-blur-sm border border-white/[0.06] mb-2 gap-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
         <div className="flex flex-wrap items-end justify-between gap-4 w-full">
             <div className="flex flex-wrap items-end gap-5 md:gap-7">
                 <div className="flex items-end gap-6">
@@ -1739,15 +1767,15 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
             </div>
         </div>
       </div>
-      {/* Scene wants 56% of the deck, but never at the expense of the typing panel:
-          cap it so HUD + at least ~5 lines of text always fit on short windows. */}
-      <div className="engine-scene-bezel relative h-[34%] min-h-[120px] max-h-[300px] w-full bg-black overflow-hidden border border-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-        <div className="absolute left-2 top-2 z-[55] h-5 w-5 border-l border-t border-emerald-400/80 pointer-events-none"></div>
-        <div className="absolute right-2 top-2 z-[55] h-5 w-5 border-r border-t border-emerald-400/80 pointer-events-none"></div>
-        <div className="absolute bottom-2 left-2 z-[55] h-5 w-5 border-b border-l border-emerald-400/80 pointer-events-none"></div>
-        <div className="absolute bottom-2 right-2 z-[55] h-5 w-5 border-b border-r border-emerald-400/80 pointer-events-none"></div>
-        {/* Live real-time card next to where you type: combo + current WPM */}
-        <div className="absolute bottom-4 right-4 z-50 pointer-events-none select-none">
+      {/* The scene is the backdrop now, not a framed strip: the bezel fills the
+          deck and the HUD + type panel float over it. */}
+      <div className={`engine-scene-bezel absolute inset-0 z-0 w-full bg-black overflow-hidden ${isDecisionActive ? 'engine-scene-bezel--decision' : ''}`}>
+        <div className="absolute left-3 top-3 z-[55] h-5 w-5 border-l border-t border-emerald-400/80 pointer-events-none"></div>
+        <div className="absolute right-3 top-3 z-[55] h-5 w-5 border-r border-t border-emerald-400/80 pointer-events-none"></div>
+        <div className="absolute bottom-3 left-3 z-[55] h-5 w-5 border-b border-l border-emerald-400/80 pointer-events-none"></div>
+        <div className="absolute bottom-3 right-3 z-[55] h-5 w-5 border-b border-r border-emerald-400/80 pointer-events-none"></div>
+        {/* Live real-time card floats over the art band above the text panel. */}
+        <div className="absolute right-4 top-24 z-50 pointer-events-none select-none">
             <div
                 className="engine-telemetry-card border backdrop-blur-sm bg-[#0b101a]/90 px-3.5 py-2 text-center transition-colors duration-300"
                 style={{
@@ -1844,7 +1872,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                 </div>
             );
         })()}
-        <div className="absolute left-4 bottom-4 right-4 z-30 flex flex-wrap items-center gap-2">
+        <div className="absolute left-4 top-24 right-4 z-30 flex flex-wrap items-center gap-2">
             <span className="engine-chip engine-chip--skill bg-[#0b101a]/90 border border-white/[0.08] px-2.5 py-1 fs-micro text-slate-300 uppercase tracking-[0.18em]">{skillIcon[activeSegment.skill || 'flow']} {activeSegment.skill || 'flow'}</span>
             <span className="engine-chip engine-chip--objective bg-[#0b101a]/90 border border-white/[0.08] px-2.5 py-1 fs-micro text-slate-300 uppercase tracking-[0.18em]">{UI.objective}: <span className="normal-case tracking-normal text-slate-200">{activeSegment.objective}</span></span>
             {activeSegment.consequenceHint && <span className="engine-chip engine-chip--consequence bg-[#0b101a]/90 border border-white/[0.08] px-2.5 py-1 fs-micro text-slate-300 uppercase tracking-[0.18em]">{UI.consequence}: <span className="normal-case tracking-normal text-slate-200">{activeSegment.consequenceHint}</span></span>}
