@@ -226,6 +226,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const [isDecisionActive, setIsDecisionActive] = useState(false);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const currentImageRef = useRef<string | null>(null);
+  // The outgoing frame stays mounted one transition so a new scene fades in
+  // over the old one instead of snapping.
+  const [previousImage, setPreviousImage] = useState<string | null>(null);
   const [isImageLoading, setIsImageLoading] = useState(false);
   const [debris, setDebris] = useState<Debris[]>([]);
   const [sparks, setSparks] = useState<Spark[]>([]);
@@ -258,6 +261,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   // the whole-character burn front reaches React, so a 60fps chase re-renders the
   // line about twice a second instead of sixty times.
   const tracerRef = useRef<number>(getTracerStartIndex());
+  // Hit-stop: a real mistake freezes the world for a beat so the error lands
+  // physically instead of scrolling past. Both clocks read this ref.
+  const hitStopUntilRef = useRef(0);
   const [tracerBurnFront, setTracerBurnFront] = useState<number>(Math.floor(getTracerStartIndex()));
   const inputLengthRef = useRef(0);
   const healthRef = useRef(currentRoundHealth);
@@ -664,7 +670,11 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         setIsImageLoading(true);
         const isStoryBeat = round === 1 || round === DECISION_ROUND + 1 || round === SECTOR_ROUNDS;
         const base64 = await generateSceneImage(activeSegment.text, characterDescription, genre, isStoryBeat);
-        if (isMounted && base64) { setCurrentImage(base64); currentImageRef.current = base64; }
+        if (isMounted && base64) {
+            setPreviousImage(currentImageRef.current);
+            setCurrentImage(base64);
+            currentImageRef.current = base64;
+        }
         if (isMounted) setIsImageLoading(false);
     };
     fetchImage();
@@ -687,7 +697,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     // would tear down and rebuild this clock on every keystroke, which stalls
     // the trace whenever the player types faster than the tick rate.
     timerRef.current = window.setInterval(() => {
-        if (!transitionLockRef.current) {
+        if (!transitionLockRef.current && Date.now() >= hitStopUntilRef.current) {
             setTracePercent(prev => {
                 const increment = (BASE_INCREMENT * perkMultiplier) / stealthDivisor;
                 const newVal = prev + increment;
@@ -778,7 +788,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           const caughtAt = tracerCaughtAtRef.current;
           const armed = isTracerArmed(firstKeyAt === null ? null : Date.now() - firstKeyAt);
           const stunned = isTracerStunned(caughtAt === null ? null : Date.now() - caughtAt);
-          if (!armed || stunned) {
+          if (!armed || stunned || now < hitStopUntilRef.current) {
               frame = requestAnimationFrame(step);
               return;
           }
@@ -1111,7 +1121,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
              setOverclockCharge(c => Math.min(modifiers.maxOverclock, Math.max(0, c - 5 + modifiers.errorChargeGain)));
              const newHealth = Math.max(0, health - 1);
              setHealth(newHealth);
-             triggerImpact(newMistakes);
+            triggerImpact(newMistakes);
+            hitStopUntilRef.current = Date.now() + 120;
              if (newHealth <= 0 || newMistakes >= 10) {
                 triggerGameOver(newHealth, newMistakes);
                 return;
@@ -1772,6 +1783,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                 })}
             </svg>
         </div>
+        {previousImage && previousImage !== currentImage && (
+             <img src={previousImage} alt="" aria-hidden="true" className="engine-scene-image w-full h-full object-cover absolute inset-0" />
+        )}
         {currentImage ? (
              <img src={currentImage} alt="Narrative Visualization" className={`engine-scene-image w-full h-full object-cover transition-opacity duration-700 ${isImageLoading ? 'engine-scene-image--loading opacity-80 grayscale' : 'opacity-100'} ${isOverclockActive ? 'contrast-125 brightness-125 saturate-0 sepia hue-rotate-180' : ''}`} />
         ) : (
