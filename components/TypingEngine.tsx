@@ -1196,6 +1196,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
 
   const handleDecisionSelect = (index: number) => {
       if (!nextDecision) return;
+      audioEngine.decisionAccent(index === 0 ? 'aggressive' : 'stealth');
       const choice = nextDecision.options[index];
       const meta = applyDecisionImpact(choice.impact, choice.text, choice.id || choice.type);
       addToLog(`[DECISION] ${nextDecision.introText}`, 'neutral', 0, 0, 0, choice.preview || meta);
@@ -1219,6 +1220,12 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   useEffect(() => {
       if (!isDecisionActive) return;
       setDecisionRemaining(DECISION_WINDOW_MS);
+      audioEngine.duckMusic(true);
+      // The pause is long enough to warm both outcomes' art; whichever the
+      // player picks, its scene is already in cache when the next round asks.
+      nextDecision?.options.forEach(option => {
+          generateSceneImage(option.outcome.text, characterDescription, genre, true);
+      });
       const startedAt = Date.now();
       const tick = window.setInterval(() => {
           const left = DECISION_WINDOW_MS - (Date.now() - startedAt);
@@ -1228,7 +1235,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
               handleDecisionSelect(0);
           }
       }, 100);
-      return () => window.clearInterval(tick);
+      return () => {
+          window.clearInterval(tick);
+          audioEngine.duckMusic(false);
+      };
   }, [isDecisionActive]);
 
   const spawnOverclockSparkBurst = (charIndex: number) => {
@@ -1449,22 +1459,29 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       onCaptureFrame?.({ image: currentImageRef.current, caption: activeSegment.text, performance: performanceType, level: currentLevel });
       const stats: GameStats = {
              wpm,
-             accuracy: Math.max(0, 100 - (totalErrors * 8)), 
+             accuracy: Math.max(0, 100 - (totalErrors * 8)),
              health,
              level: currentLevel,
              round,
              score,
-             credits: Math.floor(credits + segmentCredits),
-             mistakes: totalErrors,
-             characters: activeSegment.text.length,
-             mission: missionRef.current
+             credits: segmentCredits,
         };
         onLevelComplete(stats, clamp(tracePercent + outcome.traceDelta), missionRef.current);
   };
 
   const renderActive = () => {
     const burnFront = tracerBurnFront;
-    return activeSegment.text.split('').map((char, index) => {
+    // Speech reads as speech: characters inside quotes lean italic, and the
+    // text's own pauses (—, …) carry a breath of extra space.
+    const text = activeSegment.text;
+    const quoteDepth: boolean[] = new Array(text.length).fill(false);
+    let inQuote = false;
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === '"' || text[i] === '«' || text[i] === '»') inQuote = !inQuote;
+      quoteDepth[i] = inQuote;
+    }
+    return text.split('').map((char, index) => {
+
       // Focus mode = clarity: the UPCOMING text turns bright and crisp (easier to read
       // ahead), instead of dimming. Typed chars stay saturated so progress is obvious.
       let className = isOverclockActive ? "text-emerald-50 drop-shadow-[0_0_6px_rgba(52,211,153,0.35)]" : activeSegment.type === SegmentType.BREACH ? "text-emerald-500/60" : "text-slate-500";
@@ -1480,7 +1497,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           }
         }
       }
-
       // The tracer eats the line from behind. Burned characters replace their
       // own styling so the damage reads at a glance, but the caret always wins:
       // losing sight of where you are would be the one unfair outcome.
@@ -1491,6 +1507,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         className = isOverclockActive ? "text-white bg-emerald-400 animate-pulse shadow-[0_0_15px_rgba(52,211,153,0.8)]" :
                     "engine-caret text-[#06101a]";
       }
+
+      // Prose rhythm: speech leans italic, pauses carry a breath of space.
+      if (quoteDepth[index]) className += " italic";
+      if (char === '—' || char === '…') className += " tracking-[0.35em]";
       return (
         <span key={index} ref={isCursor ? cursorRef : undefined} data-index={index} className={`${className} relative`}>
             {char}
@@ -1593,7 +1613,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                         <h2 className="font-display text-2xl md:text-3xl font-bold text-white leading-relaxed">"{nextDecision.introText}"</h2>
                    </div>
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                       <button type="button" className="engine-decision-card engine-decision-card--aggressive group relative p-6 bg-white/[0.02] border border-rose-500/35 hover:border-rose-400/75 transition-all cursor-pointer text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-400" onClick={() => handleDecisionSelect(0)}>
+                       {/* The window drains into the cards: aggression gathers a
+                           glow while the quiet option fades — hesitation chooses. */}
+                       <button type="button" className="engine-decision-card engine-decision-card--aggressive group relative p-6 bg-white/[0.02] border border-rose-500/35 hover:border-rose-400/75 transition-all cursor-pointer text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-400" style={{ boxShadow: `0 0 ${Math.round(24 * (1 - decisionRemaining / DECISION_WINDOW_MS))}px rgba(244,63,94,${0.15 + 0.35 * (1 - decisionRemaining / DECISION_WINDOW_MS)})` }} onClick={() => handleDecisionSelect(0)}>
                            <h3 className="font-display text-xl font-bold text-rose-400 mb-2 group-hover:text-rose-300">{UI.aggressive}</h3>
                            <p className="text-slate-300 fs-lead">"{nextDecision.options[0].text}"</p>
                            <div className="mt-4 fs-label text-rose-300/80 font-mono">{nextDecision.options[0].preview || describeImpact(nextDecision.options[0].impact)}</div>
@@ -1603,7 +1625,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                                <span className="fs-label text-slate-300 group-hover:text-white transition-colors">{UI.press_1.replace('[1]', '').trim()}</span>
                            </div>
                        </button>
-                       <button type="button" className="engine-decision-card engine-decision-card--stealth group relative p-6 bg-white/[0.02] border border-emerald-500/35 hover:border-emerald-400/75 transition-all cursor-pointer text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-400" onClick={() => handleDecisionSelect(1)}>
+                       <button type="button" className="engine-decision-card engine-decision-card--stealth group relative p-6 bg-white/[0.02] border border-emerald-500/35 hover:border-emerald-400/75 transition-all cursor-pointer text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-400" style={{ opacity: 1 - 0.55 * (1 - decisionRemaining / DECISION_WINDOW_MS) }} onClick={() => handleDecisionSelect(1)}>
                            <h3 className="font-display text-xl font-bold text-emerald-400 mb-2 group-hover:text-emerald-300">{UI.stealth}</h3>
                            <p className="text-slate-300 fs-lead">"{nextDecision.options[1].text}"</p>
                            <div className="mt-4 fs-label text-emerald-300/80 font-mono">{nextDecision.options[1].preview || describeImpact(nextDecision.options[1].impact)}</div>

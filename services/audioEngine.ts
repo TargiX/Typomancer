@@ -610,6 +610,29 @@ class NeuralAudioEngine {
       // Smoothly update intensity
       this.intensity = val;
   }
+
+  /**
+   * Decisions sink the soundtrack to a whisper so the pause reads physically.
+   * The SFX bus is untouched — the choice itself still lands with an accent.
+   */
+  public duckMusic(ducked: boolean) {
+      if (!this.ctx || !this.masterGain || !this.isPlaying) return;
+      this.masterGain.gain.setTargetAtTime(ducked ? 0.08 : 0.4, this.ctx.currentTime, 0.35);
+  }
+
+  /** The choice lands: a low hit for aggression, a soft pulse for stealth. */
+  public decisionAccent(kind: 'aggressive' | 'stealth') {
+      const ch = this.sfxBus();
+      if (!ch) return;
+      const { ctx, bus, now } = ch;
+      if (kind === 'aggressive') {
+          this.blip(ctx, bus, now, { freq: 110, endFreq: 55, duration: 0.4, gain: 0.22, type: 'sawtooth', cutoff: 1400 });
+          this.noiseBurst(ctx, bus, now, { duration: 0.3, gain: 0.12, type: 'lowpass', frequency: 1800 });
+      } else {
+          this.blip(ctx, bus, now, { freq: noteFreq(7, -1), duration: 0.35, gain: 0.12, type: 'sine' });
+          this.blip(ctx, bus, now + 0.1, { freq: noteFreq(0, 0), duration: 0.3, gain: 0.08, type: 'sine' });
+      }
+  }
 }
 
 export const audioEngine = new NeuralAudioEngine();

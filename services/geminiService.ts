@@ -607,8 +607,17 @@ export const generateSceneImage = async (
 
   // Generate art for authored story beats (opening, post-decision, finale), so a
   // repeated image reads as a held shot instead of an arbitrary every-third cadence.
+  // A prefetched beat still serves from cache — the decision window warms both
+  // outcomes ahead of the pick.
   const shouldGenerateRemotely = genreChanged || isStoryBeat;
   if (!shouldGenerateRemotely && lastImageDataUrl) return lastImageDataUrl;
+  if (!genreChanged) {
+    const prefetched = sceneImageCache.get(cacheKey);
+    if (prefetched) {
+      lastImageDataUrl = prefetched;
+      return prefetched;
+    }
+  }
 
   if (Date.now() < remoteImageRetryAfter) {
     const held = lastImageDataUrl || sceneImageCache.get(cacheKey);
