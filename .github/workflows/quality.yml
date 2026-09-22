@@ -39,4 +39,19 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium
+      - name: Start progress API for cloud-save e2e
+        run: |
+          pnpm exec tsx server/index.ts &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:3000/health && break || sleep 1; done
+        env:
+          DATABASE_URL: postgresql://postgres:isolated-ci-test-only@127.0.0.1:5432/typomancer_account_test
+          BETTER_AUTH_SECRET: isolated-e2e-auth-secret-at-least-32-characters
+          BETTER_AUTH_URL: http://127.0.0.1:4173
+          AUTH_TRUSTED_ORIGINS: http://127.0.0.1:4173
+          RESEND_API_KEY: test-not-a-real-resend-key
+          AUTH_EMAIL_FROM: no-reply@example.invalid
+          PORT: 3000
       - run: pnpm test:e2e
+        env:
+          E2E_CLOUD_PROGRESS: 'true'
+          PROGRESS_API_URL: http://127.0.0.1:3000

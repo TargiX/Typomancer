@@ -16,6 +16,12 @@ test('guest import, independent device login, conflicting save and guest restora
   await panel.getByLabel('Email', { exact: true }).fill(email);
   await panel.getByLabel('Password (12+ characters)', { exact: true }).fill(password);
   await panel.getByRole('button', { name: 'Create account', exact: true }).click();
+  // Signup bumps the account epoch, which remounts the app back on the menu.
+  // The bump lands after the chip already shows the email, so wait for the
+  // whole enter+sync cycle — the cloud save proves it finished — before
+  // reopening the account screen.
+  await expect.poll(async () => (await (await page.request.get('/api/progress')).json()).snapshot?.profile.credits).toBe(321);
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
   await expect(panel.getByText(email, { exact: true })).toBeVisible();
   await expect.poll(async () => (await (await page.request.get('/api/progress')).json()).snapshot?.profile.credits).toBe(321);
 
@@ -29,6 +35,10 @@ test('guest import, independent device login, conflicting save and guest restora
     await account.getByLabel('Email', { exact: true }).fill(email);
     await account.getByLabel('Password (12+ characters)', { exact: true }).fill(password);
     await account.locator('form').getByRole('button', { name: 'Sign in', exact: true }).click();
+    // Sign-in bumps the account epoch on this device too — the app remounts
+    // onto the menu and the panel closes. Reopen before asserting.
+    await expect.poll(async () => (await (await device.request.get('/api/progress')).json()).snapshot?.profile.credits).toBe(321);
+    await second.getByRole('button', { name: 'Account', exact: true }).click();
     await expect(account.getByText(email, { exact: true })).toBeVisible();
     const state = await (await device.request.get('/api/progress')).json();
     expect(state.snapshot.profile.credits).toBe(321);
@@ -37,13 +47,20 @@ test('guest import, independent device login, conflicting save and guest restora
       snapshot: { ...state.snapshot, profile: { ...state.snapshot.profile, credits: 654 } }
     } });
     expect(update.ok()).toBeTruthy();
-    // A real in-app preference write on the stale first device, not a storage mock.
+    // A real in-app preference write on the stale first device, not a storage
+    // mock. The account screen is a full-viewport portal, so leave it first.
+    await page.getByRole('button', { name: 'BACK TO DECK', exact: true }).click();
     await page.getByRole('button', { name: /THE PACT/i }).click();
     await page.getByRole('button', { name: /case/i }).click();
+    await page.getByRole('button', { name: 'Account', exact: true }).click();
     await expect(panel.getByText('Another device has a newer save')).toBeVisible();
     await panel.getByRole('button', { name: 'Use cloud save', exact: true }).click();
+    // Resolving the conflict re-enters the account — another epoch remount.
+    await page.getByRole('button', { name: 'Account', exact: true }).click();
     await expect(panel.getByText('Cloud save connected')).toBeVisible();
     await panel.getByRole('button', { name: 'Sign out', exact: true }).click();
+    // Sign-out bumps the epoch one last time.
+    await page.getByRole('button', { name: 'Account', exact: true }).click();
     await expect(panel.getByText('This device only')).toBeVisible();
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('narrativeFlowProfile')!).credits)).toBe(321);
     const snapshot = await (await device.request.get('/api/progress')).json();
