@@ -7,12 +7,11 @@ import type { GenrePack } from '../../services/genreConfig';
 import type { RunCheckpoint } from '../../services/runCheckpoint';
 import type { TypomancerChallenge } from '../../services/challenge';
 import type { SkillHeadline } from '../../services/progressAnalytics';
-import type { ProgressSummary } from '../../services/playerProgress';
 import { PACT_CLAUSES, isPactClauseActive, type PactClauseId } from '../../services/pact';
 import { stripKeyHint } from '../../services/text';
 import SystemBeacon from '../SystemBeacon';
 import EmblemTile from '../EmblemTile';
-import { AccountPanel } from '../CloudProgress';
+import { AccountDeletedNotice } from '../CloudProgress';
 
 interface MenuScreenProps {
     ui: UITranslations;
@@ -26,7 +25,6 @@ interface MenuScreenProps {
     dailyAttemptsExhausted: boolean;
     runCheckpoint: RunCheckpoint | null;
     skillHeadline: SkillHeadline;
-    progressSummary: ProgressSummary;
     pactRewardMultiplier: number;
     activePact: PactClauseId[];
     onTogglePactClause: (id: PactClauseId) => void;
@@ -53,7 +51,6 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
     dailyAttemptsExhausted,
     runCheckpoint,
     skillHeadline,
-    progressSummary,
     pactRewardMultiplier,
     activePact,
     onTogglePactClause,
@@ -77,32 +74,55 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
         typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
     );
 
+    // The record button carries the returning-player signal that used to be a
+    // standalone card — one glance of pace delta, details live on the record.
+    const recordHint = skillHeadline.sessions > 0
+        ? `${skillHeadline.deltaWpm > 0 ? '+' : ''}${skillHeadline.deltaWpm} ${ui.wpm} · ${skillHeadline.sessions} ${ui.return_sessions}`
+        : ui.operator_record_hint;
+
     return (
-        <div className="text-center space-y-7 max-w-md animate-fade-in-up">
-            <div className="space-y-5">
+        <div className="text-center max-w-md animate-fade-in-up">
+            <div className="space-y-4">
                 <SystemBeacon label={ui.system_online} />
                 <h2 className="font-display text-5xl font-bold text-white tracking-tight leading-[1.05]">{ui.main_title}</h2>
                 <p className="text-slate-400 text-base leading-relaxed">
-                    {ui.intro_desc}<br/>
+                    {ui.intro_desc}{' '}
                     <span className="text-amber-400/90">{ui.mistakes_warn}</span>
                 </p>
                 {isTouchDevice && (
                     <p className="fs-micro uppercase tracking-[0.18em] text-slate-500">{ui.keyboard_notice}</p>
                 )}
             </div>
-            <div className="flex flex-col gap-3.5">
+
+            <div className="mt-5">
+                <AccountDeletedNotice language={language} />
+            </div>
+
+            {/* PLAY — every way to start typing, one column, one primary. An
+                in-flight checkpoint takes the primary slot: continuing beats
+                starting over. */}
+            <div className="mt-8 flex flex-col gap-3">
+                {runCheckpoint && (
+                    <button
+                        onClick={onResume}
+                        className="btn-cyber btn-cyber-primary px-8 py-4 font-display font-bold tracking-[0.06em] text-[#04120b] flex items-center justify-center gap-3"
+                    >
+                        <span className="keycap">R</span>
+                        <span>{ui.resume_run} · {ui.resume_sector} {runCheckpoint.nextLevel}</span>
+                    </button>
+                )}
                 <button
                     onClick={onRelay}
-                    className="btn-cyber btn-cyber-primary px-8 py-4 font-display font-bold tracking-[0.06em] text-[#04120b] flex items-center justify-center gap-3"
+                    className={`btn-cyber px-8 py-4 font-display font-bold tracking-[0.06em] flex items-center justify-center gap-3 ${
+                        runCheckpoint ? 'btn-cyber-ghost text-emerald-200' : 'btn-cyber-primary text-[#04120b]'
+                    }`}
                 >
-                    <span className="keycap">5</span>
-                    <span>{language === 'ru' ? 'ПОСЛЕДНИЙ КАНАЛ' : 'THE LAST RELAY'}</span>
+                    <span className="keycap">1</span>
+                    <span className="flex min-w-0 flex-col items-start text-left">
+                        <span>{language === 'ru' ? 'ПОСЛЕДНИЙ КАНАЛ' : 'THE LAST RELAY'}</span>
+                        <span className="screens-btn-sub">{ui.relay_hint}</span>
+                    </span>
                 </button>
-                <p className="px-3 fs-label leading-relaxed text-slate-400">
-                    {language === 'ru'
-                        ? 'Мира заперта. Улики готовы. Один канал ещё работает. Два сектора, два решения — начни сразу.'
-                        : 'Mira is locked inside. The evidence is ready. One channel still works. Two sectors, two choices — start immediately.'}
-                </p>
                 {incomingChallenge && (
                     <div className={`screens-cut-card border p-4 text-left ${isCurrentChallenge ? 'border-amber-400/35 bg-amber-400/[0.06]' : 'border-white/10 bg-white/[0.02]'}`}>
                         <div className="fs-micro font-bold uppercase tracking-[0.2em] text-amber-300">{ui.challenge_title}</div>
@@ -114,23 +134,16 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                         ) : <p className="mt-2 fs-label leading-relaxed text-slate-400">{ui.challenge_expired}</p>}
                     </div>
                 )}
-                {runCheckpoint && (
-                    <button
-                        onClick={onResume}
-                        className="btn-cyber btn-cyber-primary px-8 py-4 font-display font-bold tracking-[0.06em] text-[#04120b] flex items-center justify-center gap-3"
-                    >
-                        <span className="keycap">R</span>
-                        <span>{ui.resume_run} · {ui.resume_sector} {runCheckpoint.nextLevel}</span>
-                    </button>
-                )}
                 <button
                     onClick={onInitialize}
                     className="btn-cyber btn-cyber-ghost text-emerald-200 px-8 py-4 font-display font-bold tracking-[0.06em] flex items-center justify-center gap-3"
                 >
-                    <span className="keycap">1</span>
-                    <span>{stripKeyHint(ui.init_link)}</span>
+                    <span className="keycap">2</span>
+                    <span className="flex min-w-0 flex-col items-start text-left">
+                        <span>{stripKeyHint(ui.init_link)}</span>
+                        <span className="screens-btn-sub">{ui.quick_session}</span>
+                    </span>
                 </button>
-                <p className="px-3 fs-micro leading-relaxed text-slate-500">{ui.quick_session}</p>
                 <button
                     onClick={onDaily}
                     disabled={dailyAttemptsExhausted}
@@ -161,112 +174,108 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                         )}
                     </span>
                 </button>
-                <button
-                    onClick={onBlackMarket}
-                    className="btn-cyber btn-cyber-ghost px-8 py-3.5 font-display font-bold tracking-[0.06em] text-emerald-200 hover:text-white transition-colors flex items-center justify-center gap-3"
-                >
-                    <span className="keycap">2</span>
-                    <span>{stripKeyHint(ui.black_market)}</span>
-                </button>
-                <button
-                    onClick={onOperatorRecord}
-                    className="btn-cyber btn-cyber-ghost px-8 py-3.5 font-display font-bold tracking-[0.06em] text-sky-200 hover:text-white transition-colors flex items-center justify-center gap-3"
-                >
-                    <span className="keycap">4</span>
-                    <span>{stripKeyHint(ui.operator_record)}</span>
-                </button>
             </div>
 
-            {/* What a returning player should be met by. The wallet is the
-                game's internal currency; this is the only reward that
-                leaves with them, and it used to be filed behind menu
-                item four. */}
-            {skillHeadline.sessions > 0 && (
-                <div className={`screens-return screens-return--${skillHeadline.deltaWpm > 0 ? 'up' : skillHeadline.deltaWpm < 0 ? 'down' : 'flat'} mx-auto`}>
-                    <div className="screens-return-figure">
-                        <strong>{skillHeadline.deltaWpm > 0 ? '+' : ''}{skillHeadline.deltaWpm}</strong>
-                        <span>{ui.wpm}</span>
-                    </div>
-                    <div className="screens-return-body">
-                        <span>{skillHeadline.hasEnoughHistory
-                            ? (skillHeadline.deltaWpm > 0 ? ui.return_faster : skillHeadline.deltaWpm < 0 ? ui.return_slower : ui.return_holding)
-                            : ui.return_early}</span>
-                        <small>
-                            {skillHeadline.sessions} {ui.return_sessions}
-                            {progressSummary.currentStreak > 1 ? ` · ${progressSummary.currentStreak} ${ui.return_streak}` : ''}
-                        </small>
+            {/* META — progression between runs. Quieter than PLAY: same column,
+                smaller row, one labelled divider instead of a second stack of
+                competing cards. */}
+            <div className="mt-8">
+                <div className="flex items-center gap-3 px-1" aria-hidden="true">
+                    <span className="fs-micro font-bold uppercase tracking-[0.24em] text-slate-600">
+                        {language === 'ru' ? 'МЕТА' : 'META'}
+                    </span>
+                    <span className="h-px flex-1 bg-white/5" />
+                </div>
+                <div className="mt-3 flex flex-col gap-3">
+                    <button
+                        onClick={onBlackMarket}
+                        className="btn-cyber btn-cyber-ghost px-8 py-3.5 font-display font-bold tracking-[0.06em] text-emerald-200 hover:text-white transition-colors flex items-center justify-center gap-3"
+                    >
+                        <span className="keycap">4</span>
+                        <span className="flex min-w-0 flex-col items-start text-left">
+                            <span>{stripKeyHint(ui.black_market)}</span>
+                            <span className="screens-btn-sub">{ui.market_subtitle}</span>
+                        </span>
+                    </button>
+                    <button
+                        onClick={onOperatorRecord}
+                        className="btn-cyber btn-cyber-ghost px-8 py-3.5 font-display font-bold tracking-[0.06em] text-sky-200 hover:text-white transition-colors flex items-center justify-center gap-3"
+                    >
+                        <span className="keycap">5</span>
+                        <span className="flex min-w-0 flex-col items-start text-left">
+                            <span>{stripKeyHint(ui.operator_record)}</span>
+                            <span className="screens-btn-sub">{recordHint}</span>
+                        </span>
+                    </button>
+
+                    {/* THE PACT — the only progression that raises the bar instead
+                        of lowering it. Perfectionist used to sit here alone; it
+                        is now one clause among five. */}
+                    <div className="screens-pact mx-auto">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (!pactOpen) onPactOpened?.();
+                                setPactOpen(!pactOpen);
+                            }}
+                            aria-expanded={pactOpen}
+                            className="flex w-full items-baseline justify-between gap-3 text-left"
+                        >
+                            <span className="screens-pact-title">
+                                {ui.pact_title}
+                                <span className="screens-pact-toggle">{pactOpen ? '−' : '+'}</span>
+                            </span>
+                            <span className={`screens-pact-reward ${pactRewardMultiplier > 1 ? 'is-active' : ''}`}>
+                                x{pactRewardMultiplier.toFixed(2)} {ui.pact_reward}
+                            </span>
+                        </button>
+                        {pactOpen && <p className="screens-pact-hint">{ui.pact_hint}</p>}
+                        {pactOpen && (
+                        <div className="screens-pact-clauses">
+                            {PACT_CLAUSES.map((clause) => {
+                                const active = isPactClauseActive(activePact, clause.id);
+                                return (
+                                    <button
+                                        key={clause.id}
+                                        type="button"
+                                        onClick={() => onTogglePactClause(clause.id)}
+                                        aria-pressed={active}
+                                        className={`screens-pact-clause ${active ? 'is-active' : ''}`}
+                                    >
+                                        <span className="screens-pact-clause-name">
+                                            {ui[PACT_CLAUSE_TEXT_KEYS[clause.id].name]}
+                                        </span>
+                                        <span className="screens-pact-clause-desc">
+                                            {ui[PACT_CLAUSE_TEXT_KEYS[clause.id].desc]}
+                                        </span>
+                                        <span className="screens-pact-clause-reward">+{Math.round(clause.reward * 100)}%</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        )}
                     </div>
                 </div>
-            )}
+            </div>
 
-            <AccountPanel language={language} />
-
-            {/* THE PACT — the only progression that raises the bar instead of
-                lowering it. Perfectionist used to sit here alone; it is now
-                one clause among five. */}
-            <div className="screens-pact mx-auto">
-                <button
-                    type="button"
-                    onClick={() => {
-                        if (!pactOpen) onPactOpened?.();
-                        setPactOpen(!pactOpen);
-                    }}
-                    aria-expanded={pactOpen}
-                    className="flex w-full items-baseline justify-between gap-3 text-left"
-                >
-                    <span className="screens-pact-title">
-                        {ui.pact_title}
-                        <span className="screens-pact-toggle">{pactOpen ? '−' : '+'}</span>
-                    </span>
-                    <span className={`screens-pact-reward ${pactRewardMultiplier > 1 ? 'is-active' : ''}`}>
-                        x{pactRewardMultiplier.toFixed(2)} {ui.pact_reward}
-                    </span>
-                </button>
-                {pactOpen && <p className="screens-pact-hint">{ui.pact_hint}</p>}
-                {pactOpen && (
-                <div className="screens-pact-clauses">
-                    {PACT_CLAUSES.map((clause) => {
-                        const active = isPactClauseActive(activePact, clause.id);
-                        return (
-                            <button
-                                key={clause.id}
-                                type="button"
-                                onClick={() => onTogglePactClause(clause.id)}
-                                aria-pressed={active}
-                                className={`screens-pact-clause ${active ? 'is-active' : ''}`}
-                            >
-                                <span className="screens-pact-clause-name">
-                                    {ui[PACT_CLAUSE_TEXT_KEYS[clause.id].name]}
-                                </span>
-                                <span className="screens-pact-clause-desc">
-                                    {ui[PACT_CLAUSE_TEXT_KEYS[clause.id].desc]}
-                                </span>
-                                <span className="screens-pact-clause-reward">+{Math.round(clause.reward * 100)}%</span>
-                            </button>
-                        );
-                    })}
-                </div>
+            {/* Footer — system chrome, demoted to micro-copy. Account lives in
+                the status strip and on its own screen. */}
+            <div className="mt-8 space-y-1.5">
+                {canInstall && (
+                    <button
+                        type="button"
+                        onClick={onInstall}
+                        className="fs-label text-slate-500 hover:text-emerald-300 transition-colors underline underline-offset-4 decoration-slate-700 mx-auto block"
+                    >
+                        {ui.install_app}
+                    </button>
                 )}
-            </div>
-
-            <p className="fs-label leading-relaxed text-slate-500 max-w-sm mx-auto">
-                <span className="text-emerald-400/80">◆</span> {ui.accuracy_hook}
-            </p>
-
-            {canInstall && (
-                <button
-                    type="button"
-                    onClick={onInstall}
-                    className="fs-label text-slate-500 hover:text-emerald-300 transition-colors underline underline-offset-4 decoration-slate-700 mx-auto"
-                >
-                    {ui.install_app}
-                </button>
-            )}
-            <div className="fs-label text-slate-600 pt-2">
-                {ui.powered_by}
-            </div>
-            <div className="fs-micro leading-relaxed text-slate-700">
-                {ui.privacy_note}
+                <div className="fs-label text-slate-600">
+                    {ui.powered_by}
+                </div>
+                <div className="fs-micro leading-relaxed text-slate-700">
+                    {ui.privacy_note}
+                </div>
             </div>
         </div>
     );

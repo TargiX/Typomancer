@@ -27,7 +27,6 @@ import {
   getEffectiveBaseline,
   getLocalDateKey,
   loadPlayerProgress,
-  summarizeProgress,
   recordRun,
   savePlayerProgress,
   setCalibration,
@@ -48,6 +47,7 @@ import HudStrip from './components/HudStrip';
 import DeathSequence from './components/DeathSequence';
 import MenuScreen from './components/screens/MenuScreen';
 import BlackMarketScreen from './components/screens/BlackMarketScreen';
+import AccountScreen from './components/screens/AccountScreen';
 import GenreSelectionScreen from './components/screens/GenreSelectionScreen';
 import StarterPerkScreen from './components/screens/StarterPerkScreen';
 import SectorCompleteScreen from './components/screens/SectorCompleteScreen';
@@ -229,7 +229,7 @@ const App: React.FC = () => {
   );
 
   const skillHeadline = useMemo(() => getSkillHeadline(playerProgress), [playerProgress]);
-  const progressSummary = useMemo(() => summarizeProgress(playerProgress), [playerProgress]);
+
 
   const activePact = useMemo(() => normalizePact(userProfile.pact), [userProfile.pact]);
   /**
@@ -557,12 +557,15 @@ const App: React.FC = () => {
                 consume();
             }
         } else if (gameState === GameState.MENU) {
-            if (e.key === '1') { initializeSession(); consume(); }
-            if (e.key === '5' || e.key === 'Enter') { initializeRelay(); consume(); }
-            if (e.key === '2') { setGameState(GameState.BLACK_MARKET); consume(); }
+            if (e.key === '1' || e.key === 'Enter') { initializeRelay(); consume(); }
+            if (e.key === '2') { initializeSession(); consume(); }
             if (e.key === '3' && !dailyAttemptsExhausted) { initializeDailySession(); consume(); }
-            if (e.key === '4') { setGameState(GameState.OPERATOR_RECORD); consume(); }
+            if (e.key === '4') { setGameState(GameState.BLACK_MARKET); consume(); }
+            if (e.key === '5') { setGameState(GameState.OPERATOR_RECORD); consume(); }
+            if (e.key.toLowerCase() === 'a') { setGameState(GameState.ACCOUNT); consume(); }
             if (e.key.toLowerCase() === 'r' && runCheckpoint) { resumeSession(); consume(); }
+        } else if (gameState === GameState.ACCOUNT) {
+            if (e.key === 'Escape') { setGameState(GameState.MENU); consume(); }
         } else if (gameState === GameState.OPERATOR_RECORD) {
             if (e.key === 'Escape') { setGameState(GameState.MENU); consume(); }
         } else if (gameState === GameState.GAME_OVER || gameState === GameState.VICTORY) {
@@ -1353,6 +1356,7 @@ const App: React.FC = () => {
           skillStackAnchor={skillStackAnchor}
           language={language}
           onToggleMusic={handleToggleMusic}
+          onAccount={gameState === GameState.MENU ? () => setGameState(GameState.ACCOUNT) : undefined}
           onToggleSkillStack={handleToggleSkillStack}
           onToggleLanguage={handleToggleLanguage}
         />
@@ -1378,7 +1382,6 @@ const App: React.FC = () => {
                     dailyAttemptsExhausted={dailyAttemptsExhausted}
                     runCheckpoint={runCheckpoint}
                     skillHeadline={skillHeadline}
-                    progressSummary={progressSummary}
                     pactRewardMultiplier={pactRewardMultiplier}
                     activePact={activePact}
                     onTogglePactClause={handleTogglePactClause}
@@ -1391,6 +1394,13 @@ const App: React.FC = () => {
                     onInstall={handleInstallApp}
                     onBlackMarket={() => setGameState(GameState.BLACK_MARKET)}
                     onOperatorRecord={() => setGameState(GameState.OPERATOR_RECORD)}
+                />
+            )}
+
+            {gameState === GameState.ACCOUNT && (
+                <AccountScreen
+                    language={language}
+                    onClose={() => setGameState(GameState.MENU)}
                 />
             )}
 

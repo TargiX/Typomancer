@@ -7,6 +7,7 @@ test('request recovery without a password and keep the account-existence respons
     await route.fulfill({ json: { status: true } });
   });
   await page.goto('/');
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
   const panel = page.getByRole('region', { name: 'Progress saving' });
   await panel.getByRole('button', { name: 'Sign in', exact: true }).click();
   await panel.getByRole('button', { name: 'Forgot password?' }).click();

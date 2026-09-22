@@ -29,6 +29,7 @@ test('verification status and guarded account deletion preserve guest and other 
     await route.fulfill({ json: { success: true } });
   });
   await page.goto('/');
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
   const panel = page.getByRole('region', { name: 'Progress saving' });
   await expect(panel).toContainText('Email not confirmed');
   await panel.getByRole('button', { name: 'Send confirmation email' }).click();
@@ -51,7 +52,8 @@ test('verification status and guarded account deletion preserve guest and other 
   await panel.getByLabel('Current password', { exact: true }).fill('correct-password-123');
   await page.screenshot({ path: '.context/account-delete-mobile.png', fullPage: true });
   await submit.click();
-  await expect(panel).toContainText('Account deleted');
+  await expect(page.getByText('Account deleted', { exact: false })).toBeVisible();
+
   expect(await page.evaluate(() => localStorage.getItem('guest-proof'))).toBe('keep');
   expect(await page.evaluate(() => localStorage.getItem('typomancer:account:other:proof'))).toBe('keep');
   expect(await page.evaluate(() => localStorage.getItem('typomancer:account:account-settings-test:proof'))).toBeNull();

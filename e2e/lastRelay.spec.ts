@@ -40,7 +40,7 @@ for (const path of [
       }
     });
     await page.goto('/');
-    await page.getByRole('button', { name: '5 THE LAST RELAY', exact: true }).click();
+    await page.getByRole('button', { name: /^1 THE LAST RELAY/ }).click();
     await expect(active(page)).toContainText('Mira whispers');
     await typeLine(page);
     await typeLine(page, path.spotted ? 6 : 0);
@@ -103,7 +103,7 @@ test('Russian quick start', async ({ page }) => {
   await page.goto('/');
   const heading = page.getByRole('heading', { name: 'Operation Black Ledger', exact: true });
   await expect(heading).toBeInViewport({ ratio: 1 });
-  const quickStart = page.getByRole('button', { name: '5 THE LAST RELAY', exact: true });
+  const quickStart = page.getByRole('button', { name: /^1 THE LAST RELAY/ });
   await expect(quickStart).toBeInViewport({ ratio: 1 });
   await page.getByRole('button', { name: /THE PACT/ }).click();
   await quickStart.scrollIntoViewIfNeeded();

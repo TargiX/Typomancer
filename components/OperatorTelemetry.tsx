@@ -171,10 +171,17 @@ const OperatorTelemetry: React.FC<OperatorTelemetryProps> = ({ language, progres
           </div>
           <svg viewBox={`0 0 ${CHART_W} ${CHART_H}`} preserveAspectRatio="none" role="img"
                aria-label={`${ui.trace}: ${headline.baselineWpm} → ${headline.currentWpm} WPM`}>
+            <defs>
+              <linearGradient id="telemetry-wpm-fill" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0" stopColor="#34d399" stopOpacity="0.22" />
+                <stop offset="1" stopColor="#34d399" stopOpacity="0" />
+              </linearGradient>
+            </defs>
             {[0.25, 0.5, 0.75].map((fraction) => (
               <line key={fraction} className="telemetry-grid" x1="0" x2={CHART_W}
                     y1={CHART_H * fraction} y2={CHART_H * fraction} />
             ))}
+            <path className="telemetry-fill" d={`${steppedPath(wpmValues, min, max)} L ${CHART_W} ${CHART_H} L 0 ${CHART_H} Z`} />
             <path className="telemetry-accuracy" d={steppedPath(accuracyValues, 0, 100)} />
             <path className="telemetry-line" d={steppedPath(wpmValues, min, max)} />
           </svg>

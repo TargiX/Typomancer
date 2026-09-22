@@ -16,6 +16,7 @@ export const GAME_FLOW_TRANSITIONS: Readonly<Record<GameState, readonly GameStat
         GameState.STARTER_PERK_SELECTION, // daily sector skips genre pick
         GameState.BLACK_MARKET,
         GameState.OPERATOR_RECORD,
+        GameState.ACCOUNT,
         GameState.LOADING               // resume checkpoint
     ],
     [GameState.GENRE_SELECTION]: [GameState.MENU, GameState.STARTER_PERK_SELECTION],
@@ -30,6 +31,7 @@ export const GAME_FLOW_TRANSITIONS: Readonly<Record<GameState, readonly GameStat
     ],
     [GameState.OPERATOR_RECORD]: [GameState.MENU, GameState.CALIBRATION],
     [GameState.BLACK_MARKET]: [GameState.MENU],
+    [GameState.ACCOUNT]: [GameState.MENU],
     [GameState.VICTORY]: [GameState.MENU],
     [GameState.GAME_OVER]: [GameState.MENU],
     [GameState.UPGRADES]: [GameState.MENU]
