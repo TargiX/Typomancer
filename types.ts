@@ -213,6 +213,8 @@ export interface UserProfile {
   upgrades: UserUpgrades;
   language?: Language;
   strictCase?: boolean;
+  /** Story pace: the tracer crawls, mistakes forgive more, rewards pay less. */
+  relaxed?: boolean;
   /** Difficulty the player asked for, in exchange for a bigger payout. */
   pact?: PactClauseId[];
 }

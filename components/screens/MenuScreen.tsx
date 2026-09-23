@@ -27,6 +27,9 @@ interface MenuScreenProps {
     skillHeadline: SkillHeadline;
     pactRewardMultiplier: number;
     activePact: PactClauseId[];
+    relaxed: boolean;
+    isNewcomer: boolean;
+    onToggleRelaxed: () => void;
     onTogglePactClause: (id: PactClauseId) => void;
     onPactOpened?: () => void;
     canInstall?: boolean;
@@ -53,7 +56,11 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
     skillHeadline,
     pactRewardMultiplier,
     activePact,
+    relaxed,
+    isNewcomer,
+    onToggleRelaxed,
     onTogglePactClause,
+
     onPactOpened,
     canInstall,
     onInstall,
@@ -141,7 +148,7 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                     <span className="keycap">2</span>
                     <span className="flex min-w-0 flex-col items-start text-left">
                         <span>{stripKeyHint(ui.init_link)}</span>
-                        <span className="screens-btn-sub">{ui.quick_session}</span>
+                        <span className="screens-btn-sub">{isNewcomer ? (language === 'ru' ? 'Полная история — начни здесь.' : 'The full story — start here.') : ui.quick_session}</span>
                     </span>
                 </button>
                 <button
@@ -205,6 +212,23 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                         <span className="flex min-w-0 flex-col items-start text-left">
                             <span>{stripKeyHint(ui.operator_record)}</span>
                             <span className="screens-btn-sub">{recordHint}</span>
+                        </span>
+                    </button>
+
+                    {/* Story pace sits beside the Pact: the one control that
+                        lowers the bar, priced like the dampener. */}
+                    <button
+                        type="button"
+                        onClick={onToggleRelaxed}
+                        aria-pressed={relaxed}
+                        className={`btn-cyber btn-cyber-ghost px-8 py-3 font-display font-bold tracking-[0.06em] transition-colors flex items-center justify-between gap-3 ${relaxed ? 'text-emerald-200 border-emerald-400/40' : 'text-slate-400 hover:text-white'}`}
+                    >
+                        <span className="flex min-w-0 flex-col items-start text-left">
+                            <span>{ui.relaxed_toggle}</span>
+                            <span className="screens-btn-sub">{ui.relaxed_hint}</span>
+                        </span>
+                        <span className={`fs-micro font-bold tracking-[0.18em] ${relaxed ? 'text-emerald-300' : 'text-slate-600'}`}>
+                            {relaxed ? ui.relaxed_on : ui.relaxed_off}
                         </span>
                     </button>
 

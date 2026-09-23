@@ -548,10 +548,12 @@ const App: React.FC = () => {
       }
       if (isPactClauseActive(activePact, 'no_grace')) mods.mistakeGraceCount = 0;
       if (isPactClauseActive(activePact, 'hunted')) mods.traceSpeedMultiplier *= HUNTED_TRACE_MULTIPLIER;
-      // Permanent trace easing is bought, so it is priced: the calm build keeps
-      // the game quieter for good and earns a quarter less for it. The difficulty
-      // preset is exempt — it is fitted to a measured pace, not purchased.
-      mods.creditMultiplier *= getComfortCreditMultiplier(u.signalDampener, META_UPGRADES.signalDampener.maxLevel);
+      // Story pace is a comfort the player chooses, so it is priced like the
+      // dampener: the tracer crawls, the payout shrinks.
+      if (userProfile.relaxed) {
+          mods.traceSpeedMultiplier *= 0.5;
+          mods.creditMultiplier *= 0.8;
+      }
       activePerks.forEach(perk => {
           mods = perk.apply(mods);
       });
@@ -560,7 +562,7 @@ const App: React.FC = () => {
       // nothing: a maxed player faced a tracer at a fifth of its intended pace.
       mods.traceSpeedMultiplier = clampTraceSpeed(mods.traceSpeedMultiplier);
       setCurrentModifiers(mods);
-  }, [activePerks, activePact, adaptiveDifficulty, userProfile.strictCase, userProfile.upgrades]);
+  }, [activePerks, activePact, adaptiveDifficulty, userProfile.strictCase, userProfile.relaxed, userProfile.upgrades]);
 
   useEffect(() => {
     return () => {
@@ -655,9 +657,16 @@ const App: React.FC = () => {
       const shareText = sessionRef.current.isDaily && sessionRef.current.dailyId
           ? (() => {
               const url = buildChallengeShareUrl(location.origin, sessionRef.current.dailyId, score, language);
+              // Wordle-style: the run's line-by-line performance as a square
+              // grid — instantly comparable, no screenshot needed.
+              const grid = storyLog
+                  .filter(item => item.performance === 'good' || item.performance === 'average' || item.performance === 'bad')
+                  .map(item => item.performance === 'good' ? '🟩' : item.performance === 'average' ? '🟨' : '🟥')
+                  .join('');
+              const gridLine = grid ? `\n${grid}\n` : '\n';
               return language === 'ru'
-                  ? `Я набрал ${score} в Дневном секторе Typomancer. Сможешь побить? ${url}`
-                  : `I scored ${score} in Typomancer's Daily Sector. Can you beat it? ${url}`;
+                  ? `Дневной сектор Typomancer · ${score} очков${gridLine}Сможешь побить? ${url}`
+                  : `Typomancer Daily Sector · ${score} pts${gridLine}Can you beat it? ${url}`;
           })()
           : language === 'ru'
             ? `Мой счёт ${score} в Typomancer: ${location.origin}`
@@ -1416,15 +1425,19 @@ const App: React.FC = () => {
                     incomingChallenge={incomingChallenge}
                     isCurrentChallenge={isCurrentChallenge}
                     dailyBrief={dailyBrief}
+                    pactRewardMultiplier={pactRewardMultiplier}
+                    activePact={activePact}
+                    relaxed={!!userProfile.relaxed}
+                    isNewcomer={playerProgress.runs.length === 0}
+                    onToggleRelaxed={() => setUserProfile(prev => ({ ...prev, relaxed: !prev.relaxed }))}
+                    onTogglePactClause={handleTogglePactClause}
                     dailyGenrePack={dailyGenrePack}
                     dailyState={dailyState}
                     dailyAttemptsLeft={dailyAttemptsLeft}
                     dailyAttemptsExhausted={dailyAttemptsExhausted}
                     runCheckpoint={runCheckpoint}
                     skillHeadline={skillHeadline}
-                    pactRewardMultiplier={pactRewardMultiplier}
-                    activePact={activePact}
-                    onTogglePactClause={handleTogglePactClause}
+
                     onPactOpened={() => captureProductEvent('typomancer_pact_opened', getAnalyticsContext())}
                     onRelay={initializeRelay}
                     onInitialize={initializeSession}

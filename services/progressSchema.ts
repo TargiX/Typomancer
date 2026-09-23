@@ -33,7 +33,7 @@ export const snapshotSchema = z.object({
     unlockedPerks: z.array(z.string().check(z.maxLength(100))).check(z.maxLength(100)),
     upgrades: z.object({ synapticWeave: upgrade, cryptoMiner: upgrade, signalDampener: upgrade,
       bufferExpansion: upgrade, focusLens: upgrade, patternScanner: upgrade }),
-    language: z.enum(['en', 'ru']), strictCase: z.boolean(), pact,
+    language: z.enum(['en', 'ru']), strictCase: z.boolean(), relaxed: z.optional(z.boolean()), pact,
     lastGenre: z.optional(genre)
   }),
   progress: z.object({ version: z.literal(1), calibration: z.nullable(calibration), runs: z.array(runSchema).check(z.maxLength(60)) }),
