@@ -112,6 +112,28 @@ const DAILY_OPENINGS: Record<StoryGenreId, Array<Record<Language, string>>> = {
       en: 'The queen offers your village one harvest in exchange for the last story nobody remembers.',
       ru: 'Королева обещает деревне один урожай в обмен на последнюю сказку, которую никто не помнит.'
     }
+  ],
+  dead_channel: [
+    {
+      en: 'The dead channel signs on at 03:00 with your voice reading tomorrow\'s police blotter.',
+      ru: 'Мёртвый канал выходит в эфир в 03:00 твоим голосом, читающим завтрашнюю сводку полиции.'
+    },
+    {
+      en: 'Every television in the darkened town turns itself to the frequency you were hired to keep silent.',
+      ru: 'Каждый телевизор в уснувшем городе сам переключается на частоту, которую тебя наняли держать немой.'
+    },
+    {
+      en: 'The emergency broadcast test runs three minutes early and lists your name among the casualties.',
+      ru: 'Проверка аварийного вещания идёт на три минуты раньше и называет твоё имя среди погибших.'
+    },
+    {
+      en: 'A caller on the open line describes the inside of your control room better than you remember it.',
+      ru: 'Звонящий в открытой линии описывает твою аппаратную изнутри лучше, чем ты её помнишь.'
+    },
+    {
+      en: 'The tape archive logs a reel recorded tonight that is already labeled with tomorrow\'s date.',
+      ru: 'Архив лент регистрирует бобину, записанную этой ночью, но уже подписанную завтрашним числом.'
+    }
   ]
 };
 

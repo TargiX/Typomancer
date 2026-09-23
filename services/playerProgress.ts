@@ -196,7 +196,7 @@ const normalizeCalibration = (value: unknown): CalibrationResult | null => {
 };
 
 const isGenre = (value: unknown): value is StoryGenreId => (
-  value === 'cyberpunk' || value === 'space_horror' || value === 'noir' || value === 'dark_fable'
+  value === 'cyberpunk' || value === 'space_horror' || value === 'noir' || value === 'dark_fable' || value === 'dead_channel'
 );
 
 const isFocus = (value: unknown): value is TypingFocus => (
