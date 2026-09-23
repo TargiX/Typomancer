@@ -460,41 +460,59 @@ class NeuralAudioEngine {
   // --- SFX ---
 
   /**
-   * One correct keystroke. Walks the pentatonic so a clean streak arpeggiates
-   * upward; `tier` (from the combo ladder) raises the octave and opens the filter
-   * so a big combo is audibly brighter than a cold start.
+   * One correct keystroke. The ladder is a two-octave pentatonic: fast streaks
+   * climb it, pauses let it settle back down — the run's own rhythm writes the
+   * melody. `tier` (from the combo ladder) raises the octave and opens the
+   * filter so a big combo is audibly brighter than a cold start.
    */
+  private lastKeyAt = 0;
+
   public keyHit(tier: ComboTier = 0) {
       const ch = this.sfxBus();
       if (!ch) return;
       const { ctx, bus, now } = ch;
 
+      const LADDER = PENTATONIC_SEMITONES.length * 2;
+      const dt = this.lastKeyAt === 0 ? Infinity : (now - this.lastKeyAt) * 1000;
+      this.lastKeyAt = now;
+      if (dt < 140) this.keyStep = Math.min(this.keyStep + 1, LADDER - 1);
+      else if (dt > 450) this.keyStep = Math.max(this.keyStep - 2, 0);
+
       const degree = this.keyStep % PENTATONIC_SEMITONES.length;
-      const loopOctave = Math.floor(this.keyStep / PENTATONIC_SEMITONES.length) % 2;
-      this.keyStep = (this.keyStep + 1) % (PENTATONIC_SEMITONES.length * 2);
-
+      const loopOctave = Math.floor(this.keyStep / PENTATONIC_SEMITONES.length);
       const baseOctave = tier >= 3 ? 1 : tier >= 2 ? 0 : -1;
-      const freq = noteFreq(PENTATONIC_SEMITONES[degree], baseOctave + loopOctave);
+      // A few cents of drift keeps a long streak from sounding like a sequencer.
+      const freq = noteFreq(PENTATONIC_SEMITONES[degree], baseOctave + loopOctave)
+          * (1 + (Math.random() - 0.5) * 0.008);
 
+      // Velocity: keystrokes that land hot hit brighter and a touch louder.
+      const vel = dt < 100 ? 1 : dt < 200 ? 0.7 : dt < 400 ? 0.45 : 0.3;
       this.blip(ctx, bus, now, {
           freq,
           duration: 0.075,
-          gain: 0.05 + (tier * 0.012),
+          gain: (0.05 + tier * 0.012) * (0.7 + vel * 0.6),
           type: 'triangle',
-          cutoff: 2600 + (tier * 1400)
+          cutoff: 2600 + tier * 1400 + vel * 800
       });
       this.noiseBurst(ctx, bus, now, {
           duration: 0.018,
-          gain: 0.03 + (tier * 0.006),
+          gain: 0.03 + tier * 0.006,
           type: 'highpass',
           frequency: 4200
       });
+
+      // Phrase accent: every eighth step gets a soft sub-octave shadow, so a
+      // streak reads as musical phrases instead of a scale exercise.
+      if (this.keyStep % 8 === 7) {
+          this.blip(ctx, bus, now, { freq: freq / 2, duration: 0.22, gain: 0.05, type: 'sine' });
+      }
   }
 
   /** A counted mistake: detuned low thud, deliberately sour against the key. */
   public keyError() {
       // Reset before the audibility guard: a muted run still breaks the combo.
       this.keyStep = 0;
+      this.lastKeyAt = 0;
       const ch = this.sfxBus();
       if (!ch) return;
       const { ctx, bus, now } = ch;

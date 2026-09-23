@@ -110,7 +110,8 @@ const GENRES: Record<StoryGenreId, Record<Language, string>> = {
   cyberpunk: { en: 'Cyberpunk', ru: 'Киберпанк' },
   space_horror: { en: 'Space Horror', ru: 'Космохоррор' },
   noir: { en: 'Noir', ru: 'Нуар' },
-  dark_fable: { en: 'Dark Fable', ru: 'Тёмная сказка' }
+  dark_fable: { en: 'Dark Fable', ru: 'Тёмная сказка' },
+  dead_channel: { en: 'Dead Channel', ru: 'Мёртвый канал' }
 };
 
 const buildSignalPoints = (runs: RunRecord[]): string => {

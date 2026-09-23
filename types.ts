@@ -18,7 +18,7 @@ export enum GameState {
   BLACK_MARKET = 'BLACK_MARKET'
 }
 
-export type StoryGenreId = 'cyberpunk' | 'space_horror' | 'noir' | 'dark_fable';
+export type StoryGenreId = 'cyberpunk' | 'space_horror' | 'noir' | 'dark_fable' | 'dead_channel';
 
 export enum StoryMood {
   NEUTRAL = 'NEUTRAL',

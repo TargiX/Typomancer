@@ -64,6 +64,15 @@ export const GenreIcon: React.FC<{ genre: StoryGenreId; className?: string }> = 
         );
     }
 
+    if (genre === 'dead_channel') {
+        return (
+            <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect x="3" y="6" width="18" height="13" rx="1.5" stroke="currentColor" strokeWidth="2" />
+                <path d="m9 2 3 4 3-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M7 11h2m2 0h2m2 0h2M7 14.5h4m2 0h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.7" />
+            </svg>
+        );
+    }
     return (
         <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />

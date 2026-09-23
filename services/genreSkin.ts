@@ -733,11 +733,172 @@ const DARK_FABLE: GenreSkin = {
   }
 };
 
+const DEAD_CHANNEL: GenreSkin = {
+  market: {
+    menuButton: enRu('[2] THE PARTS SHELF', '[2] ПОЛКА ЗАПЧАСТЕЙ'),
+    title: enRu('THE PARTS SHELF', 'ПОЛКА ЗАПЧАСТЕЙ'),
+    subtitle: enRu('Permanent station fittings that carry between broadcasts', 'Постоянные доработки станции между эфирами'),
+    install: enRu('WIRE IN', 'ВПАЯТЬ'),
+    currency: enRu('W', 'W'),
+    availCredits: enRu('Available Watts', 'Доступные Ватты')
+  },
+  meters: {
+    heat: enRu('Interference', 'Помехи'),
+    trust: enRu('Signal Lock', 'Захват'),
+    evidence: enRu('Recordings', 'Записи'),
+    route: enRu('Feed', 'Эфир'),
+    security: enRu('Bleed-Through', 'Просачивание'),
+    health: enRu('Health', 'Здоровье'),
+    focus: enRu('Carrier', 'Несущая'),
+    credits: enRu('Watts', 'Ватты'),
+    score: enRu('Rating', 'Рейтинг'),
+    wallet: enRu('Meter', 'Счётчик')
+  },
+  focus: {
+    name: enRu('Dead Air', 'Мёртвый Эфир'),
+    active: enRu('DEAD AIR HELD', 'МЁРТВЫЙ ЭФИР ДЕРЖИТСЯ'),
+    ready: enRu('TAB ⚡ DEAD AIR', 'TAB ⚡ МЁРТВЫЙ ЭФИР'),
+    charge: enRu('CARRIER', 'НЕСУЩАЯ'),
+    title: enRu('Type correctly to charge the carrier. Press TAB when full.', 'Печатай верно, чтобы зарядить несущую. Нажми TAB при полном заряде.'),
+    hint: enRu('TAB holds dead air when charged: bleed-through pauses, mistakes hurt less, rewards double.', 'TAB держит мёртвый эфир при заряде: просачивание заморожено, ошибки мягче, награды удвоены.')
+  },
+  segments: {
+    breachInit: enRu('>> PATCH_BAY_OPEN // EXACT_COORDINATES_REQUIRED', '>> КОММУТАЦИЯ_ОТКРЫТА // НУЖНЫ ТОЧНЫЕ КООРДИНАТЫ'),
+    dialogInit: enRu('OPEN LINE // PUNCTUATION MATTERS', 'ОТКРЫТАЯ ЛИНИЯ // ВАЖНА ПУНКТУАЦИЯ'),
+    signalInit: enRu('TIMECODE READ // NUMBERS AND SYMBOLS', 'ЧТЕНИЕ ТАЙМКОДА // ЧИСЛА И СИМВОЛЫ'),
+    criticalOverride: enRu('EMERGENCY OVERRIDE', 'АВАРИЙНЫЙ ПЕРЕХВАТ')
+  },
+  decisions: {
+    aggressive: enRu('KILL THE FEED', 'УБИТЬ ЭФИР'),
+    stealth: enRu('REROUTE', 'ПЕРЕНАПРАВИТЬ'),
+    tactical: enRu('BROADCAST DECISION REQUIRED', 'ТРЕБУЕТСЯ РЕШЕНИЕ ПО ЭФИРУ')
+  },
+  routes: {
+    balanced: enRu('BALANCED', 'БАЛАНС'),
+    silent: enRu('LOW POWER', 'МАЛАЯ МОЩНОСТЬ'),
+    loud: enRu('FULL CARRIER', 'ПОЛНАЯ НЕСУЩАЯ')
+  },
+  run: {
+    loadoutTitle: enRu('CONFIGURE THE BOARD', 'НАСТРОЙКА ПУЛЬТА'),
+    loadoutSubtitle: enRu('Pick the patch that defines your first hour on air.', 'Выбери коммутацию, которая задаст первый час в эфире.'),
+    selectUpgrade: enRu('SELECT STATION FITTING', 'ВЫБОР ДОРАБОТКИ СТАНЦИИ'),
+    seqComplete: enRu('SEGMENT SIGNED OFF', 'СЕГМЕНТ ОТБЫЛ'),
+    generatingSector: enRu('TUNING NEXT HOUR...', 'НАСТРОЙКА СЛЕДУЮЩЕГО ЧАСА...'),
+    generatingScenario: enRu('CUEING SCENARIO...', 'ПОДГОТОВКА СЦЕНАРИЯ...'),
+    legendaryDrop: enRu('⚠ UNLISTED FREQUENCY FOUND', '⚠ НАЙДЕНА НЕЧИСЛЕННАЯ ЧАСТОТА'),
+    operationDossier: enRu('STATION LOG', 'ЖУРНАЛ СТАНЦИИ'),
+    mistakesWarn: enRu('Every typo changes interference, signal lock, recordings, and the sign-off.', 'Каждая опечатка меняет помехи, захват, записи и отбой.'),
+    emptyLog: enRu('Station log is empty.\nAwaiting sign-on...', 'Журнал станции пуст.\nОжидание выхода в эфир...'),
+    systemOnline: enRu('CARRIER UP', 'НЕСУЩАЯ В ЭФИРЕ'),
+    levelWord: enRu('Hour', 'Час'),
+    criticalFailure: enRu('CARRIER LOST', 'НЕСУЩАЯ ПОТЕРЯНА')
+  },
+  endings: {
+    ghost: enRu('Clean Sign-Off', 'Чистый отбой'),
+    loud: enRu('Open Broadcast', 'Открытое вещание'),
+    broken: enRu('Dropped Carrier', 'Сорванная несущая'),
+    survivor: enRu('Last Engineer', 'Последний инженер')
+  },
+  upgrades: {
+    synapticWeave: {
+      name: enRu('Tube Reserve', 'Запас Ламп'),
+      desc: enRu('Increases Max Health permanently.', 'Постоянно увеличивает макс. здоровье.')
+    },
+    cryptoMiner: {
+      name: enRu('Power Tap', 'Отвод Мощности'),
+      desc: enRu('Increases Watt earnings permanently.', 'Постоянно увеличивает заработок ватт.')
+    },
+    signalDampener: {
+      name: enRu('Ferrite Choke', 'Ферритовый Дроссель'),
+      desc: enRu('Slows Bleed-Through. Comfort costs income: fully invested, broadcasts pay 25% fewer watts.', 'Замедляет просачивание. Комфорт стоит дохода: при полной прокачке эфиры приносят на 25% меньше ватт.')
+    },
+    bufferExpansion: {
+      name: enRu('Capacitor Bank', 'Батарея Конденсаторов'),
+      desc: enRu('Increases Carrier charge capacity.', 'Увеличивает ёмкость заряда несущей.')
+    },
+    focusLens: {
+      name: enRu('Tuning Fork', 'Камертон'),
+      desc: enRu('Extends Dead Air and adds soft typo forgiveness.', 'Продлевает мёртвый эфир и добавляет мягкое прощение ошибок.')
+    },
+    patternScanner: {
+      name: enRu('Frequency Counter', 'Частотомер'),
+      desc: enRu('Patch bay drills yield more watts and recordings.', 'Сегменты коммутации дают больше ватт и записей.')
+    }
+  },
+  perks: {
+    neural_buffer: {
+      name: enRu('Static Blanket', 'Шумовое Одеяло'),
+      tiers: [
+        enRu('1 mistake per segment keeps your streak alive, for 30 Watts.', '1 ошибка за сегмент сохраняет серию за 30 Ватт.'),
+        enRu('2 mistakes per segment keep your streak alive, for 25 Watts each.', '2 ошибки за сегмент сохраняют серию, по 25 Ватт за каждую.'),
+        enRu('3 mistakes per segment keep your streak alive, for 20 Watts each.', '3 ошибки за сегмент сохраняют серию, по 20 Ватт за каждую.')
+      ]
+    },
+    ghost_protocol: {
+      name: enRu('Low-Power Mode', 'Режим Малой Мощности'),
+      tiers: [
+        enRu('Bleed-Through grows 15% slower while your combo is 25 or higher.', 'Просачивание растёт на 15% медленнее, пока комбо не ниже 25.'),
+        enRu('Bleed-Through grows 25% slower while your combo is 20 or higher.', 'Просачивание растёт на 25% медленнее, пока комбо не ниже 20.'),
+        enRu('Bleed-Through grows 35% slower while your combo is 15 or higher.', 'Просачивание растёт на 35% медленнее, пока комбо не ниже 15.')
+      ]
+    },
+    adrenaline_spike: {
+      name: enRu('Second Wind', 'Второе Дыхание'),
+      tiers: [
+        enRu('Typing >80 WPM regenerates +2 HP.', 'Скорость >80 СЛ/М восстанавливает +2 ОЗ.'),
+        enRu('Typing >70 WPM regenerates +3 HP.', 'Скорость >70 СЛ/М восстанавливает +3 ОЗ.'),
+        enRu('Typing >60 WPM regenerates +4 HP.', 'Скорость >60 СЛ/М восстанавливает +4 ОЗ.')
+      ]
+    },
+    titanium_firewall: {
+      name: enRu('Grounded Rack', 'Заземлённая Стойка'),
+      tiers: [
+        enRu('A line typed with zero mistakes restores 2 Health.', 'Строка без единой ошибки восстанавливает 2 здоровья.'),
+        enRu('A line typed with zero mistakes restores 3 Health.', 'Строка без единой ошибки восстанавливает 3 здоровья.'),
+        enRu('A line typed with zero mistakes restores 5 Health.', 'Строка без единой ошибки восстанавливает 5 здоровья.')
+      ]
+    },
+    critical_override: {
+      name: enRu('Emergency Cut', 'Аварийный Срез'),
+      tiers: [
+        enRu('Every 50 unbroken correct keystrokes throw the bleed back 14 characters.', 'Каждые 50 верных нажатий подряд отбрасывают просачивание на 14 символов.'),
+        enRu('Every 35 unbroken correct keystrokes throw the bleed back 18 characters.', 'Каждые 35 верных нажатий подряд отбрасывают просачивание на 18 символов.'),
+        enRu('Every 25 unbroken correct keystrokes throw the bleed back 22 characters.', 'Каждые 25 верных нажатий подряд отбрасывают просачивание на 22 символа.')
+      ]
+    },
+    focus_lattice: {
+      name: enRu('Carrier Lattice', 'Решётка Несущей'),
+      tiers: [
+        enRu('Dead Air lasts 1s longer and forgives +1 typo.', 'Мёртвый эфир длится на 1с дольше и прощает +1 ошибку.'),
+        enRu('Dead Air lasts 2s longer and forgives +2 typos.', 'Мёртвый эфир длится на 2с дольше и прощает +2 ошибки.'),
+        enRu('Dead Air lasts 3s longer and forgives +3 typos.', 'Мёртвый эфир длится на 3с дольше и прощает +3 ошибки.')
+      ]
+    },
+    error_siphon: {
+      name: enRu('Noise Harvest', 'Сбор Шума'),
+      tiers: [
+        enRu('Mistakes feed +2 Carrier charge instead of only punishing you.', 'Ошибки дают +2 заряда несущей вместо чистого наказания.'),
+        enRu('Mistakes feed +4 Carrier charge.', 'Ошибки дают +4 заряда несущей.'),
+        enRu('Mistakes feed +7 Carrier charge.', 'Ошибки дают +7 заряда несущей.')
+      ]
+    },
+    evidence_lens: {
+      name: enRu('Reel Scanner', 'Сканер Лент'),
+      tiers: [
+        enRu('Clean segments generate 15% more recordings.', 'Чистые сегменты дают на 15% больше записей.'),
+        enRu('Clean segments generate 30% more recordings.', 'Чистые сегменты дают на 30% больше записей.'),
+        enRu('Clean segments generate 50% more recordings.', 'Чистые сегменты дают на 50% больше записей.')
+      ]
+    }
+  }
+};
+
 export const GENRE_SKINS: Record<StoryGenreId, GenreSkin> = {
   cyberpunk: CYBERPUNK,
   space_horror: SPACE_HORROR,
   noir: NOIR,
-  dark_fable: DARK_FABLE
+  dark_fable: DARK_FABLE,
+  dead_channel: DEAD_CHANNEL
 };
 
 export const getGenreSkin = (genre: StoryGenreId = 'cyberpunk'): GenreSkin =>

@@ -99,7 +99,7 @@ const signal = (good: string, medium: string, bad: string, objective: string): L
   objective
 });
 
-export const GENRE_ORDER: StoryGenreId[] = ['cyberpunk', 'space_horror', 'noir', 'dark_fable'];
+export const GENRE_ORDER: StoryGenreId[] = ['cyberpunk', 'space_horror', 'noir', 'dark_fable', 'dead_channel'];
 
 export const GENRE_PACKS: Record<StoryGenreId, GenrePack> = {
   cyberpunk: {
@@ -503,6 +503,107 @@ export const GENRE_PACKS: Record<StoryGenreId, GenrePack> = {
         silent: (level) => `Глава ${level} закрывается мягко; лес перестает повторять ошибки.`,
         loud: (level) => `Глава ${level} кончается громко; каждая опечатка становится стихом леса.`,
         default: (level) => `Глава ${level} пережита, но сказка вырастает еще один шип.`
+      }
+    }
+  },
+  dead_channel: {
+    id: 'dead_channel',
+    chip: '📺',
+    accent: '#a3e635',
+    name: { en: 'Dead Channel', ru: 'Мёртвый канал' },
+    tagline: { en: 'Analog static, a frequency that broadcasts what has not happened yet.', ru: 'Аналоговый шум, частота, которая вещает то, чего ещё не было.' },
+    storyGenre: 'analog horror typing broadcast',
+    worldRules: 'World: a dying analog broadcast station at the edge of town — CRT monitors, reel-to-reel tape, VU meters, coax cable, emergency alert tones, a frequency that should be empty. STRICTLY analog technology: dials, switches, patch cords, vacuum tubes, magnetic tape. FORBIDDEN vocabulary: internet, server, drone, AI, digital, cyber, neon, hacking as software. BREACH drills = frequency coordinates, tape counter marks, switchboard patches (e.g. "FREQ 88.7 // PATCH 4-B-12"). SIGNAL drills = timecodes, channel numbers, VU readings, countdown slates.',
+    heroName: 'Vera the Night Engineer',
+    heroBrief: { en: 'night-shift engineer keeping a dead frequency on air while it broadcasts tomorrow', ru: 'ночной инженер, держащий мёртвую частоту в эфире, пока она вещает завтра' },
+    characterPrompt: 'lone broadcast engineer in a dark control room, CRT glow on her face, headphones around neck, analog dials and tape reels',
+    artStyle: 'Analog horror broadcast still, CRT phosphor glow, scanlines, VHS grain, dark control room, sickly green and amber, cinematic 16:9',
+    svgHueOffset: 60,
+    ui: {
+      mainTitle: { en: 'The Frequency That Answers First', ru: 'Частота, которая отвечает первой' },
+      introDesc: { en: 'Type to hold the signal open, choose what goes on air, survive until the broadcast ends.', ru: 'Печатай, чтобы держать сигнал открытым; выбирай, что выйдет в эфир; доживи до конца трансляции.' },
+      campaignGoal: { en: 'Goal: survive four hours on air and cut the feed clean.', ru: 'Цель: продержаться четыре часа в эфире и обрезать сигнал чисто.' },
+      victoryTitle: { en: 'FEED CUT CLEAN', ru: 'ЭФИР ОБРЕЗАН ЧИСТО' },
+      connectionSevered: { en: 'The carrier dropped before you could cut it — something else is still broadcasting.', ru: 'Несущая упала раньше, чем ты успел обрезать — что-то ещё продолжает вещать.' }
+    },
+    local: {
+      en: {
+        protagonist: 'A night engineer with solder burns on her fingers and a dead channel that will not stay dead.',
+        start: 'Vera powers up the board at 03:00 and the dead channel is already mid-sentence.',
+        levelStart: [
+          'Hour one hums through a control room where every VU needle twitches in unison.',
+          'Hour two brings a caller who reads tomorrow\'s obituaries on the open line.',
+          'Hour three opens the tape archive where every reel is labeled with your name.',
+          'The final hour waits behind a transmitter that has started breathing.'
+        ],
+        warmObjective: 'Warm-up: hold the carrier',
+        warmHint: 'Clean typing keeps the static from forming words',
+        sectorObjective: (level) => `Hour ${level}: on air`
+      },
+      ru: {
+        protagonist: 'Ночной инженер со следами припоя на пальцах и мёртвым каналом, который не хочет умирать.',
+        start: 'Вера включает пульт в 03:00, а мёртвый канал уже говорит на середине фразы.',
+        levelStart: [
+          'Час первый гудит в аппаратной, где все стрелки VU дрожат в унисон.',
+          'Час второй приносит звонящего, который читает завтрашние некрологи в открытую линию.',
+          'Час третий открывает архив лент, где каждая бобина подписана твоим именем.',
+          'Последний час ждёт за передатчиком, который начал дышать.'
+        ],
+        warmObjective: 'Разогрев: держи несущую',
+        warmHint: 'Чистый набор не даёт шуму сложиться в слова',
+        sectorObjective: (level) => `Час ${level}: в эфире`
+      }
+    },
+    branches: {
+      en: [
+        flow('You ride the gain and the dead channel settles into a voice that knows your shift schedule.', 'You hold the carrier, but the VU needles start spelling letters.', 'The signal slips and the static says your name in your own voice.', 'Flow: ride the gain steady'),
+        breach('>> patch_bay --freq 88.7', '>> tape_seek /reel-13', '>> CARRIER_LOST :: OPEN', 'Patch bay: exact coordinates'),
+        dialog('"Stay on the line," you tell the caller. "Tell me what happens at dawn."', '"Stay—on—the—line," you beg, and the dial tone answers in your voice.', '"You already know," it says, and the line goes to snow.', 'Dialog: voices on the wire'),
+        signal('03:13 // carrier_hold', '03:?? // bleed_through', '00:00 // FEED_OPEN', 'Timecodes: broadcast clock'),
+        flow('You cut the feed at the exact frame the broadcast predicted you would.', 'You reach the switch, but the transmitter has already chosen a new frequency.', 'The feed cuts itself and the silence keeps transmitting.', 'Flow: long sign-off line')
+      ],
+      ru: [
+        flow('Ты ведёшь усиление, и мёртвый канал укладывается в голос, знающий твоё расписание смен.', 'Ты держишь несущую, но стрелки VU начинают складываться в буквы.', 'Сигнал срывается, и шум произносит твоё имя твоим же голосом.', 'Поток: веди усиление ровно'),
+        breach('>> patch_bay --freq 88.7', '>> tape_seek /reel-13', '>> CARRIER_LOST :: OPEN', 'Коммутация: точные координаты'),
+        dialog('«Оставайтесь на линии,» говоришь ты звонящему. «Скажите, что будет на рассвете.»', '«Оставайтесь—на—линии,» молишь ты, и гудок отвечает твоим голосом.', '«Ты уже знаешь,» отвечает оно, и линия уходит в снег.', 'Диалог: голоса в проводах'),
+        signal('03:13 // carrier_hold', '03:?? // bleed_through', '00:00 // FEED_OPEN', 'Таймкоды: эфирные часы'),
+        flow('Ты обрезаешь эфир ровно на том кадре, который трансляция предсказала.', 'Ты тянешься к рубильнику, но передатчик уже выбрал новую частоту.', 'Эфир обрезает себя сам, и тишина продолжает вещать.', 'Поток: длинная строка отбоя')
+      ]
+    },
+    decision: {
+      en: {
+        introHot: 'The emergency tone fires on its own; the script it reads is tonight\'s schedule.',
+        introCool: 'Two moves: kill the transmitter or reroute the feed through the dead archive.',
+        aggressive: 'Kill the transmitter and burn the tape archive',
+        stealth: 'Reroute the feed through the archive and let it broadcast itself out',
+        aggressiveOutcome: 'You drop the transmitter and the building exhales a decade of dead air.',
+        stealthOutcome: '>> feed_reroute --archive 13 --ttl 06'
+      },
+      ru: {
+        introHot: 'Аварийный тон срабатывает сам; сценарий, который он читает — расписание этой ночи.',
+        introCool: 'Два хода: убить передатчик или пустить эфир через мёртвый архив.',
+        aggressive: 'Убить передатчик и сжечь архив лент',
+        stealth: 'Пустить эфир через архив и дать ему вывещать себя до конца',
+        aggressiveOutcome: 'Ты роняешь передатчик, и здание выдыхает десятилетие мёртвого эфира.',
+        stealthOutcome: '>> feed_reroute --archive 13 --ttl 06'
+      }
+    },
+    summary: {
+      en: {
+        finalClean: 'You cut the feed on the predicted frame. The static forgets your voice by morning.',
+        finalLoud: 'The sign-off screams across every channel, and the whole town hears its own tomorrow.',
+        finalPartial: 'You cut enough of the feed to leave, but one frequency keeps your chair warm.',
+        silent: (level) => `Hour ${level} ends quiet; the needles stop spelling.`,
+        loud: (level) => `Hour ${level} ends loud; every typo goes out live on the open band.`,
+        default: (level) => `Hour ${level} is survived, but the log gains another impossible entry.`
+      },
+      ru: {
+        finalClean: 'Ты обрезаешь эфир на предсказанном кадре. К утру шум забывает твой голос.',
+        finalLoud: 'Отбой кричит по всем каналам, и весь город слышит своё завтра.',
+        finalPartial: 'Ты обрезаешь достаточно эфира, чтобы уйти, но одна частота греет твоё кресло.',
+        silent: (level) => `Час ${level} кончается тихо; стрелки перестают складывать буквы.`,
+        loud: (level) => `Час ${level} кончается громко; каждая опечатка уходит в открытый эфир.`,
+        default: (level) => `Час ${level} пережит, но журнал получает ещё одну невозможную запись.`
       }
     }
   }
