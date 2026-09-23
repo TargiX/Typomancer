@@ -3,7 +3,7 @@ import { playerStorage } from './playerStorage.ts';
 
 export const RUN_CHECKPOINT_STORAGE_KEY = 'typomancerRunCheckpoint';
 const CHECKPOINT_VERSION = 1;
-const GENRES: StoryGenreId[] = ['cyberpunk', 'space_horror', 'noir', 'dark_fable'];
+const GENRES: StoryGenreId[] = ['cyberpunk', 'space_horror', 'noir', 'dark_fable', 'dead_channel'];
 
 export interface SavedPerk {
   groupId: string;

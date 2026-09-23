@@ -6,7 +6,7 @@ import { z } from 'zod/mini';
 const count = z.number().check(z.int(), z.minimum(0), z.maximum(1e12));
 const percent = z.number().check(z.minimum(0), z.maximum(100));
 const speed = z.number().check(z.minimum(0), z.maximum(10000));
-const genre = z.enum(['cyberpunk', 'space_horror', 'noir', 'dark_fable']);
+const genre = z.enum(['cyberpunk', 'space_horror', 'noir', 'dark_fable', 'dead_channel']);
 const pact = z.array(z.enum(['strict_case', 'no_grace', 'hunted', 'exacting', 'hot_start'])).check(z.maxLength(5));
 const date = z.iso.datetime();
 const calibration = z.object({
