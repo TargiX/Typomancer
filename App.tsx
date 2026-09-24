@@ -1376,17 +1376,14 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="screens-app-shell min-h-screen bg-[#070a11] text-slate-200 flex flex-col md:flex-row font-mono overflow-hidden">
+    <div className="screens-app-shell min-h-screen bg-[#0e0d10] text-slate-200 flex flex-col md:flex-row font-mono overflow-hidden">
+      {/* The desk the game sits on: matte grain and a warm pool of light, no
+          frame brackets. The deck frame drew a second set of corners around
+          every panel that already had its own. */}
       <div className="screens-living-backdrop" aria-hidden="true">
-        <span className="screens-ambient-blob screens-ambient-blob-emerald" />
-        <span className="screens-ambient-blob screens-ambient-blob-indigo" />
+        <span className="screens-desk-light" />
+        <span className="screens-grain" />
         <span className="screens-vignette" />
-      </div>
-      <div className="screens-deck-frame" aria-hidden="true">
-        <span className="screens-deck-corner screens-deck-corner-tl" />
-        <span className="screens-deck-corner screens-deck-corner-tr" />
-        <span className="screens-deck-corner screens-deck-corner-bl" />
-        <span className="screens-deck-corner screens-deck-corner-br" />
       </div>
 
       {deathSequenceActive && <DeathSequence label={UI.signal_lost} />}
@@ -1413,10 +1410,6 @@ const App: React.FC = () => {
 
 
       <div className={`relative z-10 flex w-full flex-col md:h-screen overflow-hidden ${isTyping ? '' : 'pt-10'} ${inSimulation ? 'h-[100dvh]' : ''}`}>
-        <div className="absolute inset-0 opacity-5 pointer-events-none"
-             style={{ backgroundImage: 'linear-gradient(#334155 1px, transparent 1px), linear-gradient(90deg, #334155 1px, transparent 1px)', backgroundSize: '40px 40px' }}>
-        </div>
-
         <div className={`flex-1 min-h-0 flex justify-center p-2 sm:p-6 relative z-10 ${gameState === GameState.MENU ? 'items-start overflow-y-auto' : 'items-center'}`}>
             {gameState === GameState.MENU && (
                 <MenuScreen

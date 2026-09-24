@@ -13,7 +13,7 @@ interface GenreSelectionScreenProps {
 }
 
 const GenreSelectionScreen: React.FC<GenreSelectionScreenProps> = ({ ui, language, onSelect, onBack }) => (
-    <div className="screens-cut-panel w-full max-w-4xl max-h-[calc(100vh-3rem)] bg-[#0b101a]/95 border border-white/[0.07] p-8 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_80px_rgba(0,0,0,0.4)] animate-fade-in-up flex flex-col overflow-hidden">
+    <div className="screens-cut-panel w-full max-w-4xl max-h-[calc(100vh-3rem)] bg-[#151418]/95 border border-white/[0.07] p-8 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_80px_rgba(0,0,0,0.4)] animate-fade-in-up flex flex-col overflow-hidden">
         <div className="shrink-0 border-b border-white/[0.06] pb-5 mb-6 text-center">
             <h2 className="font-display text-3xl font-bold text-white mb-2 tracking-tight">{ui.genre_title}</h2>
             <p className="text-slate-400 fs-body">{ui.genre_subtitle}</p>

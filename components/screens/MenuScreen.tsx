@@ -9,7 +9,7 @@ import type { TypomancerChallenge } from '../../services/challenge';
 import type { SkillHeadline } from '../../services/progressAnalytics';
 import { PACT_CLAUSES, isPactClauseActive, type PactClauseId } from '../../services/pact';
 import { stripKeyHint } from '../../services/text';
-import SystemBeacon from '../SystemBeacon';
+import KeycapWordmark from '../KeycapWordmark';
 import EmblemTile from '../EmblemTile';
 import { AccountDeletedNotice } from '../CloudProgress';
 
@@ -88,94 +88,99 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
         : ui.operator_record_hint;
 
     return (
-        <div className="text-center max-w-md animate-fade-in-up">
-            <div className="space-y-4">
-                <SystemBeacon label={ui.system_online} />
-                <h2 className="font-display text-5xl font-bold text-white tracking-tight leading-[1.05]">{ui.main_title}</h2>
-                <p className="text-slate-400 text-base leading-relaxed">
+        <div className="menu-screen animate-fade-in-up">
+            {/* TITLE — the name of the game, set in keycaps that type themselves
+                in. The mission title sits under it as a dossier label, and the
+                pitch is set in the prose face the story is typed in. */}
+            <header className="menu-title">
+                <KeycapWordmark />
+                <div className="menu-dossier">
+                    <span className="menu-dossier-rule" aria-hidden="true" />
+                    <h2 className="menu-dossier-title">{ui.main_title}</h2>
+                    <span className="menu-dossier-rule" aria-hidden="true" />
+                </div>
+                <p className="menu-pitch">
                     {ui.intro_desc}{' '}
-                    <span className="text-amber-400/90">{ui.mistakes_warn}</span>
+                    <em>{ui.mistakes_warn}</em>
                 </p>
                 {isTouchDevice && (
                     <p className="fs-micro uppercase tracking-[0.18em] text-slate-500">{ui.keyboard_notice}</p>
                 )}
-            </div>
+            </header>
 
             <div className="mt-5">
                 <AccountDeletedNotice language={language} />
             </div>
 
-            {/* PLAY — every way to start typing, one column, one primary. An
-                in-flight checkpoint takes the primary slot: continuing beats
-                starting over. */}
-            <div className="mt-8 flex flex-col gap-3">
+            {/* PLAY — laid out like a keyboard cluster: one wide modifier on the
+                top row, two alphas under it. An in-flight checkpoint takes the
+                primary slot: continuing beats starting over. */}
+            <div className="menu-keys mt-7">
                 {runCheckpoint && (
                     <button
                         onClick={onResume}
-                        className="btn-cyber btn-cyber-primary px-8 py-4 font-display font-bold tracking-[0.06em] text-[#04120b] flex items-center justify-center gap-3"
+                        className="menu-key menu-key--wide btn-cyber btn-cyber-primary"
                     >
                         <span className="keycap">R</span>
-                        <span>{ui.resume_run} · {ui.resume_sector} {runCheckpoint.nextLevel}</span>
+                        <span className="menu-key-text">
+                            <span className="menu-key-title">{ui.resume_run} · {ui.resume_sector} {runCheckpoint.nextLevel}</span>
+                        </span>
                     </button>
                 )}
                 <button
                     onClick={onRelay}
-                    className={`btn-cyber px-8 py-4 font-display font-bold tracking-[0.06em] flex items-center justify-center gap-3 ${
-                        runCheckpoint ? 'btn-cyber-ghost text-emerald-200' : 'btn-cyber-primary text-[#04120b]'
-                    }`}
+                    className={`menu-key menu-key--wide btn-cyber ${runCheckpoint ? 'btn-cyber-ghost' : 'btn-cyber-primary'}`}
                 >
                     <span className="keycap">1</span>
-                    <span className="flex min-w-0 flex-col items-start text-left">
-                        <span>{language === 'ru' ? 'ПОСЛЕДНИЙ КАНАЛ' : 'THE LAST RELAY'}</span>
+                    <span className="menu-key-text">
+                        <span className="menu-key-title">{language === 'ru' ? 'ПОСЛЕДНИЙ КАНАЛ' : 'THE LAST RELAY'}</span>
                         <span className="screens-btn-sub">{ui.relay_hint}</span>
                     </span>
+                    {!runCheckpoint && <span className="menu-key-enter" aria-hidden="true">↵</span>}
                 </button>
                 {incomingChallenge && (
-                    <div className={`screens-cut-card border p-4 text-left ${isCurrentChallenge ? 'border-amber-400/35 bg-amber-400/[0.06]' : 'border-white/10 bg-white/[0.02]'}`}>
+                    <div className={`menu-key--wide screens-cut-card border p-4 text-left ${isCurrentChallenge ? 'border-amber-400/35 bg-amber-400/[0.06]' : 'border-white/10 bg-white/[0.02]'}`}>
                         <div className="fs-micro font-bold uppercase tracking-[0.2em] text-amber-300">{ui.challenge_title}</div>
                         {isCurrentChallenge ? (
                             <div className="mt-2 flex items-center justify-between gap-4">
                                 <div><span className="fs-micro text-slate-500">{ui.challenge_target}</span><strong className="block text-2xl text-white tabular-nums">{incomingChallenge.targetScore}</strong></div>
-                                <button type="button" onClick={onDaily} disabled={dailyAttemptsExhausted} className="btn-cyber btn-cyber-primary px-4 py-2.5 fs-micro font-bold text-[#04120b]">{ui.challenge_accept}</button>
+                                <button type="button" onClick={onDaily} disabled={dailyAttemptsExhausted} className="btn-cyber btn-cyber-primary px-4 py-2.5 fs-micro font-bold">{ui.challenge_accept}</button>
                             </div>
                         ) : <p className="mt-2 fs-label leading-relaxed text-slate-400">{ui.challenge_expired}</p>}
                     </div>
                 )}
                 <button
                     onClick={onInitialize}
-                    className="btn-cyber btn-cyber-ghost text-emerald-200 px-8 py-4 font-display font-bold tracking-[0.06em] flex items-center justify-center gap-3"
+                    className="menu-key btn-cyber btn-cyber-ghost"
                 >
                     <span className="keycap">2</span>
-                    <span className="flex min-w-0 flex-col items-start text-left">
-                        <span>{stripKeyHint(ui.init_link)}</span>
+                    <span className="menu-key-text">
+                        <span className="menu-key-title">{stripKeyHint(ui.init_link)}</span>
                         <span className="screens-btn-sub">{isNewcomer ? (language === 'ru' ? 'Полная история — начни здесь.' : 'The full story — start here.') : ui.quick_session}</span>
                     </span>
                 </button>
                 <button
                     onClick={onDaily}
                     disabled={dailyAttemptsExhausted}
-                    className="screens-daily-button btn-cyber btn-cyber-ghost group px-8 py-3.5 font-display font-bold text-emerald-200 hover:text-white transition-colors flex items-center justify-center gap-3"
+                    className="menu-key screens-daily-button btn-cyber btn-cyber-ghost group"
                 >
                     <span className="keycap">3</span>
-                    <EmblemTile
-                        src={`/assets/worlds/${dailyBrief.genre}.png`}
-                        size={28}
-                        className="border bg-black/20"
-                        style={{ borderColor: `${dailyGenrePack.accent}44` }}
-                    />
-                    <span className="flex min-w-0 flex-col items-start text-left">
-                        <span className="tracking-[0.06em]">{ui.daily_sector}</span>
+                    <span className="menu-key-text">
+                        <span className="menu-key-title flex items-center gap-2">
+                            <EmblemTile
+                                src={`/assets/worlds/${dailyBrief.genre}.png`}
+                                size={18}
+                                className="border bg-black/20 shrink-0"
+                                style={{ borderColor: `${dailyGenrePack.accent}44` }}
+                            />
+                            {ui.daily_sector}
+                        </span>
                         {dailyAttemptsExhausted ? (
-                            <>
-                                <span className="mt-1 max-w-full truncate font-mono fs-micro font-bold uppercase tracking-[0.12em] text-emerald-300/75 tabular-nums">
-                                    {ui.daily_best}: {dailyState.bestScore} · {dailyState.bestEnding || ui.daily_severed}
-                                </span>
-                                <span className="mt-0.5 font-mono fs-micro font-bold uppercase tracking-[0.16em] text-slate-500">
-                                    {ui.daily_tomorrow}
-                                </span>
-                            </>
+                            <span className="screens-btn-sub tabular-nums">
+                                {ui.daily_best}: {dailyState.bestScore} · {dailyState.bestEnding || ui.daily_severed} · {ui.daily_tomorrow}
+                            </span>
                         ) : (
-                            <span className="mt-1 max-w-full truncate font-mono fs-micro font-bold uppercase tracking-[0.12em] text-emerald-300/75 tabular-nums">
+                            <span className="screens-btn-sub tabular-nums">
                                 {dailyGenrePack.name[language]} · {dailyAttemptsLeft}/{DAILY_MAX_ATTEMPTS} {ui.daily_left}
                             </span>
                         )}
@@ -183,53 +188,53 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                 </button>
             </div>
 
-            {/* META — progression between runs. Quieter than PLAY: same column,
-                smaller row, one labelled divider instead of a second stack of
-                competing cards. */}
-            <div className="mt-8">
-                <div className="flex items-center gap-3 px-1" aria-hidden="true">
-                    <span className="fs-micro font-bold uppercase tracking-[0.24em] text-slate-600">
-                        {language === 'ru' ? 'МЕТА' : 'META'}
-                    </span>
-                    <span className="h-px flex-1 bg-white/5" />
+            {/* META — progression between runs. Quieter than PLAY: a lower row
+                of smaller caps, then the two dials that tune a run. */}
+            <div className="mt-7">
+                <div className="menu-row-label" aria-hidden="true">
+                    <span>{language === 'ru' ? 'Между забегами' : 'Between runs'}</span>
                 </div>
-                <div className="mt-3 flex flex-col gap-3">
+                <div className="menu-keys menu-keys--meta mt-3">
                     <button
                         onClick={onBlackMarket}
-                        className="btn-cyber btn-cyber-ghost px-8 py-3.5 font-display font-bold tracking-[0.06em] text-emerald-200 hover:text-white transition-colors flex items-center justify-center gap-3"
+                        className="menu-key menu-key--small btn-cyber btn-cyber-ghost"
                     >
                         <span className="keycap">4</span>
-                        <span className="flex min-w-0 flex-col items-start text-left">
-                            <span>{stripKeyHint(ui.black_market)}</span>
+                        <span className="menu-key-text">
+                            <span className="menu-key-title">{stripKeyHint(ui.black_market)}</span>
                             <span className="screens-btn-sub">{ui.market_subtitle}</span>
                         </span>
                     </button>
                     <button
                         onClick={onOperatorRecord}
-                        className="btn-cyber btn-cyber-ghost px-8 py-3.5 font-display font-bold tracking-[0.06em] text-sky-200 hover:text-white transition-colors flex items-center justify-center gap-3"
+                        className="menu-key menu-key--small btn-cyber btn-cyber-ghost"
                     >
                         <span className="keycap">5</span>
-                        <span className="flex min-w-0 flex-col items-start text-left">
-                            <span>{stripKeyHint(ui.operator_record)}</span>
+                        <span className="menu-key-text">
+                            <span className="menu-key-title">{stripKeyHint(ui.operator_record)}</span>
                             <span className="screens-btn-sub">{recordHint}</span>
                         </span>
                     </button>
+                </div>
 
+                <div className="mt-4 flex flex-col gap-2">
                     {/* Story pace sits beside the Pact: the one control that
-                        lowers the bar, priced like the dampener. */}
+                        lowers the bar, priced like the dampener. A toggle, so
+                        it looks like a switch rather than another key. */}
                     <button
                         type="button"
                         onClick={onToggleRelaxed}
                         aria-pressed={relaxed}
-                        className={`btn-cyber btn-cyber-ghost px-8 py-3 font-display font-bold tracking-[0.06em] transition-colors flex items-center justify-between gap-3 ${relaxed ? 'text-emerald-200 border-emerald-400/40' : 'text-slate-400 hover:text-white'}`}
+                        className={`menu-switch ${relaxed ? 'is-on' : ''}`}
                     >
                         <span className="flex min-w-0 flex-col items-start text-left">
-                            <span>{ui.relaxed_toggle}</span>
+                            <span className="menu-switch-title">{ui.relaxed_toggle}</span>
                             <span className="screens-btn-sub">{ui.relaxed_hint}</span>
                         </span>
-                        <span className={`fs-micro font-bold tracking-[0.18em] ${relaxed ? 'text-emerald-300' : 'text-slate-600'}`}>
-                            {relaxed ? ui.relaxed_on : ui.relaxed_off}
+                        <span className="menu-switch-track" aria-hidden="true">
+                            <span className="menu-switch-thumb" />
                         </span>
+                        <span className="sr-only">{relaxed ? ui.relaxed_on : ui.relaxed_off}</span>
                     </button>
 
                     {/* THE PACT — the only progression that raises the bar instead

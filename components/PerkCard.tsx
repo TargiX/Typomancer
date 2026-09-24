@@ -32,7 +32,7 @@ const PerkCard: React.FC<PerkCardProps> = ({ perk, index, onSelect, disabled = f
         <button
             onClick={() => onSelect(perk)}
             disabled={disabled}
-            className={`screens-cut-card screens-perk-card group relative overflow-hidden border bg-[#0b101a] ${rarityClass} transition-all duration-300 text-left h-full focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-400/70 disabled:cursor-wait disabled:opacity-55`}
+            className={`screens-cut-card screens-perk-card group relative overflow-hidden border bg-[#151418] ${rarityClass} transition-all duration-300 text-left h-full focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-400/70 disabled:cursor-wait disabled:opacity-55`}
         >
             <div className="screens-card-art-frame screens-card-banner screens-perk-card-banner">
                 <EmblemTile

@@ -33,18 +33,24 @@ interface RunComicProps {
   onClose: () => void;
 }
 
+// Ink colours for a printed page: performance reads as a stamp on paper,
+// not as neon on a dashboard.
 const PERF_COLORS: Record<string, string> = {
-  good: '#34d399',
-  average: '#fbbf24',
-  bad: '#f43f5e',
-  neutral: '#64748b'
+  good: '#2c8a55',
+  average: '#c98a12',
+  bad: '#c92a3e',
+  neutral: '#6d655a'
 };
 
+const PAPER = '#ece3cf';
+const INK = '#15120e';
+const INK_SOFT = '#4a4238';
+const CAPTION_FILL = '#f4d44a';
+
 const W = 960;
-const PAD = 32;
-const COLS = 2;
+const PAD = 36;
 const GUTTER = 14;
-const CAPTION_H = 58;
+const SLANT = 18;
 const SCALE = 2;
 
 const loadImage = (src: string): Promise<HTMLImageElement> =>
@@ -79,15 +85,23 @@ const wrapText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number,
   return lines;
 };
 
-const drawRoundedRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
-  const radius = Math.min(r, w / 2, h / 2);
+type Point = [number, number];
+
+const tracePolygon = (ctx: CanvasRenderingContext2D, points: Point[]) => {
   ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.arcTo(x + w, y, x + w, y + h, radius);
-  ctx.arcTo(x + w, y + h, x, y + h, radius);
-  ctx.arcTo(x, y + h, x, y, radius);
-  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.moveTo(points[0][0], points[0][1]);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
   ctx.closePath();
+};
+
+/** Rows of a comic page by panel count: 1 = a full-width tier, 2 = a split tier. */
+const PAGE_TEMPLATES: Record<number, number[]> = {
+  1: [1],
+  2: [1, 1],
+  3: [1, 2],
+  4: [1, 2, 1],
+  5: [1, 2, 2],
+  6: [1, 2, 1, 2]
 };
 
 const renderComic = async (
@@ -100,36 +114,43 @@ const renderComic = async (
   const canvas = document.createElement('canvas');
   const { frames, title, endingTitle, outcome, tagline, stats, dailyLabel, ui } = props;
   const selected = selectRunComicFrames(frames, 6);
-  const accent = outcome === 'victory' ? '#34d399' : '#f43f5e';
+  const accent = outcome === 'victory' ? '#ff6a2b' : '#d7263d';
 
-  // Wait for the web fonts before measuring — otherwise wrapText measures with the
+  // Wait for the faces before measuring — otherwise wrapText measures with the
   // fallback font while the final draw uses the loaded (wider) one and captions clip.
-  if (typeof document !== 'undefined' && document.fonts?.ready) {
-    try { await document.fonts.ready; } catch { /* render with fallback metrics */ }
+  if (typeof document !== 'undefined' && document.fonts) {
+    try {
+      await Promise.all([
+        document.fonts.load('900 34px Unbounded'),
+        document.fonts.load('800 40px Unbounded'),
+        document.fonts.load('italic 500 17px "Victor Mono"'),
+        document.fonts.load('600 14px "Victor Mono"'),
+        document.fonts.load('700 11px "Martian Mono"')
+      ]);
+      await document.fonts.ready;
+    } catch { /* render with fallback metrics */ }
   }
 
   const measureCtx = canvas.getContext('2d');
   if (!measureCtx) throw new Error('no-2d-context');
 
   const contentW = W - PAD * 2;
+  const halfW = (contentW - GUTTER) / 2;
+  const fullH = Math.round(contentW * 0.46);
+  const halfH = Math.round(halfW * 0.8);
+  const rows = PAGE_TEMPLATES[Math.min(6, Math.max(1, selected.length))] || [1];
+  const framesH = selected.length
+    ? rows.reduce((sum, cols) => sum + (cols === 1 ? fullH : halfH) + GUTTER, 0) - GUTTER
+    : 0;
 
-  // Comic grid: 2 panels per row; an odd trailing frame becomes a full-width hero panel.
-  const panelW = (contentW - GUTTER * (COLS - 1)) / COLS;
-  const panelImgH = Math.round(panelW * 9 / 16);
-  const heroImgH = Math.round(contentW * 9 / 21);
-  const cellH = panelImgH + CAPTION_H + GUTTER;
-  const hasHero = selected.length % COLS !== 0;
-  const gridRows = Math.floor(selected.length / COLS);
-  const framesH = gridRows * cellH + (hasHero ? heroImgH + CAPTION_H + GUTTER : 0);
-
-  measureCtx.font = '600 16px "JetBrains Mono", monospace';
+  measureCtx.font = '800 40px Unbounded, sans-serif';
+  const endingLines = wrapText(measureCtx, endingTitle, contentW, 2);
+  measureCtx.font = 'italic 500 17px "Victor Mono", monospace';
   const taglineLines = tagline ? wrapText(measureCtx, `“${tagline}”`, contentW, 3) : [];
 
-  measureCtx.font = '700 34px "Space Grotesk", "JetBrains Mono", sans-serif';
-  const endingLines = wrapText(measureCtx, endingTitle, contentW, 2);
-
-  const headerH = 46 + endingLines.length * 38 + (taglineLines.length ? 10 + taglineLines.length * 23 : 0) + 26;
-  const footerH = 150;
+  const MAST_H = 92;
+  const headerH = MAST_H + 6 + 46 + endingLines.length * 48 + (taglineLines.length ? 8 + taglineLines.length * 26 : 0) + 28;
+  const footerH = selected.length ? 148 : 120;
   const totalH = headerH + framesH + footerH;
 
   canvas.width = W * SCALE;
@@ -139,175 +160,185 @@ const renderComic = async (
   ctx.scale(SCALE, SCALE);
   ctx.textBaseline = 'alphabetic';
 
-  const bg = ctx.createLinearGradient(0, 0, 0, totalH);
-  bg.addColorStop(0, '#0b101a');
-  bg.addColorStop(1, '#05070c');
-  ctx.fillStyle = bg;
+  // --- Paper, with a faint halftone so it prints rather than glows ---
+  ctx.fillStyle = PAPER;
   ctx.fillRect(0, 0, W, totalH);
-
-  // subtle dotted texture
-  ctx.fillStyle = 'rgba(148,163,184,0.05)';
-  for (let y = 0; y < totalH; y += 22) {
-    for (let x = 0; x < W; x += 22) {
-      ctx.fillRect(x, y, 1, 1);
-    }
+  ctx.fillStyle = 'rgba(80, 60, 30, 0.07)';
+  for (let y = 0, row = 0; y < totalH; y += 5, row++) {
+    for (let x = row % 2 ? 2.5 : 0; x < W; x += 5) ctx.fillRect(x, y, 1.1, 1.1);
   }
 
-  // top accent rule
+  // --- Masthead: an ink band with the game's name, like a comic's cover strip ---
+  ctx.fillStyle = INK;
+  ctx.fillRect(0, 0, W, MAST_H);
   ctx.fillStyle = accent;
-  ctx.fillRect(0, 0, W, 3);
+  ctx.fillRect(0, MAST_H, W, 6);
 
-  // --- Header ---
-  let y = 40;
   ctx.textAlign = 'left';
-  ctx.font = '700 12px "JetBrains Mono", monospace';
-  ctx.fillStyle = accent;
-  ctx.fillText(title.toUpperCase(), PAD, y);
+  ctx.fillStyle = PAPER;
+  ctx.font = '900 34px Unbounded, sans-serif';
+  ctx.fillText('TYPOMANCER', PAD, 58);
+
   ctx.textAlign = 'right';
-  ctx.fillStyle = dailyLabel ? accent : 'rgba(148,163,184,0.7)';
-  ctx.fillText((dailyLabel || ui.replay_label).toUpperCase(), W - PAD, y);
+  ctx.font = '700 11px "Martian Mono", monospace';
+  ctx.fillStyle = accent;
+  ctx.fillText((dailyLabel || ui.replay_label).toUpperCase(), W - PAD, 42);
+  ctx.fillStyle = 'rgba(236, 227, 207, 0.62)';
+  ctx.fillText(title.toUpperCase(), W - PAD, 62);
   ctx.textAlign = 'left';
 
-  y += 28;
-  ctx.font = '700 34px "Space Grotesk", "JetBrains Mono", sans-serif';
-  ctx.fillStyle = '#f8fafc';
+  // --- The ending, set like a chapter title on the page ---
+  let y = MAST_H + 6 + 58;
+  ctx.fillStyle = INK;
+  ctx.font = '800 40px Unbounded, sans-serif';
   for (const line of endingLines) {
     ctx.fillText(line, PAD, y);
-    y += 38;
+    y += 48;
   }
-
   if (taglineLines.length) {
-    y += 6;
-    ctx.font = 'italic 600 16px "JetBrains Mono", monospace';
-    ctx.fillStyle = 'rgba(203,213,225,0.82)';
+    y += 2;
+    ctx.font = 'italic 500 17px "Victor Mono", monospace';
+    ctx.fillStyle = INK_SOFT;
     for (const line of taglineLines) {
       ctx.fillText(line, PAD, y);
-      y += 23;
+      y += 26;
     }
   }
 
-  // --- Frames: comic grid, 2 per row; odd last frame = full-width hero panel ---
-  const drawPanel = async (frame: ComicFrame, index: number, x: number, panelY: number, w: number, imgH: number) => {
-    const perfColor = PERF_COLORS[frame.performance] || PERF_COLORS.neutral;
+  // --- Panels: tiers of one wide or two split panels, split on a slant ---
+  const drawPanel = async (frame: ComicFrame, index: number, shape: Point[]) => {
+    const xs = shape.map(p => p[0]);
+    const ys = shape.map(p => p[1]);
+    const x = Math.min(...xs);
+    const top = Math.min(...ys);
+    const w = Math.max(...xs) - x;
+    const h = Math.max(...ys) - top;
 
     ctx.save();
-    drawRoundedRect(ctx, x, panelY, w, imgH, 10);
+    tracePolygon(ctx, shape);
     ctx.clip();
+    ctx.fillStyle = '#231f1a';
+    ctx.fillRect(x, top, w, h);
     if (frame.image) {
       try {
         const img = await loadImage(frame.image);
         const iw = img.naturalWidth || 960;
         const ih = img.naturalHeight || 540;
-        const scale = Math.max(w / iw, imgH / ih);
+        const scale = Math.max(w / iw, h / ih);
         const dw = iw * scale;
         const dh = ih * scale;
-        ctx.drawImage(img, x + (w - dw) / 2, panelY + (imgH - dh) / 2, dw, dh);
+        ctx.drawImage(img, x + (w - dw) / 2, top + (h - dh) / 2, dw, dh);
       } catch {
-        ctx.fillStyle = '#0f172a';
-        ctx.fillRect(x, panelY, w, imgH);
+        /* keep the ink fill */
       }
-    } else {
-      const grad = ctx.createLinearGradient(x, panelY, x + w, panelY + imgH);
-      grad.addColorStop(0, '#111827');
-      grad.addColorStop(1, '#1e293b');
-      ctx.fillStyle = grad;
-      ctx.fillRect(x, panelY, w, imgH);
     }
-    // bottom vignette for legibility
-    const vg = ctx.createLinearGradient(0, panelY + imgH - 60, 0, panelY + imgH);
-    vg.addColorStop(0, 'rgba(5,7,12,0)');
-    vg.addColorStop(1, 'rgba(5,7,12,0.75)');
-    ctx.fillStyle = vg;
-    ctx.fillRect(x, panelY + imgH - 60, w, 60);
     ctx.restore();
 
-    // frame border
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-    ctx.lineWidth = 1;
-    drawRoundedRect(ctx, x, panelY, w, imgH, 10);
+    // Ink border
+    ctx.lineJoin = 'miter';
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 4;
+    tracePolygon(ctx, shape);
     ctx.stroke();
 
-    // panel number badge
-    ctx.fillStyle = perfColor;
-    ctx.beginPath();
-    ctx.arc(x + 20, panelY + 20, 13, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#05070c';
-    ctx.font = '700 13px "JetBrains Mono", monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(index + 1), x + 20, panelY + 21);
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-
-    // caption under the panel
-    const capY = panelY + imgH + 6;
-    ctx.font = '500 13px "JetBrains Mono", monospace';
-    const capLines = wrapText(ctx, frame.caption.trim(), w - 14, 2);
-    ctx.fillStyle = 'rgba(226,232,240,0.92)';
-    let cy = capY + 17;
+    // Narration box, top-left — the typed line is the caption.
+    const boxX = x + 12;
+    const boxY = top + 12;
+    const boxMaxW = Math.min(w - 24, 440);
+    ctx.font = '600 14px "Victor Mono", monospace';
+    const capLines = wrapText(ctx, frame.caption.trim(), boxMaxW - 24, 3);
+    const lineH = 19;
+    const boxW = Math.min(boxMaxW, Math.max(...capLines.map(line => ctx.measureText(line).width)) + 24);
+    const boxH = capLines.length * lineH + 16;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.fillRect(boxX + 3, boxY + 3, boxW, boxH);
+    ctx.fillStyle = CAPTION_FILL;
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = INK;
+    let cy = boxY + 8 + 14;
     for (const line of capLines) {
-      ctx.fillText(line, x + 10, cy);
-      cy += 18;
+      ctx.fillText(line, boxX + 12, cy);
+      cy += lineH;
     }
-    // perf tick
+
+    // Panel number, stamped bottom-right in the colour of how the line went.
+    const perfColor = PERF_COLORS[frame.performance] || PERF_COLORS.neutral;
+    const bx = Math.max(...shape.filter(p => p[1] === Math.max(...ys)).map(p => p[0])) - 40;
+    const by = Math.max(...ys) - 40;
+    ctx.fillStyle = PAPER;
+    ctx.fillRect(bx, by, 28, 28);
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(bx, by, 28, 28);
     ctx.fillStyle = perfColor;
-    ctx.fillRect(x, capY + 4, 3, Math.max(1, capLines.length) * 18 - 4);
+    ctx.fillRect(bx + 2, by + 22, 24, 4);
+    ctx.fillStyle = INK;
+    ctx.font = '800 14px Unbounded, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(String(index + 1), bx + 14, by + 18);
+    ctx.textAlign = 'left';
   };
 
   y = headerH;
-  for (let i = 0; i < selected.length; i++) {
-    const isHero = hasHero && i === selected.length - 1;
-    if (isHero) {
-      await drawPanel(selected[i], i, PAD, y, contentW, heroImgH);
-      y += heroImgH + CAPTION_H + GUTTER;
+  let frameIndex = 0;
+  for (let rowIndex = 0; rowIndex < rows.length && frameIndex < selected.length; rowIndex++) {
+    const cols = rows[rowIndex];
+    if (cols === 1) {
+      await drawPanel(selected[frameIndex], frameIndex, [[PAD, y], [PAD + contentW, y], [PAD + contentW, y + fullH], [PAD, y + fullH]]);
+      frameIndex += 1;
+      y += fullH + GUTTER;
     } else {
-      const col = i % COLS;
-      const x = PAD + col * (panelW + GUTTER);
-      await drawPanel(selected[i], i, x, y, panelW, panelImgH);
-      if (col === COLS - 1) y += cellH;
+      // Alternate the lean of the split so the page has rhythm.
+      const lean = rowIndex % 2 ? -SLANT : SLANT;
+      const mid = PAD + contentW / 2;
+      const leftTop = mid + lean - GUTTER / 2;
+      const leftBottom = mid - lean - GUTTER / 2;
+      const rightTop = mid + lean + GUTTER / 2;
+      const rightBottom = mid - lean + GUTTER / 2;
+      await drawPanel(selected[frameIndex], frameIndex, [[PAD, y], [leftTop, y], [leftBottom, y + halfH], [PAD, y + halfH]]);
+      frameIndex += 1;
+      if (frameIndex < selected.length) {
+        await drawPanel(selected[frameIndex], frameIndex, [[rightTop, y], [PAD + contentW, y], [PAD + contentW, y + halfH], [rightBottom, y + halfH]]);
+        frameIndex += 1;
+      }
+      y += halfH + GUTTER;
     }
   }
 
-  // --- Footer ---
+  // --- Footer: the run's numbers, stamped in ink boxes ---
   const footerY = totalH - footerH;
-  ctx.fillStyle = 'rgba(255,255,255,0.06)';
-  ctx.fillRect(PAD, footerY, contentW, 1);
-
-  const chipCount = Math.min(stats.length, 4);
+  const chipCount = Math.min(stats.length, 5);
   if (chipCount > 0) {
-    const gap = 12;
+    const gap = 10;
     const chipW = (contentW - gap * (chipCount - 1)) / chipCount;
-    const chipH = 62;
-    const chipY = footerY + 22;
+    const chipH = 64;
+    const chipY = footerY + 28;
     for (let i = 0; i < chipCount; i++) {
       const cx = PAD + i * (chipW + gap);
-      ctx.fillStyle = 'rgba(255,255,255,0.03)';
-      drawRoundedRect(ctx, cx, chipY, chipW, chipH, 8);
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-      drawRoundedRect(ctx, cx, chipY, chipW, chipH, 8);
-      ctx.stroke();
-
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(cx, chipY, chipW, chipH);
       ctx.textAlign = 'center';
-      ctx.fillStyle = 'rgba(148,163,184,0.75)';
-      ctx.font = '700 10px "JetBrains Mono", monospace';
-      ctx.fillText(stats[i].label.toUpperCase(), cx + chipW / 2, chipY + 24);
-      ctx.fillStyle = '#f8fafc';
-      ctx.font = '700 20px "Space Grotesk", "JetBrains Mono", sans-serif';
-      ctx.fillText(stats[i].value, cx + chipW / 2, chipY + 48);
+      ctx.fillStyle = INK_SOFT;
+      ctx.font = '700 10px "Martian Mono", monospace';
+      ctx.fillText(stats[i].label.toUpperCase(), cx + chipW / 2, chipY + 22);
+      ctx.fillStyle = INK;
+      ctx.font = '800 22px Unbounded, sans-serif';
+      ctx.fillText(stats[i].value, cx + chipW / 2, chipY + 50);
     }
     ctx.textAlign = 'left';
   }
 
-  // watermark
   ctx.textAlign = 'center';
-  ctx.fillStyle = 'rgba(148,163,184,0.55)';
-  ctx.font = '600 12px "JetBrains Mono", monospace';
-  ctx.fillText(ui.watermark, W / 2, totalH - 26);
+  ctx.fillStyle = INK_SOFT;
+  ctx.font = '700 11px "Martian Mono", monospace';
+  ctx.fillText(ui.watermark.toUpperCase(), W / 2, totalH - 24);
   ctx.textAlign = 'left';
 
-  // blit the finished poster to the visible canvas in one synchronous step
+  // blit the finished page to the visible canvas in one synchronous step
   target.width = canvas.width;
   target.height = canvas.height;
   const out = target.getContext('2d');
@@ -417,27 +448,27 @@ const RunComic: React.FC<RunComicProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4 animate-fade-in-up"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-[#0e0d10]/92 backdrop-blur-md p-4 animate-fade-in-up"
       role="dialog"
       aria-modal="true"
       aria-label={ui.replay_label}
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-2xl max-h-[92vh] flex flex-col bg-slate-900/80 border border-white/10 rounded-2xl shadow-[0_0_60px_rgba(0,0,0,0.6)] overflow-hidden"
+        className="relative w-full max-w-2xl max-h-[94vh] flex flex-col gap-4"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex-1 min-h-0 overflow-y-auto p-4">
+        <div className="comic-page-scroll flex-1 min-h-0 overflow-y-auto">
           <canvas
             ref={canvasRef}
-            className="w-full h-auto rounded-lg block"
+            className="comic-page w-full h-auto block"
             style={{ imageRendering: 'auto' }}
             aria-label={`${title} — ${endingTitle}`}
           />
           {status === 'rendering' && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/60 pointer-events-none">
-              <div className="w-10 h-10 border-4 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin"></div>
-              <span className="text-emerald-400 fs-body tracking-widest animate-pulse">{ui.building}</span>
+              <div className="w-10 h-10 border-4 border-[#ff6a2b]/30 border-t-[#ff6a2b] rounded-full animate-spin"></div>
+              <span className="text-[#ff8f5c] fs-body tracking-widest animate-pulse">{ui.building}</span>
             </div>
           )}
           {status === 'error' && (
@@ -447,12 +478,12 @@ const RunComic: React.FC<RunComicProps> = ({
           )}
         </div>
 
-        <div className="shrink-0 flex flex-wrap items-center gap-2 p-3 border-t border-white/10 bg-slate-950/60">
+        <div className="shrink-0 flex flex-wrap items-center gap-3 px-1 pb-2">
           {canShare && (
             <button
               onClick={handleShare}
               disabled={status !== 'ready'}
-              className="btn-cyber btn-cyber-primary flex-1 min-w-[120px] py-2.5 font-display font-bold tracking-[0.06em] text-[#04120b] disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-cyber btn-cyber-primary flex-1 min-w-[120px] py-3 font-display font-bold tracking-[0.06em] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {ui.share}
             </button>
@@ -460,7 +491,7 @@ const RunComic: React.FC<RunComicProps> = ({
           <button
             onClick={handleDownload}
             disabled={status !== 'ready'}
-            className="btn-cyber btn-cyber-ghost flex-1 min-w-[120px] py-2.5 font-display font-bold tracking-[0.06em] text-emerald-200 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-cyber btn-cyber-ghost flex-1 min-w-[120px] py-3 font-display font-bold tracking-[0.06em] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {ui.download}
           </button>
@@ -468,7 +499,7 @@ const RunComic: React.FC<RunComicProps> = ({
             <button
               onClick={handleCopy}
               disabled={status !== 'ready'}
-              className="h-[42px] px-4 text-[11px] font-bold uppercase tracking-[0.14em] rounded-lg border border-white/10 bg-white/[0.03] text-slate-300 hover:text-white transition-colors disabled:opacity-50"
+              className="btn-cyber btn-cyber-ghost h-[46px] min-w-[54px] px-4 text-[12px] font-bold uppercase tracking-[0.14em] disabled:opacity-50"
             >
               {copied ? ui.copied : '⧉'}
             </button>
@@ -476,7 +507,7 @@ const RunComic: React.FC<RunComicProps> = ({
           <button
             onClick={onClose}
             aria-label={ui.close}
-            className="h-[42px] px-4 text-[11px] font-bold uppercase tracking-[0.14em] rounded-lg border border-white/10 bg-white/[0.03] text-slate-400 hover:text-white transition-colors"
+            className="btn-cyber btn-cyber-ghost h-[46px] min-w-[54px] px-4 text-[12px] font-bold uppercase tracking-[0.14em]"
           >
             ✕
           </button>

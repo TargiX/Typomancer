@@ -28,7 +28,7 @@ interface BlackMarketScreenProps {
 }
 
 const BlackMarketScreen: React.FC<BlackMarketScreenProps> = ({ ui, language, skin, profile, onBuy, onClose }) => (
-    <div className="screens-cut-panel w-full max-w-5xl h-[80vh] bg-[#0b101a]/95 border border-white/[0.07] flex flex-col overflow-hidden animate-fade-in-up shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_80px_rgba(0,0,0,0.4)] backdrop-blur-xl">
+    <div className="screens-cut-panel w-full max-w-5xl h-[80vh] bg-[#151418]/95 border border-white/[0.07] flex flex-col overflow-hidden animate-fade-in-up shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_80px_rgba(0,0,0,0.4)] backdrop-blur-xl">
         <div className="p-6 border-b border-white/[0.06] bg-white/[0.015] flex justify-between items-end gap-6">
             <div>
                 <h2 className="font-display text-3xl font-bold text-white tracking-tight">{ui.market_title}</h2>
@@ -47,7 +47,7 @@ const BlackMarketScreen: React.FC<BlackMarketScreenProps> = ({ ui, language, ski
                 const canAfford = profile.credits >= nextCost;
                 const copy = skin.upgrades[key];
                 return (
-                    <div key={key} className="screens-cut-card screens-upgrade-card bg-[#0b101a] border border-white/[0.07] relative overflow-hidden group hover:border-emerald-400/25 transition-colors min-h-[210px]">
+                    <div key={key} className="screens-cut-card screens-upgrade-card bg-[#151418] border border-white/[0.07] relative overflow-hidden group hover:border-emerald-400/25 transition-colors min-h-[210px]">
                         <div className="screens-card-art-frame screens-upgrade-art-rail">
                             <EmblemTile
                                 src={`/assets/upgrades/${key}.png`}

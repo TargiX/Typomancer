@@ -15,7 +15,7 @@ interface StarterPerkScreenProps {
 }
 
 const StarterPerkScreen: React.FC<StarterPerkScreenProps> = ({ ui, language, perks, genrePack, genre, onSelect }) => (
-    <div className="screens-cut-panel w-full max-w-4xl max-h-[calc(100vh-3rem)] overflow-y-auto bg-[#0b101a]/95 border border-white/[0.07] p-8 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_80px_rgba(0,0,0,0.4)] animate-fade-in-up">
+    <div className="screens-cut-panel w-full max-w-4xl max-h-[calc(100vh-3rem)] overflow-y-auto bg-[#151418]/95 border border-white/[0.07] p-8 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_80px_rgba(0,0,0,0.4)] animate-fade-in-up">
         <div className="border-b border-white/[0.06] pb-5 mb-6 text-center">
             <div className="inline-flex items-center gap-2 px-3 py-1 mb-3 border fs-micro font-bold tracking-[0.2em] uppercase screens-cut-chip"
                  style={{ borderColor: `${genrePack.accent}66`, color: genrePack.accent, background: `${genrePack.accent}14` }}>

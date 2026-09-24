@@ -347,37 +347,99 @@ const localSummary = (genre: StoryGenreId, level: number, stats: LevelReport, la
 
 const svgToDataUri = (svg: string) => `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 
-const generateLocalSceneImage = (sceneDescription: string, characterDescription: string, genre: StoryGenreId): string => {
+// Offline scene art: a night skyline in three planes — haze, mid-rise, and a
+// near silhouette with lit windows — seeded from the scene text so each beat
+// gets its own city block. It is what a player sees whenever image generation
+// is unavailable, so it has to read as a picture, not as a placeholder.
+const seededRandom = (seed: number) => {
+  let t = seed >>> 0;
+  return () => {
+    t += 0x6d2b79f5;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+};
+
+const generateLocalSceneImage = (sceneDescription: string, _characterDescription: string, genre: StoryGenreId): string => {
   const pack = getGenrePack(genre);
-  const seed = [...sceneDescription].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
-  const hueA = 170 + pack.svgHueOffset + (seed % 70);
-  const hueB = 280 + pack.svgHueOffset + (seed % 50);
-  const scanLines = Array.from({ length: 12 }).map((_, i) => `<rect x="0" y="${i * 50}" width="960" height="1" fill="rgba(255,255,255,0.08)"/>`).join('');
-  const nodes = Array.from({ length: 18 }).map((_, i) => {
-    const x = (seed * (i + 3) * 37) % 960;
-    const y = (seed * (i + 5) * 53) % 540;
-    const r = 2 + ((seed + i) % 5);
-    return `<circle cx="${x}" cy="${y}" r="${r}" fill="hsla(${i % 2 ? hueA : hueB}, 90%, 70%, .65)"/>`;
+  const seed = [...sceneDescription].reduce((sum, ch, i) => (sum * 31 + ch.charCodeAt(0) + i) >>> 0, 7);
+  const rand = seededRandom(seed);
+  const skyHue = (248 + pack.svgHueOffset + Math.floor(rand() * 24)) % 360;
+  const hazeHue = (14 + pack.svgHueOffset + Math.floor(rand() * 18)) % 360;
+  const W = 960;
+  const H = 540;
+  const moonX = 180 + rand() * 600;
+  const moonY = 55 + rand() * 60;
+
+  const skyline = (base: number, minH: number, maxH: number, minW: number, maxW: number, fill: string, windows: number) => {
+    let x = -20;
+    let shapes = '';
+    let lights = '';
+    while (x < W + 20) {
+      const w = minW + rand() * (maxW - minW);
+      const h = minH + rand() * (maxH - minH);
+      const top = base - h;
+      shapes += `<rect x="${x.toFixed(1)}" y="${top.toFixed(1)}" width="${(w + 1).toFixed(1)}" height="${(H - top).toFixed(1)}"/>`;
+      if (rand() < 0.22) {
+        const ax = x + w * (0.3 + rand() * 0.4);
+        shapes += `<rect x="${ax.toFixed(1)}" y="${(top - 18 - rand() * 30).toFixed(1)}" width="2" height="48"/>`;
+      }
+      if (windows > 0) {
+        for (let wy = top + 10; wy < base - 6; wy += 11) {
+          for (let wx = x + 5; wx < x + w - 6; wx += 9) {
+            if (rand() < windows) {
+              const warm = rand() < 0.8;
+              lights += `<rect x="${wx.toFixed(1)}" y="${wy.toFixed(1)}" width="4" height="5" fill="${warm ? `hsla(${hazeHue + 22},95%,72%,${(0.45 + rand() * 0.5).toFixed(2)})` : `hsla(${skyHue - 60},80%,75%,.6)`}"/>`;
+            }
+          }
+        }
+      }
+      x += w + (rand() < 0.3 ? rand() * 14 : 0);
+    }
+    return `<g fill="${fill}">${shapes}</g>${lights}`;
+  };
+
+  const rain = Array.from({ length: 70 }).map(() => {
+    const x = rand() * W;
+    const y = rand() * H;
+    return `<line x1="${x.toFixed(1)}" y1="${y.toFixed(1)}" x2="${(x - 6).toFixed(1)}" y2="${(y + 22).toFixed(1)}"/>`;
   }).join('');
+
   return svgToDataUri(`
-    <svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+    <svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
       <defs>
-        <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
-          <stop offset="0%" stop-color="hsl(${hueB}, 75%, 12%)"/>
-          <stop offset="55%" stop-color="#020617"/>
-          <stop offset="100%" stop-color="hsl(${hueA}, 85%, 16%)"/>
+        <linearGradient id="sky" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="hsl(${skyHue}, 45%, 6%)"/>
+          <stop offset="55%" stop-color="hsl(${skyHue + 20}, 40%, 13%)"/>
+          <stop offset="100%" stop-color="hsl(${hazeHue}, 60%, 26%)"/>
         </linearGradient>
-        <filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        <radialGradient id="moon" cx="${moonX}" cy="${moonY}" r="190" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="hsla(${hazeHue + 25}, 90%, 82%, .95)"/>
+          <stop offset="9%" stop-color="hsla(${hazeHue + 20}, 85%, 70%, .55)"/>
+          <stop offset="30%" stop-color="hsla(${hazeHue}, 80%, 45%, .16)"/>
+          <stop offset="100%" stop-color="hsla(${hazeHue}, 80%, 30%, 0)"/>
+        </radialGradient>
+        <linearGradient id="fog" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="hsla(${hazeHue}, 70%, 40%, 0)"/>
+          <stop offset="100%" stop-color="hsla(${hazeHue}, 70%, 35%, .35)"/>
+        </linearGradient>
+        <radialGradient id="vig" cx="50%" cy="45%" r="75%">
+          <stop offset="60%" stop-color="#000" stop-opacity="0"/>
+          <stop offset="100%" stop-color="#000" stop-opacity=".75"/>
+        </radialGradient>
+        <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .08 0"/></filter>
       </defs>
-      <rect width="960" height="540" fill="url(#g)"/>
-      <path d="M0 430 C180 320 280 500 460 380 S780 290 960 360 L960 540 L0 540 Z" fill="rgba(15,23,42,.75)"/>
-      <path d="M120 430 L240 120 L360 430 M620 430 L760 80 L880 430" stroke="hsla(${hueA},90%,65%,.25)" stroke-width="3" fill="none"/>
-      ${nodes}
-      ${scanLines}
-      <rect x="42" y="34" width="876" height="468" rx="22" fill="none" stroke="hsla(${hueA}, 95%, 70%, .28)" stroke-width="2"/>
-      <text x="64" y="78" fill="hsla(${hueA}, 95%, 75%, .95)" font-family="monospace" font-size="13" font-weight="700">SIM FEED // OFFLINE CACHE</text>
-      <circle cx="820" cy="118" r="56" fill="none" stroke="hsla(${hueB}, 95%, 75%, .45)" stroke-width="3" filter="url(#glow)"/>
-      <path d="M785 118 h70 M820 83 v70" stroke="hsla(${hueB},95%,75%,.7)" stroke-width="2"/>
+      <rect width="${W}" height="${H}" fill="url(#sky)"/>
+      <rect width="${W}" height="${H}" fill="url(#moon)"/>
+      <circle cx="${moonX.toFixed(1)}" cy="${moonY.toFixed(1)}" r="17" fill="hsla(${hazeHue + 30}, 85%, 86%, .78)"/>
+      ${skyline(395, 60, 170, 28, 70, `hsl(${skyHue + 10}, 30%, 16%)`, 0)}
+      <rect y="250" width="${W}" height="${H - 250}" fill="url(#fog)"/>
+      ${skyline(450, 80, 230, 44, 110, `hsl(${skyHue + 5}, 30%, 9%)`, 0.07)}
+      ${skyline(H + 10, 150, 330, 70, 170, `hsl(${skyHue}, 35%, 4%)`, 0.035)}
+      <g stroke="hsla(${hazeHue + 20}, 60%, 80%, .09)" stroke-width="1">${rain}</g>
+      <rect width="${W}" height="${H}" fill="url(#vig)"/>
+      <rect width="${W}" height="${H}" filter="url(#grain)"/>
     </svg>
   `);
 };

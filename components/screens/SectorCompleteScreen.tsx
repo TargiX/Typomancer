@@ -45,7 +45,7 @@ const SectorCompleteScreen: React.FC<SectorCompleteScreenProps> = ({
     const coach = { accuracy: ui.focus_accuracy, consistency: ui.focus_consistency, speed: ui.focus_speed, mastery: ui.focus_mastery }[focus];
 
     return (
-        <div className="screens-cut-panel w-full max-w-4xl max-h-[calc(100vh-3rem)] overflow-y-auto bg-[#0b101a]/95 border border-white/[0.07] p-8 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_80px_rgba(0,0,0,0.4)] animate-fade-in-up">
+        <div className="screens-cut-panel w-full max-w-4xl max-h-[calc(100vh-3rem)] overflow-y-auto bg-[#151418]/95 border border-white/[0.07] p-8 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_80px_rgba(0,0,0,0.4)] animate-fade-in-up">
             <div className="border-b border-white/[0.06] pb-5 mb-6">
                 <div className="flex justify-between items-start mb-2">
                     <h2 className="font-display text-3xl font-bold text-white">{ui.seq_complete}</h2>

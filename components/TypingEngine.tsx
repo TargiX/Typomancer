@@ -289,6 +289,11 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const textContainerRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLSpanElement>(null); 
   const cursorRef = useRef<HTMLSpanElement>(null);
+  // One caret that glides between characters instead of a block that jumps:
+  // position is read from the character under it after every render.
+  const [caretBox, setCaretBox] = useState<{ x: number; y: number; h: number } | null>(null);
+  const [caretIdle, setCaretIdle] = useState(false);
+  const caretIdleTimerRef = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [skillAnchor, setSkillAnchor] = useState<{ left: number; top: number } | null>(null);
   const transitionLockRef = useRef(false); 
@@ -643,6 +648,28 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const hasContextualSkill = firewallGrace > 0 || cursorSkillStack.length > 0;
 
   useLayoutEffect(() => {
+    const measure = () => {
+      const node = cursorRef.current;
+      if (!node) { setCaretBox(null); return; }
+      setCaretBox(prev => {
+        const next = { x: node.offsetLeft, y: node.offsetTop, h: node.offsetHeight };
+        return prev && prev.x === next.x && prev.y === next.y && prev.h === next.h ? prev : next;
+      });
+    };
+    measure();
+    // Solid while the hands are moving; it only starts to blink once they stop.
+    setCaretIdle(false);
+    if (caretIdleTimerRef.current) window.clearTimeout(caretIdleTimerRef.current);
+    caretIdleTimerRef.current = window.setTimeout(() => setCaretIdle(true), 650);
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [inputValue, activeSegment, history, isOverclockActive, typeCueActive]);
+
+  useEffect(() => () => {
+    if (caretIdleTimerRef.current) window.clearTimeout(caretIdleTimerRef.current);
+  }, []);
+
+  useLayoutEffect(() => {
     if (activeRef.current) {
         activeRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
     } else if (textContainerRef.current) {
@@ -920,9 +947,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   );
 
   const comboAccent = () => {
-    if (combo >= 50) return { text: 'text-emerald-200', glow: 'rgba(52,211,153,0.95)' };
-    if (combo >= 25) return { text: 'text-emerald-300', glow: 'rgba(52,211,153,0.82)' };
-    if (combo >= 10) return { text: 'text-emerald-400', glow: 'rgba(52,211,153,0.68)' };
+    // A streak runs hot: orange modifier, then hotter, then white-hot.
+    if (combo >= 50) return { text: 'text-[#fff1e0]', glow: 'rgba(255,143,92,0.95)' };
+    if (combo >= 25) return { text: 'text-[#ffb07a]', glow: 'rgba(255,106,43,0.8)' };
+    if (combo >= 10) return { text: 'text-[#ff8f5c]', glow: 'rgba(255,106,43,0.6)' };
     return { text: 'text-slate-200', glow: 'rgba(148,163,184,0.5)' };
   };
 
@@ -1484,28 +1512,26 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
 
       // Focus mode = clarity: the UPCOMING text turns bright and crisp (easier to read
       // ahead), instead of dimming. Typed chars stay saturated so progress is obvious.
-      let className = isOverclockActive ? "text-emerald-50 drop-shadow-[0_0_6px_rgba(52,211,153,0.35)]" : activeSegment.type === SegmentType.BREACH ? "text-emerald-500/60" : "text-slate-500";
+      let className = isOverclockActive ? "ch-todo ch-todo--focus" : activeSegment.type === SegmentType.BREACH ? "ch-todo ch-todo--breach" : "ch-todo";
       const isCursor = index === inputValue.length;
       if (index < inputValue.length) {
         if (charsMatch(inputValue[index], char, strictCase)) {
-          className = isOverclockActive || activeSegment.type === SegmentType.BREACH ? "text-emerald-400" : activeSegment.type === SegmentType.DIALOG ? "text-sky-400" : activeSegment.type === SegmentType.SIGNAL ? "text-amber-400" : "text-slate-200";
+          className = isOverclockActive || activeSegment.type === SegmentType.BREACH ? "ch-done ch-done--breach" : activeSegment.type === SegmentType.DIALOG ? "ch-done ch-done--dialog" : activeSegment.type === SegmentType.SIGNAL ? "ch-done ch-done--signal" : "ch-done";
         } else {
-          if (forgivenIndicesRef.current.has(index)) {
-             className = "text-white bg-emerald-500 shadow-[0_0_10px_rgba(52,211,153,0.45)]";
-          } else {
-             className = "text-white bg-rose-600";
-          }
+          className = forgivenIndicesRef.current.has(index) ? "ch-forgiven" : "ch-miss";
         }
       }
-      // The tracer eats the line from behind. Burned characters replace their
-      // own styling so the damage reads at a glance, but the caret always wins:
+      // The tracer eats the line from behind — it redacts what you typed, the
+      // way the ledger's owners would. Burned characters replace their own
+      // styling so the damage reads at a glance, but the caret always wins:
       // losing sight of where you are would be the one unfair outcome.
       if (index < burnFront) className = "tracer-burned";
       else if (index === burnFront) className = "tracer-head";
 
+      // The caret itself is one gliding bar drawn over the line (see
+      // engine-glide-caret); the character under it only brightens.
       if (isCursor) {
-        className = isOverclockActive ? "text-white bg-emerald-400 animate-pulse shadow-[0_0_15px_rgba(52,211,153,0.8)]" :
-                    "engine-caret text-[#06101a]";
+        className = isOverclockActive ? "engine-caret engine-caret--focus" : "engine-caret";
       }
 
       // Prose rhythm: speech leans italic, pauses carry a breath of space.
@@ -1576,7 +1602,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     if (activeSegment.mood === StoryMood.HOPEFUL) return "rgba(52,211,153,0.22)";
     if (activeSegment.mood === StoryMood.DARK) return "rgba(244,63,94,0.22)";
     if (activeSegment.type === SegmentType.BREACH) return "rgba(52,211,153,0.24)";
-    return "rgba(7,10,17,0.2)";
+    return "rgba(14, 13, 16,0.2)";
   };
 
   // No centred 1024px column here: with the shell gone, capping the deck puts it
@@ -1598,43 +1624,49 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       )}
 
       {isDecisionActive && nextDecision && (
-           <div className="engine-decision-overlay absolute inset-0 z-[80] bg-[#070a11]/95 backdrop-blur-md flex flex-col items-center justify-center p-5 md:p-8 animate-fade-in-up">
+           <div className="engine-decision-overlay absolute inset-0 z-[80] bg-[#0e0d10]/90 backdrop-blur-md flex flex-col items-center justify-center p-5 md:p-8 animate-fade-in-up">
                {/* The window is finite: the bar drains, and at zero hesitation
                    itself picks the aggressive option. */}
                <div className="absolute top-0 inset-x-0 h-1 bg-white/[0.06]">
                    <div
-                       className="h-full bg-rose-400 transition-[width] duration-100 ease-linear"
+                       className="engine-decision-fuse h-full transition-[width] duration-100 ease-linear"
                        style={{ width: `${(decisionRemaining / DECISION_WINDOW_MS) * 100}%` }}
                    />
                </div>
-               <div className="w-full max-w-3xl space-y-8">
-                   <div className="text-center border-b border-white/[0.06] pb-6">
-                        <div className="mb-4 fs-micro font-bold uppercase tracking-[0.22em] text-emerald-400 animate-pulse">{UI.tactical_intervention}</div>
-                        <h2 className="font-display text-2xl md:text-3xl font-bold text-white leading-relaxed">"{nextDecision.introText}"</h2>
+               <div className="w-full max-w-4xl">
+                   <div className="engine-decision-head">
+                        <div className="engine-decision-eyebrow">{UI.tactical_intervention}</div>
+                        <h2 className="engine-decision-question">“{nextDecision.introText}”</h2>
                    </div>
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                       {/* The window drains into the cards: aggression gathers a
-                           glow while the quiet option fades — hesitation chooses. */}
-                       <button type="button" className="engine-decision-card engine-decision-card--aggressive group relative p-6 bg-white/[0.02] border border-rose-500/35 hover:border-rose-400/75 transition-all cursor-pointer text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-400" style={{ boxShadow: `0 0 ${Math.round(24 * (1 - decisionRemaining / DECISION_WINDOW_MS))}px rgba(244,63,94,${0.15 + 0.35 * (1 - decisionRemaining / DECISION_WINDOW_MS)})` }} onClick={() => handleDecisionSelect(0)}>
-                           <h3 className="font-display text-xl font-bold text-rose-400 mb-2 group-hover:text-rose-300">{UI.aggressive}</h3>
-                           <p className="text-slate-300 fs-lead">"{nextDecision.options[0].text}"</p>
-                           <div className="mt-4 fs-label text-rose-300/80 font-mono">{nextDecision.options[0].preview || describeImpact(nextDecision.options[0].impact)}</div>
-                           {renderImpactChips(nextDecision.options[0].impact)}
-                           <div className="mt-5 flex items-center gap-2.5 font-mono uppercase tracking-[0.18em]">
-                               <span className="keycap fs-lead">1</span>
-                               <span className="fs-label text-slate-300 group-hover:text-white transition-colors">{UI.press_1.replace('[1]', '').trim()}</span>
-                           </div>
-                       </button>
-                       <button type="button" className="engine-decision-card engine-decision-card--stealth group relative p-6 bg-white/[0.02] border border-emerald-500/35 hover:border-emerald-400/75 transition-all cursor-pointer text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-400" style={{ opacity: 1 - 0.55 * (1 - decisionRemaining / DECISION_WINDOW_MS) }} onClick={() => handleDecisionSelect(1)}>
-                           <h3 className="font-display text-xl font-bold text-emerald-400 mb-2 group-hover:text-emerald-300">{UI.stealth}</h3>
-                           <p className="text-slate-300 fs-lead">"{nextDecision.options[1].text}"</p>
-                           <div className="mt-4 fs-label text-emerald-300/80 font-mono">{nextDecision.options[1].preview || describeImpact(nextDecision.options[1].impact)}</div>
-                           {renderImpactChips(nextDecision.options[1].impact)}
-                           <div className="mt-5 flex items-center gap-2.5 font-mono uppercase tracking-[0.18em]">
-                               <span className="keycap fs-lead">2</span>
-                               <span className="fs-label text-slate-300 group-hover:text-white transition-colors">{UI.press_2.replace('[2]', '').trim()}</span>
-                           </div>
-                       </button>
+                   <div className="engine-decision-keys">
+                       {/* Each option is a key you press. The window drains into
+                           them: aggression gathers heat while the quiet option
+                           fades — hesitation chooses. */}
+                       {([0, 1] as const).map((optionIndex) => {
+                           const option = nextDecision.options[optionIndex];
+                           const drained = 1 - decisionRemaining / DECISION_WINDOW_MS;
+                           const aggressive = optionIndex === 0;
+                           return (
+                               <button
+                                   key={optionIndex}
+                                   type="button"
+                                   className={`engine-decision-card engine-decision-card--${aggressive ? 'aggressive' : 'stealth'}`}
+                                   style={aggressive
+                                       ? { ['--decision-heat' as string]: drained.toFixed(3) }
+                                       : { opacity: 1 - 0.55 * drained }}
+                                   onClick={() => handleDecisionSelect(optionIndex)}
+                               >
+                                   <span className="engine-decision-card-top">
+                                       <span className="engine-decision-cap" aria-hidden="true">{optionIndex + 1}</span>
+                                       <span className="engine-decision-stance">{aggressive ? UI.aggressive : UI.stealth}</span>
+                                   </span>
+                                   <span className="engine-decision-option">“{option.text}”</span>
+                                   <span className="engine-decision-preview">{option.preview || describeImpact(option.impact)}</span>
+                                   {renderImpactChips(option.impact)}
+                                   <span className="sr-only">{(aggressive ? UI.press_1 : UI.press_2).replace(/\[[12]\]/, '').trim()}</span>
+                               </button>
+                           );
+                       })}
                    </div>
                </div>
            </div>
@@ -1717,7 +1749,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
               })}
           </div>
       )}
-      <div className="engine-hud relative z-10 flex flex-col font-mono px-4 py-3 bg-[#0b101a]/85 backdrop-blur-sm border border-white/[0.06] mb-2 gap-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+      <div className="engine-hud relative z-10 flex flex-col font-mono px-4 py-3 bg-[#151418]/85 backdrop-blur-sm border border-white/[0.06] mb-2 gap-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
         <div className="flex flex-wrap items-end justify-between gap-4 w-full">
             <div className="flex flex-wrap items-end gap-5 md:gap-7">
                 <div className="flex items-end gap-6">
@@ -1792,43 +1824,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       {/* The scene is the backdrop now, not a framed strip: the bezel fills the
           deck and the HUD + type panel float over it. */}
       <div className={`engine-scene-bezel absolute inset-0 z-0 w-full bg-black overflow-hidden ${isDecisionActive ? 'engine-scene-bezel--decision' : ''}`}>
-        <div className="absolute left-3 top-3 z-[55] h-5 w-5 border-l border-t border-emerald-400/80 pointer-events-none"></div>
-        <div className="absolute right-3 top-3 z-[55] h-5 w-5 border-r border-t border-emerald-400/80 pointer-events-none"></div>
-        <div className="absolute bottom-3 left-3 z-[55] h-5 w-5 border-b border-l border-emerald-400/80 pointer-events-none"></div>
-        <div className="absolute bottom-3 right-3 z-[55] h-5 w-5 border-b border-r border-emerald-400/80 pointer-events-none"></div>
-        {/* Live real-time card floats over the art band above the text panel. */}
-        <div className="absolute right-4 top-24 z-50 pointer-events-none select-none">
-            <div
-                className="engine-telemetry-card border backdrop-blur-sm bg-[#0b101a]/90 px-3.5 py-2 text-center transition-colors duration-300"
-                style={{
-                    borderColor: combo >= 3 ? comboAccent().glow : 'rgba(255,255,255,0.10)',
-                    boxShadow: combo >= 3 ? `inset 0 1px 0 rgba(255,255,255,0.04), 0 0 ${Math.min(22, 6 + combo / 2)}px ${comboAccent().glow}` : 'inset 0 1px 0 rgba(255,255,255,0.04)'
-                }}
-            >
-                {combo >= 3 && (
-                    <div key={comboPulse} className="combo-pop">
-                        <span
-                            className={`block font-black leading-none ${comboAccent().text}`}
-                            style={{ fontSize: `${Math.min(2.4, 1.3 + combo * 0.022).toFixed(2)}rem`, textShadow: `0 0 ${Math.min(18, 4 + combo / 2)}px ${comboAccent().glow}` }}
-                        >
-                            {combo}
-                        </span>
-                        <span className={`block mt-1 fs-micro font-bold tracking-[0.18em] ${comboAccent().text}`}>
-                            COMBO{comboMultiplier > 1 ? ` ·${comboMultiplier}× ${UI.score_word}` : ''}
-                        </span>
-                        <span className="block my-1.5 h-px bg-white/10"></span>
-                    </div>
-                )}
-                <div className="flex items-baseline justify-center gap-1">
-                    <span className="font-display font-bold tabular-nums text-slate-100 fs-lead leading-none">{currentWPM}</span>
-                    <span className="fs-micro uppercase tracking-[0.15em] text-slate-500">{UI.wpm}</span>
-                </div>
-            </div>
-        </div>
         <div className="absolute inset-0 pointer-events-none z-20">
             <svg className="w-full h-full opacity-90" viewBox="0 0 100 100" preserveAspectRatio="none">
                 {CRACK_PATHS.map((d, i) => {
-                    if (i < mistakesInSegment) return <path key={i} d={d} className={`crack-path ${mistakesInSegment > 7 ? 'deep' : ''}`} />;
+                    if (i < mistakesInSegment) return <path key={i} d={d} vectorEffect="non-scaling-stroke" className={`crack-path ${mistakesInSegment > 7 ? 'deep' : ''}`} />;
                     return null;
                 })}
             </svg>
@@ -1874,31 +1873,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                 </span>
             ))}
         </div>
-        {forkReveal && (() => {
-            const copy = describeFork(forkReveal, language);
-            return (
-                <div className={`engine-fork-reveal engine-fork-reveal--${forkReveal.performance} absolute inset-x-4 top-4 z-40 pointer-events-none`}>
-                    <div className="flex items-baseline gap-2">
-                        <span className="engine-fork-verdict">{copy.verdict}</span>
-                        <span className="engine-fork-errors">
-                            {forkReveal.errors} {forkReveal.errors === 1 ? UI.fork_error_one : UI.fork_error_many}
-                        </span>
-                    </div>
-                    <p className="engine-fork-detail">{copy.detail}</p>
-                    {forkReveal.missedText && (
-                        <div className="engine-fork-missed">
-                            <span className="engine-fork-missed-label">{copy.missedLabel}</span>
-                            <span className="engine-fork-missed-text">{forkReveal.missedText}</span>
-                        </div>
-                    )}
-                </div>
-            );
-        })()}
-        <div className="absolute left-4 top-24 right-4 z-30 flex flex-wrap items-center gap-2">
-            <span className="engine-chip engine-chip--skill bg-[#0b101a]/90 border border-white/[0.08] px-2.5 py-1 fs-micro text-slate-300 uppercase tracking-[0.18em]">{skillIcon[activeSegment.skill || 'flow']} {activeSegment.skill || 'flow'}</span>
-            <span className="engine-chip engine-chip--objective bg-[#0b101a]/90 border border-white/[0.08] px-2.5 py-1 fs-micro text-slate-300 uppercase tracking-[0.18em]">{UI.objective}: <span className="normal-case tracking-normal text-slate-200">{activeSegment.objective}</span></span>
-            {activeSegment.consequenceHint && <span className="engine-chip engine-chip--consequence bg-[#0b101a]/90 border border-white/[0.08] px-2.5 py-1 fs-micro text-slate-300 uppercase tracking-[0.18em]">{UI.consequence}: <span className="normal-case tracking-normal text-slate-200">{activeSegment.consequenceHint}</span></span>}
-        </div>
       </div>
       <div className={getContainerStyles()}>
         {/* HP rail — left edge, scrollbar-style vertical health */}
@@ -1927,7 +1901,63 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
             ></div>
           )}
         </div>
-        <div ref={textContainerRef} onClick={() => inputRef.current?.focus()} className="engine-type-scroll no-scrollbar absolute inset-0 flex flex-col justify-center overflow-y-auto px-8 md:px-10 py-6 md:py-8 leading-relaxed cursor-text font-mono text-2xl md:fs-title">
+        {/* Live pace card: top-right of the line, below the HUD rather than under it. */}
+        <div className="absolute right-5 top-4 z-40 pointer-events-none select-none">
+            <div
+                className="engine-telemetry-card border backdrop-blur-sm bg-[#151418]/90 px-3.5 py-2 text-center transition-colors duration-300"
+                style={{
+                    borderColor: combo >= 3 ? comboAccent().glow : 'rgba(255,255,255,0.10)',
+                    boxShadow: combo >= 3 ? `inset 0 1px 0 rgba(255,255,255,0.04), 0 0 ${Math.min(22, 6 + combo / 2)}px ${comboAccent().glow}` : 'inset 0 1px 0 rgba(255,255,255,0.04)'
+                }}
+            >
+                {combo >= 3 && (
+                    <div key={comboPulse} className="combo-pop">
+                        <span
+                            className={`block font-black leading-none ${comboAccent().text}`}
+                            style={{ fontSize: `${Math.min(2.4, 1.3 + combo * 0.022).toFixed(2)}rem`, textShadow: `0 0 ${Math.min(18, 4 + combo / 2)}px ${comboAccent().glow}` }}
+                        >
+                            {combo}
+                        </span>
+                        <span className={`block mt-1 fs-micro font-bold tracking-[0.18em] ${comboAccent().text}`}>
+                            COMBO{comboMultiplier > 1 ? ` ·${comboMultiplier}× ${UI.score_word}` : ''}
+                        </span>
+                        <span className="block my-1.5 h-px bg-white/10"></span>
+                    </div>
+                )}
+                <div className="flex items-baseline justify-center gap-1">
+                    <span className="font-display font-bold tabular-nums text-slate-100 fs-lead leading-none">{currentWPM}</span>
+                    <span className="fs-micro uppercase tracking-[0.15em] text-slate-500">{UI.wpm}</span>
+                </div>
+            </div>
+        </div>
+        {!forkReveal && (
+            <div className="engine-running-head absolute left-6 top-4 right-36 z-30 pointer-events-none">
+            <span className="engine-running-head-skill">{skillIcon[activeSegment.skill || 'flow']} {activeSegment.skill || 'flow'}</span>
+            <span className="engine-running-head-objective">{activeSegment.objective}</span>
+            {activeSegment.consequenceHint && <span className="engine-running-head-consequence">{activeSegment.consequenceHint}</span>}
+            </div>
+        )}
+        {forkReveal && (() => {
+            const copy = describeFork(forkReveal, language);
+            return (
+                <div className={`engine-fork-reveal engine-fork-reveal--${forkReveal.performance} absolute left-5 right-32 top-4 z-40 pointer-events-none max-w-2xl`}>
+                    <div className="flex items-baseline gap-2">
+                        <span className="engine-fork-verdict">{copy.verdict}</span>
+                        <span className="engine-fork-errors">
+                            {forkReveal.errors} {forkReveal.errors === 1 ? UI.fork_error_one : UI.fork_error_many}
+                        </span>
+                    </div>
+                    <p className="engine-fork-detail">{copy.detail}</p>
+                    {forkReveal.missedText && (
+                        <div className="engine-fork-missed">
+                            <span className="engine-fork-missed-label">{copy.missedLabel}</span>
+                            <span className="engine-fork-missed-text">{forkReveal.missedText}</span>
+                        </div>
+                    )}
+                </div>
+            );
+        })()}
+        <div ref={textContainerRef} onClick={() => inputRef.current?.focus()} className="engine-type-scroll no-scrollbar absolute inset-0 flex flex-col justify-center overflow-y-auto px-8 md:px-10 py-6 md:py-8 cursor-text font-prose engine-prose">
         {isOverclockActive && <div className="absolute inset-0 pointer-events-none shadow-[inset_0_0_100px_rgba(52,211,153,0.2)]"></div>}
         {typeCueActive && !isDecisionActive && (
             <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-slate-950/45 backdrop-blur-[1px]">
@@ -1946,12 +1976,19 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
             {activeSegment.type === SegmentType.DIALOG && <div className="text-sky-400 fs-micro mb-4 font-bold uppercase tracking-[0.2em] border-b border-sky-400/30 pb-2">{UI.dialog_init}</div>}
             {activeSegment.type === SegmentType.SIGNAL && <div className="text-amber-400 fs-micro mb-4 font-bold uppercase tracking-[0.2em] border-b border-amber-400/30 pb-2">{UI.signal_init}</div>}
             {history.map((seg, i) => (
-                <span key={i} className={`mr-2 transition-colors duration-500 ${seg.performance === 'good' ? 'text-emerald-400' : seg.performance === 'average' ? 'text-amber-400' : 'text-rose-400'}`}>
+                <span key={i} className={`engine-ledger-line engine-ledger-line--${seg.performance === 'good' ? 'clean' : seg.performance === 'average' ? 'flawed' : 'broken'}`}>
                     {seg.text}
                 </span>
             ))}
             <span ref={activeRef} className="relative inline-block">
                 {renderActive()}
+                {caretBox && !isWaitingForAi && (
+                    <span
+                        aria-hidden="true"
+                        className={`engine-glide-caret ${caretIdle ? 'is-idle' : ''} ${isOverclockActive ? 'is-focus' : ''}`}
+                        style={{ transform: `translate3d(${caretBox.x}px, ${caretBox.y}px, 0)`, height: caretBox.h }}
+                    />
+                )}
                 {isWaitingForAi && (
                     <span className="ml-2 inline-flex gap-1 align-baseline opacity-50">
                         <span className="w-2 h-2 bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></span>

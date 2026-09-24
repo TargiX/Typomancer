@@ -42,7 +42,7 @@ const VictoryScreen: React.FC<VictoryScreenProps> = ({
     onShowComic,
     onMenu
 }) => (
-    <div className="screens-cut-panel w-full max-w-3xl bg-[#0b101a]/95 p-10 border border-emerald-400/35 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_60px_rgba(16,185,129,0.12)] animate-fade-in-up">
+    <div className="screens-cut-panel w-full max-w-3xl bg-[#151418]/95 p-10 border border-emerald-400/35 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_60px_rgba(16,185,129,0.12)] animate-fade-in-up">
         <div className="text-center border-b border-white/[0.07] pb-6 mb-6">
             <div className="screens-cut-chip inline-block px-3 py-1 bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 fs-micro uppercase tracking-[0.2em] mb-4">
                 {isLastRelay(report.mission)
@@ -108,7 +108,7 @@ const VictoryScreen: React.FC<VictoryScreenProps> = ({
             </button>
             <button
                 onClick={onMenu}
-                className="btn-cyber btn-cyber-primary flex-1 py-3.5 font-display font-bold tracking-[0.06em] text-[#04120b] flex items-center justify-center gap-3"
+                className="btn-cyber btn-cyber-primary flex-1 py-3.5 font-display font-bold tracking-[0.06em] text-[#1c0c04] flex items-center justify-center gap-3"
             >
                 <span className="keycap">SPACE</span>
                 <span>{stripKeyHint(ui.new_run)}</span>

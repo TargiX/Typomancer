@@ -17,7 +17,7 @@ const GenreCard: React.FC<GenreCardProps> = ({ genreId, index, language, onSelec
         <button
             type="button"
             onClick={() => onSelect(genreId)}
-            className="screens-cut-card screens-world-card group relative min-h-[286px] overflow-hidden border bg-[#0b101a] text-left h-full transition-all focus-visible:outline-none"
+            className="screens-cut-card screens-world-card group relative min-h-[286px] overflow-hidden border bg-[#151418] text-left h-full transition-all focus-visible:outline-none"
             style={{
                 borderColor: `${pack.accent}55`,
                 boxShadow: `inset 0 1px 0 rgba(255,255,255,0.04), 0 0 24px ${pack.accent}0c`

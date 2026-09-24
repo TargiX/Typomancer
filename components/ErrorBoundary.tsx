@@ -31,7 +31,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
     render() {
         if (!this.state.hasError) return this.props.children;
         return (
-            <div className="min-h-screen bg-[#070a11] text-slate-200 font-mono flex items-center justify-center p-6">
+            <div className="min-h-screen bg-[#0e0d10] text-slate-200 font-mono flex items-center justify-center p-6">
                 <div className="text-center space-y-5 max-w-sm">
                     <div className="fs-micro uppercase tracking-[0.3em] text-rose-400/80">ERR // LINK_SEVERED</div>
                     <h1 className="font-display text-3xl font-bold text-white tracking-tight">SIGNAL LOST</h1>
@@ -41,7 +41,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
                     <button
                         type="button"
                         onClick={() => window.location.reload()}
-                        className="btn-cyber btn-cyber-primary px-8 py-3 font-display font-bold tracking-[0.06em] text-[#04120b]"
+                        className="btn-cyber btn-cyber-primary px-8 py-3 font-display font-bold tracking-[0.06em] text-[#1c0c04]"
                     >
                         RELOAD
                     </button>
