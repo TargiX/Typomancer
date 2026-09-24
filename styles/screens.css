@@ -1459,7 +1459,7 @@
 .screens-accuracy-hero--accuracy { border-left-color: rgba(251, 146, 60, 0.9); }
 .screens-accuracy-hero--consistency { border-left-color: rgba(167, 139, 250, 0.9); }
 .screens-accuracy-hero--speed { border-left-color: rgba(56, 189, 248, 0.9); }
-.screens-accuracy-hero--mastery { border-left-color: rgba(52, 211, 153, 0.9); }
+.screens-accuracy-hero--mastery { border-left-color: rgba(134, 214, 166, 0.9); }
 
 .screens-accuracy-value {
   font-size: var(--fs-hero);
@@ -1471,7 +1471,7 @@
 .screens-accuracy-hero--accuracy .screens-accuracy-value { color: #fdba74; }
 .screens-accuracy-hero--consistency .screens-accuracy-value { color: #c4b5fd; }
 .screens-accuracy-hero--speed .screens-accuracy-value { color: #7dd3fc; }
-.screens-accuracy-hero--mastery .screens-accuracy-value { color: #6ee7b7; }
+.screens-accuracy-hero--mastery .screens-accuracy-value { color: #a3e3bc; }
 
 .screens-accuracy-coach {
   margin-top: 3px;
@@ -1498,7 +1498,7 @@
 .screens-accuracy-hero--accuracy .screens-accuracy-bar-fill { background: #fb923c; }
 .screens-accuracy-hero--consistency .screens-accuracy-bar-fill { background: #a78bfa; }
 .screens-accuracy-hero--speed .screens-accuracy-bar-fill { background: #38bdf8; }
-.screens-accuracy-hero--mastery .screens-accuracy-bar-fill { background: #34d399; }
+.screens-accuracy-hero--mastery .screens-accuracy-bar-fill { background: #86d6a6; }
 
 /* THE PACT — opt-in difficulty, the one progression axis that raises the bar. */
 .screens-pact {
@@ -1527,7 +1527,7 @@
 }
 
 .screens-pact-reward.is-active {
-  color: #6ee7b7;
+  color: #a3e3bc;
 }
 
 .screens-pact-hint {
@@ -1595,7 +1595,7 @@
 }
 
 .screens-pact-clause.is-active .screens-pact-clause-reward {
-  color: #6ee7b7;
+  color: #a3e3bc;
 }
 
 /* A Pact-taken run should be legible as one at a glance in the record. */
@@ -1620,17 +1620,26 @@
   align-items: center;
 }
 
+/* Recessed LEDs: unlit segments sit below the plate, lit ones glow in the
+   colour of what they measure (--led). */
 .hud-gauge-notch {
   flex: 1;
   height: 6px;
   border-radius: 1.5px;
-  background: rgba(239, 231, 214, 0.07);
+  background: #0a090c;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.85), 0 1px 0 rgba(255, 255, 255, 0.04);
   transition: background-color 320ms ease, box-shadow 320ms ease;
 }
 
 .hud-gauge-notch.is-lit {
-  background: currentcolor;
+  background: var(--led, currentcolor);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--led, currentcolor) 55%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
+
+.led-cream { --led: #efe7d6; }
+.led-amber { --led: #ffb347; }
+.led-red { --led: #ff4d6d; }
+.led-mint { --led: #a3e3bc; }
 
 .screens-pact-toggle {
   margin-left: 8px;
@@ -1672,7 +1681,7 @@
 
 .hud-strip-button:hover {
   color: #fff;
-  border-color: rgba(52, 211, 153, 0.5);
+  border-color: rgba(134, 214, 166, 0.5);
 }
 
 /* On narrow screens the strip carries wallet + four controls; the account
@@ -1889,7 +1898,7 @@
   text-align: left;
 }
 
-.screens-return--up { border-left-color: #34d399; }
+.screens-return--up { border-left-color: #86d6a6; }
 .screens-return--down { border-left-color: #fb923c; }
 
 .screens-return-figure {
@@ -1906,7 +1915,7 @@
   color: #cbd5e1;
 }
 
-.screens-return--up .screens-return-figure strong { color: #6ee7b7; }
+.screens-return--up .screens-return-figure strong { color: #a3e3bc; }
 .screens-return--down .screens-return-figure strong { color: #fdba74; }
 
 .screens-return-figure span {
@@ -2277,4 +2286,39 @@
 
 @media (prefers-reduced-motion: reduce) {
   .comic-page { transform: none; }
+}
+
+/* CASE PANEL — debrief cards sit on the desk like a keyboard case: machined
+   top, bevelled edge, soft shadow. The accent lives in the content, not in a
+   glowing border. */
+.screens-case-panel {
+  border: 1px solid rgba(0, 0, 0, 0.6);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 30%),
+    linear-gradient(180deg, #1c1b20, #151418);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 24px 60px rgba(0, 0, 0, 0.55);
+}
+
+.screens-case-panel--danger {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 3px 0 rgba(255, 77, 109, 0.55),
+    0 24px 60px rgba(0, 0, 0, 0.55);
+}
+
+/* STAMP — an outcome label pressed into the page in the orange modifier. */
+.screens-stamp {
+  display: inline-block;
+  padding: 5px 12px;
+  border: 1.5px solid var(--signal);
+  border-radius: 4px;
+  font-size: var(--fs-micro);
+  font-weight: 800;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--signal);
+  transform: rotate(-1.5deg);
 }

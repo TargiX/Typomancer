@@ -1,8 +1,25 @@
 /* Styles owned by the TypingEngine design pass (HUD bar, scene bezel, decision overlay).
    Keyframe names must be prefixed with `engine-` to avoid collisions. */
 
+/* HUD — the top of a keyboard case: a machined plate with a bevelled edge,
+   carrying recessed LED gauges and an OLED readout. */
 .engine-hud {
-  border-radius: 12px;
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 40%),
+    linear-gradient(180deg, #1c1b20, #151418);
+  border: 1px solid rgba(0, 0, 0, 0.6);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5),
+    0 10px 24px rgba(0, 0, 0, 0.45);
+}
+
+.engine-meter-readout {
+  min-width: 34px;
+  font-size: var(--fs-label);
+  font-weight: 700;
+  color: var(--legend);
 }
 
 .engine-meter-track,
@@ -36,7 +53,15 @@
   transform: scale(1.01);
 }
 
-.engine-telemetry-card,
+/* OLED readout: a black glass window with its own faint sheen. */
+.engine-telemetry-card {
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.06), transparent 38%),
+    #060508;
+  border-radius: 10px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
 .engine-chip,
 .engine-focus-hint,
 .engine-critical-alert {
@@ -55,12 +80,12 @@
   width: 2px;
   min-height: 12px;
   margin-right: 7px;
-  background: rgba(52, 211, 153, 0.8);
+  background: rgba(134, 214, 166, 0.8);
   content: '';
 }
 
 .engine-chip--objective::before {
-  background: #34d399;
+  background: #86d6a6;
 }
 
 .engine-chip--consequence::before {
@@ -146,7 +171,8 @@
 .engine-decision-card:hover { filter: brightness(1.1); }
 .engine-decision-card:focus-visible { outline: 2px solid var(--signal); outline-offset: 4px; }
 
-.engine-decision-card:active {
+.engine-decision-card:active,
+.engine-decision-card[data-pressed="true"] {
   transform: translateY(0);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.6), 0 3px 6px rgba(0, 0, 0, 0.6);
 }
@@ -225,7 +251,7 @@
 }
 
 .engine-focus-hint {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 0 16px rgba(52, 211, 153, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 0 16px rgba(134, 214, 166, 0.2);
 }
 
 .engine-skill-briefing {
@@ -280,9 +306,9 @@
   justify-content: center;
   gap: 12px;
   min-height: 48px;
-  border: 1px solid rgba(52, 211, 153, 0.42);
-  background: rgba(52, 211, 153, 0.1);
-  color: #a7f3d0;
+  border: 1px solid rgba(134, 214, 166, 0.42);
+  background: rgba(134, 214, 166, 0.1);
+  color: #bfeccf;
   font-family: var(--font-display);
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -292,8 +318,8 @@
 
 .engine-skill-briefing-start:hover,
 .engine-skill-briefing-start:focus-visible {
-  border-color: rgba(52, 211, 153, 0.8);
-  background: rgba(52, 211, 153, 0.18);
+  border-color: rgba(134, 214, 166, 0.8);
+  background: rgba(134, 214, 166, 0.18);
   color: #fff;
   outline: none;
 }
@@ -559,9 +585,9 @@ button.engine-cursor-skill:disabled {
 
 .engine-skill-ready {
   cursor: pointer;
-  color: #6ee7b7;
-  border-color: rgba(52, 211, 153, 0.6);
-  box-shadow: 0 0 18px rgba(52, 211, 153, 0.4), inset 0 0 12px rgba(52, 211, 153, 0.12);
+  color: #a3e3bc;
+  border-color: rgba(134, 214, 166, 0.6);
+  box-shadow: 0 0 18px rgba(134, 214, 166, 0.4), inset 0 0 12px rgba(134, 214, 166, 0.12);
   animation: focus-ready-pulse 1.2s ease-in-out infinite;
 }
 
@@ -626,7 +652,7 @@ button.engine-cursor-skill:disabled {
   animation: engine-fork-in 220ms ease-out both;
 }
 
-.engine-fork-reveal--good { border-left-color: rgba(52, 211, 153, 0.9); }
+.engine-fork-reveal--good { border-left-color: rgba(134, 214, 166, 0.9); }
 .engine-fork-reveal--average { border-left-color: rgba(251, 191, 36, 0.9); }
 .engine-fork-reveal--bad { border-left-color: rgba(244, 63, 94, 0.9); }
 
@@ -637,7 +663,7 @@ button.engine-cursor-skill:disabled {
   text-transform: uppercase;
 }
 
-.engine-fork-reveal--good .engine-fork-verdict { color: #6ee7b7; }
+.engine-fork-reveal--good .engine-fork-verdict { color: #a3e3bc; }
 .engine-fork-reveal--average .engine-fork-verdict { color: #fcd34d; }
 .engine-fork-reveal--bad .engine-fork-verdict { color: #fda4af; }
 
@@ -746,11 +772,11 @@ button.engine-cursor-skill:disabled {
 }
 
 .engine-impact-chip--good {
-  border-color: rgba(52, 211, 153, 0.35);
+  border-color: rgba(134, 214, 166, 0.35);
 }
 
 .engine-impact-chip--good .engine-impact-chip-value {
-  color: #6ee7b7;
+  color: #a3e3bc;
 }
 
 .engine-impact-chip--bad {

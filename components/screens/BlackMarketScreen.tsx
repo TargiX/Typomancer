@@ -62,7 +62,7 @@ const BlackMarketScreen: React.FC<BlackMarketScreenProps> = ({ ui, language, ski
                                 <h3 className="min-w-0 font-display fs-lead font-bold text-slate-100 leading-tight">{copy.name[language]}</h3>
                                 <div className="flex shrink-0 gap-1 pt-1" aria-label={`${ui.level} ${currentLvl}/${def.maxLevel}`}>
                                     {Array.from({ length: 10 }, (_, levelIndex) => (
-                                        <span key={levelIndex} className={`h-2 w-2 border ${levelIndex < Math.round((currentLvl / def.maxLevel) * 10) ? 'border-emerald-300 bg-emerald-300 shadow-[0_0_5px_rgba(52,211,153,0.35)]' : 'border-white/10 bg-white/[0.025]'}`} />
+                                        <span key={levelIndex} className={`h-2 w-2 border ${levelIndex < Math.round((currentLvl / def.maxLevel) * 10) ? 'border-emerald-300 bg-emerald-300 shadow-[0_0_5px_rgba(134,214,166,0.35)]' : 'border-white/10 bg-white/[0.025]'}`} />
                                     ))}
                                 </div>
                             </div>
@@ -79,7 +79,7 @@ const BlackMarketScreen: React.FC<BlackMarketScreenProps> = ({ ui, language, ski
                                     <button
                                         onClick={() => onBuy(key)}
                                         disabled={!canAfford}
-                                        className={`btn-cyber btn-cyber-ghost self-end px-4 py-2 fs-micro font-bold tracking-[0.12em] flex items-center gap-2 transition-all ${canAfford ? 'text-emerald-200 hover:text-white hover:shadow-[0_0_22px_rgba(52,211,153,0.12)]' : 'text-slate-600 cursor-not-allowed opacity-45'}`}
+                                        className={`btn-cyber btn-cyber-ghost self-end px-4 py-2 fs-micro font-bold tracking-[0.12em] flex items-center gap-2 transition-all ${canAfford ? 'text-emerald-200 hover:text-white hover:shadow-[0_0_22px_rgba(134,214,166,0.12)]' : 'text-slate-600 cursor-not-allowed opacity-45'}`}
                                     >
                                         <span>{ui.install}</span>
                                         <span className={canAfford ? 'text-emerald-400 tabular-nums' : 'tabular-nums'}>{nextCost} {ui.currency_suffix}</span>
@@ -88,7 +88,7 @@ const BlackMarketScreen: React.FC<BlackMarketScreenProps> = ({ ui, language, ski
                             </div>
                         </div>
                         <div className="absolute bottom-0 left-0 h-px bg-emerald-500/10 w-full">
-                            <div className="h-full bg-emerald-400 transition-all duration-500 shadow-[0_0_7px_rgba(52,211,153,0.55)]" style={{ width: `${(currentLvl / def.maxLevel) * 100}%` }}></div>
+                            <div className="h-full bg-emerald-400 transition-all duration-500 shadow-[0_0_7px_rgba(134,214,166,0.55)]" style={{ width: `${(currentLvl / def.maxLevel) * 100}%` }}></div>
                         </div>
                     </div>
                 );

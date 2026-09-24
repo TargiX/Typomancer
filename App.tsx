@@ -4,6 +4,7 @@ import { GameState, StorySegment, GameStats, StoryLogItem, UserProfile, Perk, Ga
 import { generateStoryStart, generateCharacterProfile, generateLevelSummary, generateNextLevelStart } from './services/geminiService';
 import { GENRE_ORDER, getGenrePack } from './services/genreConfig';
 import { getGenreSkin } from './services/genreSkin';
+import { pressThen } from './services/keyPress';
 import { TRANSLATIONS } from './services/i18n';
 import { DAILY_MAX_ATTEMPTS, DailyBrief, getDailyBrief, getDailyState, pickDailyItems, recordDailyAttempt } from './services/dailyMode';
 import { CAMPAIGN_SECTORS, DEFAULT_BRANCH_THRESHOLDS, getStealthLevel, getTypingAccuracy, getTypingFocus, summarizeSector } from './services/gameRules';
@@ -599,13 +600,15 @@ const App: React.FC = () => {
                 consume();
             }
         } else if (gameState === GameState.MENU) {
-            if (e.key === '1' || e.key === 'Enter') { initializeRelay(); consume(); }
-            if (e.key === '2') { initializeSession(); consume(); }
-            if (e.key === '3' && !dailyAttemptsExhausted) { initializeDailySession(); consume(); }
-            if (e.key === '4') { setGameState(GameState.BLACK_MARKET); consume(); }
-            if (e.key === '5') { setGameState(GameState.OPERATOR_RECORD); consume(); }
+            // Each menu key sinks its cap on screen before the menu leaves.
+            if (e.repeat) return;
+            if (e.key === '1' || e.key === 'Enter') { pressThen('1', initializeRelay); consume(); }
+            if (e.key === '2') { pressThen('2', initializeSession); consume(); }
+            if (e.key === '3' && !dailyAttemptsExhausted) { pressThen('3', initializeDailySession); consume(); }
+            if (e.key === '4') { pressThen('4', () => setGameState(GameState.BLACK_MARKET)); consume(); }
+            if (e.key === '5') { pressThen('5', () => setGameState(GameState.OPERATOR_RECORD)); consume(); }
             if (e.key.toLowerCase() === 'a') { setGameState(GameState.ACCOUNT); consume(); }
-            if (e.key.toLowerCase() === 'r' && runCheckpoint) { resumeSession(); consume(); }
+            if (e.key.toLowerCase() === 'r' && runCheckpoint) { pressThen('r', resumeSession); consume(); }
         } else if (gameState === GameState.ACCOUNT) {
             if (e.key === 'Escape') { setGameState(GameState.MENU); consume(); }
         } else if (gameState === GameState.OPERATOR_RECORD) {

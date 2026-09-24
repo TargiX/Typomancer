@@ -70,7 +70,7 @@ const SystemBeacon: React.FC<{ label: string }> = ({ label }) => {
     return (
         <div className="relative inline-flex items-center gap-3 px-4 py-2 overflow-hidden" style={{ clipPath: cut }}>
             {/* emerald frame + dark face */}
-            <div className="absolute inset-0 z-0" style={{ clipPath: cut, background: 'linear-gradient(180deg, rgba(52,211,153,0.55), rgba(52,211,153,0.12))' }} />
+            <div className="absolute inset-0 z-0" style={{ clipPath: cut, background: 'linear-gradient(180deg, rgba(134,214,166,0.55), rgba(134,214,166,0.12))' }} />
             <div className="absolute inset-[1.5px] z-0 bg-[#060c12]" style={{ clipPath: 'polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)' }} />
             {/* scanline sweep */}
             <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
@@ -84,14 +84,14 @@ const SystemBeacon: React.FC<{ label: string }> = ({ label }) => {
             </span>
 
             {/* decoding label */}
-            <span className="relative z-20 beacon-flicker font-mono fs-label font-bold tracking-[0.22em] text-emerald-300 whitespace-nowrap" style={{ textShadow: '0 0 8px rgba(52,211,153,0.45)' }}>
+            <span className="relative z-20 beacon-flicker font-mono fs-label font-bold tracking-[0.22em] text-emerald-300 whitespace-nowrap" style={{ textShadow: '0 0 8px rgba(134,214,166,0.45)' }}>
                 {text}
             </span>
 
             {/* oscilloscope */}
             <div className="relative z-20 h-4 w-16 overflow-hidden">
                 <svg className="absolute inset-0 h-full scope-scroll" style={{ width: '200%' }} viewBox="0 0 240 24" preserveAspectRatio="none">
-                    <path d={wave} fill="none" stroke="#34d399" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round" />
+                    <path d={wave} fill="none" stroke="#86d6a6" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round" />
                 </svg>
             </div>
 

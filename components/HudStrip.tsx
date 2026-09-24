@@ -1,9 +1,32 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { Language, Perk } from '../types';
 import type { UITranslations } from '../services/i18n';
 import type { SkillStackAnchor } from '../services/skillStackAnchor';
 import { stripLeadingGlyph } from '../services/text';
 import { AccountChip } from './CloudProgress';
+import { audioEngine, SWITCH_PROFILES, type SwitchProfile } from '../services/audioEngine';
+
+const SWITCH_LABELS: Record<SwitchProfile, Record<Language, string>> = {
+    melodic: { en: 'MELODIC', ru: 'МЕЛОДИЯ' },
+    thock: { en: 'THOCK', ru: 'THOCK' },
+    clicky: { en: 'CLICKY', ru: 'CLICKY' }
+};
+
+/* The keystroke sound, cycled like a switch tester: each press plays the new
+   switch once so the player hears what they picked. */
+const SwitchProfileButton: React.FC<{ language: Language }> = ({ language }) => {
+    const [profile, setProfile] = useState<SwitchProfile>(() => audioEngine.getSwitchProfile());
+    const cycle = () => {
+        const next = SWITCH_PROFILES[(SWITCH_PROFILES.indexOf(profile) + 1) % SWITCH_PROFILES.length];
+        audioEngine.unlock();
+        setProfile(audioEngine.setSwitchProfile(next));
+    };
+    return (
+        <button type="button" onClick={cycle} className="hud-strip-button" title={language === 'ru' ? 'Звук клавиш' : 'Key sound'}>
+            {language === 'ru' ? 'СВИТЧИ' : 'SWITCH'}: {SWITCH_LABELS[profile][language]}
+        </button>
+    );
+};
 
 interface HudStripProps {
     ui: UITranslations;
@@ -27,7 +50,7 @@ const HudStrip: React.FC<HudStripProps> = ({ ui, credits, perks, musicActive, sk
         <div className="flex items-center gap-3">
             <span className="fs-micro uppercase tracking-[0.22em] text-slate-500">{ui.wallet}</span>
             <span className="font-display fs-lead font-bold tabular-nums leading-none text-white">
-                {Math.floor(credits || 0)}<span className="fs-body text-emerald-400 ml-1">{ui.currency_suffix}</span>
+                {Math.floor(credits || 0)}<span className="fs-body text-signal ml-1">{ui.currency_suffix}</span>
             </span>
         </div>
         <div className="flex flex-1 flex-wrap items-center gap-1.5">
@@ -43,6 +66,7 @@ const HudStrip: React.FC<HudStripProps> = ({ ui, credits, perks, musicActive, sk
         </div>
         <div className="flex items-center gap-2">
             {onAccount && <AccountChip language={language} onOpen={onAccount} />}
+            <SwitchProfileButton language={language} />
             <button onClick={onToggleMusic} className="hud-strip-button">
                 {musicActive ? stripLeadingGlyph(ui.audio_active) : ui.audio_muted}
             </button>

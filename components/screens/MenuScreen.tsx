@@ -119,6 +119,7 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                 {runCheckpoint && (
                     <button
                         onClick={onResume}
+                        data-hotkey="r"
                         className="menu-key menu-key--wide btn-cyber btn-cyber-primary"
                     >
                         <span className="keycap">R</span>
@@ -129,6 +130,7 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                 )}
                 <button
                     onClick={onRelay}
+                    data-hotkey="1"
                     className={`menu-key menu-key--wide btn-cyber ${runCheckpoint ? 'btn-cyber-ghost' : 'btn-cyber-primary'}`}
                 >
                     <span className="keycap">1</span>
@@ -151,6 +153,7 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                 )}
                 <button
                     onClick={onInitialize}
+                    data-hotkey="2"
                     className="menu-key btn-cyber btn-cyber-ghost"
                 >
                     <span className="keycap">2</span>
@@ -161,6 +164,7 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                 </button>
                 <button
                     onClick={onDaily}
+                    data-hotkey="3"
                     disabled={dailyAttemptsExhausted}
                     className="menu-key screens-daily-button btn-cyber btn-cyber-ghost group"
                 >
@@ -197,6 +201,7 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                 <div className="menu-keys menu-keys--meta mt-3">
                     <button
                         onClick={onBlackMarket}
+                        data-hotkey="4"
                         className="menu-key menu-key--small btn-cyber btn-cyber-ghost"
                     >
                         <span className="keycap">4</span>
@@ -207,6 +212,7 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                     </button>
                     <button
                         onClick={onOperatorRecord}
+                        data-hotkey="5"
                         className="menu-key menu-key--small btn-cyber btn-cyber-ghost"
                     >
                         <span className="keycap">5</span>

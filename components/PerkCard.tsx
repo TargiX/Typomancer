@@ -20,7 +20,7 @@ const PerkCard: React.FC<PerkCardProps> = ({ perk, index, onSelect, disabled = f
         ? 'screens-perk-legendary border-amber-400/60 shadow-[0_0_28px_rgba(251,191,36,0.12)] hover:shadow-[0_0_36px_rgba(251,191,36,0.2)]'
         : isRare
             ? 'border-violet-400/60 shadow-[0_0_24px_rgba(167,139,250,0.12)] hover:shadow-[0_0_32px_rgba(167,139,250,0.2)]'
-            : 'border-white/10 hover:border-emerald-400/35 hover:shadow-[0_0_24px_rgba(52,211,153,0.1)]';
+            : 'border-white/10 hover:border-emerald-400/35 hover:shadow-[0_0_24px_rgba(134,214,166,0.1)]';
     const rarityColor = isLegendary ? 'text-amber-300' : isRare ? 'text-violet-300' : 'text-slate-300';
     const rarityLabel = {
         common: ui.rarity_common,

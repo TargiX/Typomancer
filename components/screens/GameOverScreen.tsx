@@ -43,7 +43,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     onShowComic,
     onMenu
 }) => (
-    <div className="screens-cut-panel screens-death-report bg-[#151418]/95 p-6 sm:p-8 border border-rose-500/40 backdrop-blur-xl max-w-3xl w-full shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_60px_rgba(244,63,94,0.12)] animate-fade-in-up">
+    <div className="screens-cut-panel screens-death-report bg-[#151418]/95 p-6 sm:p-8 screens-case-panel screens-case-panel--danger max-w-3xl w-full animate-fade-in-up">
         <div className="text-center">
             <div className="fs-micro font-bold uppercase tracking-[0.3em] text-rose-400/70">{ui.typing_debrief}</div>
             <h2 className="mt-2 font-display text-4xl sm:text-5xl font-bold text-rose-500 tracking-tight">{ui.critical_failure}</h2>

@@ -26,6 +26,22 @@ module.exports = {
           900: '#1a191c',
           950: '#0e0d10'
         },
+        // `emerald` carries meaning — clean, evidence, focus — so it stays green,
+        // but as a soft mint that sits in the colourway rather than the acid
+        // neon every dark dashboard defaults to.
+        emerald: {
+          50: '#effbf4',
+          100: '#dcf5e6',
+          200: '#bfeccf',
+          300: '#a3e3bc',
+          400: '#86d6a6',
+          500: '#62bf88',
+          600: '#46a06c',
+          700: '#377f57',
+          800: '#2d6447',
+          900: '#26523b',
+          950: '#122c1f'
+        },
         signal: {
           DEFAULT: '#ff6a2b',
           hi: '#ff8f5c',

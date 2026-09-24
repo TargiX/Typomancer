@@ -7,6 +7,12 @@
  */
 
 export const AUDIO_ENABLED_STORAGE_KEY = 'typomancerAudioEnabled';
+export const SWITCH_PROFILE_STORAGE_KEY = 'typomancerSwitchProfile';
+
+// Keystroke voice. `melodic` plays the streak as a pentatonic line;
+// `thock` is a lubed linear switch; `clicky` is a click-jacket switch.
+export type SwitchProfile = 'melodic' | 'thock' | 'clicky';
+export const SWITCH_PROFILES: SwitchProfile[] = ['melodic', 'thock', 'clicky'];
 
 // A minor pentatonic, in semitones from A. The keystroke voice walks this scale so
 // typing arpeggiates in the same key as the sequencer instead of clicking atonally.
@@ -27,6 +33,7 @@ class NeuralAudioEngine {
   private isPlaying: boolean = false;
   private enabled: boolean = true;
   private keyStep = 0;
+  private switchProfile: SwitchProfile = 'melodic';
 
   // Sequencer State
   private tempo = 110;
@@ -43,6 +50,8 @@ class NeuralAudioEngine {
   constructor() {
     try {
       this.enabled = window.localStorage.getItem(AUDIO_ENABLED_STORAGE_KEY) !== '0';
+      const stored = window.localStorage.getItem(SWITCH_PROFILE_STORAGE_KEY) as SwitchProfile | null;
+      if (stored && SWITCH_PROFILES.includes(stored)) this.switchProfile = stored;
     } catch {
       // Storage can be unavailable in privacy-restricted browser contexts.
       this.enabled = true;
@@ -457,7 +466,41 @@ class NeuralAudioEngine {
       return this.setEnabled(!this.enabled);
   }
 
+  public getSwitchProfile(): SwitchProfile {
+      return this.switchProfile;
+  }
+
+  /** Remembers the switch sound and plays one key of it as a preview. */
+  public setSwitchProfile(profile: SwitchProfile) {
+      this.switchProfile = profile;
+      try {
+          window.localStorage.setItem(SWITCH_PROFILE_STORAGE_KEY, profile);
+      } catch {
+          // Storage can be unavailable in privacy-restricted browser contexts.
+      }
+      this.lastKeyAt = 0;
+      this.keyHit(0);
+      return profile;
+  }
+
   // --- SFX ---
+
+  // Mechanical switch: noise contact, a low case body, and for clicky a
+  // double click. Each key is detuned so a streak never repeats one sample.
+  private switchHit(ctx: AudioContext, bus: GainNode, now: number, tier: ComboTier, vel: number) {
+      const vary = 1 + (Math.random() - 0.5) * 0.14;
+      if (this.switchProfile === 'thock') {
+          this.noiseBurst(ctx, bus, now, { duration: 0.05, gain: 0.16 * (0.75 + vel * 0.35), type: 'lowpass', frequency: (900 + tier * 120) * vary, Q: 1.4 });
+          this.blip(ctx, bus, now, { freq: 150 * vary, endFreq: 95, duration: 0.06, gain: 0.1, type: 'sine', cutoff: 900 });
+          this.noiseBurst(ctx, bus, now + 0.004, { duration: 0.012, gain: 0.025, type: 'bandpass', frequency: 2600 * vary, Q: 2 });
+          return;
+      }
+      // clicky
+      this.noiseBurst(ctx, bus, now, { duration: 0.01, gain: 0.14, type: 'bandpass', frequency: 4200 * vary, Q: 3.5 });
+      this.noiseBurst(ctx, bus, now + 0.011, { duration: 0.012, gain: 0.09, type: 'bandpass', frequency: 3400 * vary, Q: 3 });
+      this.noiseBurst(ctx, bus, now + 0.014, { duration: 0.035, gain: 0.07 * (0.8 + vel * 0.3), type: 'lowpass', frequency: 1800 * vary, Q: 1 });
+      this.blip(ctx, bus, now + 0.012, { freq: 260 * vary, endFreq: 180, duration: 0.035, gain: 0.04, type: 'triangle', cutoff: 1600 });
+  }
 
   /**
    * One correct keystroke. The ladder is a two-octave pentatonic: fast streaks
@@ -487,6 +530,10 @@ class NeuralAudioEngine {
 
       // Velocity: keystrokes that land hot hit brighter and a touch louder.
       const vel = dt < 100 ? 1 : dt < 200 ? 0.7 : dt < 400 ? 0.45 : 0.3;
+      if (this.switchProfile !== 'melodic') {
+          this.switchHit(ctx, bus, now, tier, vel);
+          return;
+      }
       this.blip(ctx, bus, now, {
           freq,
           duration: 0.075,

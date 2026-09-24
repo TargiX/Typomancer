@@ -51,7 +51,7 @@ const SectorCompleteScreen: React.FC<SectorCompleteScreenProps> = ({
                     <h2 className="font-display text-3xl font-bold text-white">{ui.seq_complete}</h2>
                     <div className="text-right">
                         <span className="fs-micro text-slate-500 uppercase tracking-[0.2em] block">{ui.xp_gained}</span>
-                        <span className="font-display text-2xl font-bold text-emerald-300 tabular-nums">+{xpGained} XP</span>
+                        <span className="font-display text-2xl font-bold text-signal tabular-nums">+{xpGained} XP</span>
                     </div>
                 </div>
                 <p className="text-slate-300 text-base leading-relaxed italic">
@@ -131,7 +131,7 @@ const SectorCompleteScreen: React.FC<SectorCompleteScreenProps> = ({
                     {logOpen && (
                         <div className="mt-3 max-h-56 space-y-2 overflow-y-auto no-scrollbar">
                             {storyLog.slice().reverse().map((log, idx) => (
-                                <div key={idx} className="border-l border-emerald-500/25 pl-3">
+                                <div key={idx} className="border-l border-white/10 pl-3">
                                     <p className="fs-label text-slate-300">{log.text}</p>
                                     {log.wpm > 0 && (
                                         <span className="fs-micro text-slate-600">
