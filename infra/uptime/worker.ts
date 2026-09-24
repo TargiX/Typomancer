@@ -45,14 +45,23 @@ export async function sendAlert(env: MonitorEnv, subject: string, text: string, 
 }
 
 export async function runMonitor(env: MonitorEnv, runtime: {
-  send?: typeof fetch; pause?: () => Promise<void>; now?: () => Date;
+  send?: typeof fetch; pause?: (ms: number) => Promise<void>; now?: () => Date;
 } = {}) {
   const send = runtime.send ?? fetch;
   const now = (runtime.now ?? (() => new Date()))().toISOString();
   const previous = await env.STATE.get<State>('status', 'json');
+  const pause = runtime.pause ?? ((ms: number) => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(resolve, ms);
+    return promise;
+  });
   const failures = (await Promise.all(targets.map(async target => {
     if (await probe(target, send)) return null;
-    await (runtime.pause ?? (() => new Promise(resolve => setTimeout(resolve, 3000))))();
+    // Two retries, not one: a container restart or a dropped pool connection
+    // outlasts a 3s pause but not a 10s one. A real outage still fails all three.
+    await pause(3000);
+    if (await probe(target, send)) return null;
+    await pause(10_000);
     return await probe(target, send) ? null : target.name;
   }))).filter((value): value is typeof targets[number]['name'] => value !== null);
   const state: State = { checkedAt: now, failures };
