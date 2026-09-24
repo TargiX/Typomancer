@@ -1663,7 +1663,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                                    <span className="engine-decision-option">“{option.text}”</span>
                                    <span className="engine-decision-preview">{option.preview || describeImpact(option.impact)}</span>
                                    {renderImpactChips(option.impact)}
-                                   <span className="sr-only">{(aggressive ? UI.press_1 : UI.press_2).replace(/\[[12]\]/, '').trim()}</span>
+                                   <span className="sr-only">{(aggressive ? UI.press_1 : UI.press_2).replace(/\[([12])\]/, '$1')}</span>
                                </button>
                            );
                        })}

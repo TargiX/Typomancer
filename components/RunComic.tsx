@@ -448,7 +448,7 @@ const RunComic: React.FC<RunComicProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-[#0e0d10]/92 backdrop-blur-md p-4 animate-fade-in-up"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-[#0e0d10]/[.92] backdrop-blur-md p-4 animate-fade-in-up"
       role="dialog"
       aria-modal="true"
       aria-label={ui.replay_label}

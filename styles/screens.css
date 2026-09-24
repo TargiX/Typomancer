@@ -1953,7 +1953,8 @@
    dished top face, inset and lighter, the way a Cherry-profile cap reads
    from above. */
 .wordmark {
-  --cap: clamp(32px, 7.4vw, 60px);
+  /* Ten caps and nine 0.1-cap gaps must fit phones and the 620px menu. */
+  --cap: clamp(24px, 8.2vw, 56px);
   display: flex;
   gap: calc(var(--cap) * 0.1);
   margin: 0;
