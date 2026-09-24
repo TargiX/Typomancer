@@ -4,6 +4,8 @@ import { GameState, StorySegment, GameStats, StoryLogItem, UserProfile, Perk, Ga
 import { generateStoryStart, generateCharacterProfile, generateLevelSummary, generateNextLevelStart } from './services/geminiService';
 import { GENRE_ORDER, getGenrePack } from './services/genreConfig';
 import { getGenreSkin } from './services/genreSkin';
+import { pressThen } from './services/keyPress';
+import { colorwayForGenre } from './services/colorway';
 import { TRANSLATIONS } from './services/i18n';
 import { DAILY_MAX_ATTEMPTS, DailyBrief, getDailyBrief, getDailyState, pickDailyItems, recordDailyAttempt } from './services/dailyMode';
 import { CAMPAIGN_SECTORS, DEFAULT_BRANCH_THRESHOLDS, getStealthLevel, getTypingAccuracy, getTypingFocus, summarizeSector } from './services/gameRules';
@@ -211,6 +213,8 @@ const App: React.FC = () => {
     gameState === GameState.STARTER_PERK_SELECTION ||
     gameState === GameState.VICTORY ||
     gameState === GameState.GAME_OVER;
+  // A run is played on its world's colourway; menus and meta screens stay on the house set.
+  const inWorldColorway = inSimulation;
 
   const UI = useMemo(() => {
     const base = TRANSLATIONS[language];
@@ -599,13 +603,15 @@ const App: React.FC = () => {
                 consume();
             }
         } else if (gameState === GameState.MENU) {
-            if (e.key === '1' || e.key === 'Enter') { initializeRelay(); consume(); }
-            if (e.key === '2') { initializeSession(); consume(); }
-            if (e.key === '3' && !dailyAttemptsExhausted) { initializeDailySession(); consume(); }
-            if (e.key === '4') { setGameState(GameState.BLACK_MARKET); consume(); }
-            if (e.key === '5') { setGameState(GameState.OPERATOR_RECORD); consume(); }
+            // Each menu key sinks its cap on screen before the menu leaves.
+            if (e.repeat) return;
+            if (e.key === '1' || e.key === 'Enter') { pressThen('1', initializeRelay); consume(); }
+            if (e.key === '2') { pressThen('2', initializeSession); consume(); }
+            if (e.key === '3' && !dailyAttemptsExhausted) { pressThen('3', initializeDailySession); consume(); }
+            if (e.key === '4') { pressThen('4', () => setGameState(GameState.BLACK_MARKET)); consume(); }
+            if (e.key === '5') { pressThen('5', () => setGameState(GameState.OPERATOR_RECORD)); consume(); }
             if (e.key.toLowerCase() === 'a') { setGameState(GameState.ACCOUNT); consume(); }
-            if (e.key.toLowerCase() === 'r' && runCheckpoint) { resumeSession(); consume(); }
+            if (e.key.toLowerCase() === 'r' && runCheckpoint) { pressThen('r', resumeSession); consume(); }
         } else if (gameState === GameState.ACCOUNT) {
             if (e.key === 'Escape') { setGameState(GameState.MENU); consume(); }
         } else if (gameState === GameState.OPERATOR_RECORD) {
@@ -1376,17 +1382,14 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="screens-app-shell min-h-screen bg-[#070a11] text-slate-200 flex flex-col md:flex-row font-mono overflow-hidden">
+    <div data-colorway={inWorldColorway ? colorwayForGenre(selectedGenre) : 'ember'} className="screens-app-shell min-h-screen bg-[#0e0d10] text-slate-200 flex flex-col md:flex-row font-mono overflow-hidden">
+      {/* The desk the game sits on: matte grain and a warm pool of light, no
+          frame brackets. The deck frame drew a second set of corners around
+          every panel that already had its own. */}
       <div className="screens-living-backdrop" aria-hidden="true">
-        <span className="screens-ambient-blob screens-ambient-blob-emerald" />
-        <span className="screens-ambient-blob screens-ambient-blob-indigo" />
+        <span className="screens-desk-light" />
+        <span className="screens-grain" />
         <span className="screens-vignette" />
-      </div>
-      <div className="screens-deck-frame" aria-hidden="true">
-        <span className="screens-deck-corner screens-deck-corner-tl" />
-        <span className="screens-deck-corner screens-deck-corner-tr" />
-        <span className="screens-deck-corner screens-deck-corner-bl" />
-        <span className="screens-deck-corner screens-deck-corner-br" />
       </div>
 
       {deathSequenceActive && <DeathSequence label={UI.signal_lost} />}
@@ -1413,10 +1416,6 @@ const App: React.FC = () => {
 
 
       <div className={`relative z-10 flex w-full flex-col md:h-screen overflow-hidden ${isTyping ? '' : 'pt-10'} ${inSimulation ? 'h-[100dvh]' : ''}`}>
-        <div className="absolute inset-0 opacity-5 pointer-events-none"
-             style={{ backgroundImage: 'linear-gradient(#334155 1px, transparent 1px), linear-gradient(90deg, #334155 1px, transparent 1px)', backgroundSize: '40px 40px' }}>
-        </div>
-
         <div className={`flex-1 min-h-0 flex justify-center p-2 sm:p-6 relative z-10 ${gameState === GameState.MENU ? 'items-start overflow-y-auto' : 'items-center'}`}>
             {gameState === GameState.MENU && (
                 <MenuScreen

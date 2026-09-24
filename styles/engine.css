@@ -1,17 +1,34 @@
 /* Styles owned by the TypingEngine design pass (HUD bar, scene bezel, decision overlay).
    Keyframe names must be prefixed with `engine-` to avoid collisions. */
 
+/* HUD — the top of a keyboard case: a machined plate with a bevelled edge,
+   carrying recessed LED gauges and an OLED readout. */
 .engine-hud {
-  clip-path: polygon(12px 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%, 0 12px);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 40%),
+    linear-gradient(180deg, #1c1b20, #151418);
+  border: 1px solid rgba(0, 0, 0, 0.6);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5),
+    0 10px 24px rgba(0, 0, 0, 0.45);
+}
+
+.engine-meter-readout {
+  min-width: 34px;
+  font-size: var(--fs-label);
+  font-weight: 700;
+  color: var(--legend);
 }
 
 .engine-meter-track,
 .engine-focus-track {
-  clip-path: polygon(3px 0, 100% 0, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0 100%, 0 3px);
+  border-radius: 4px;
 }
 
 .engine-scene-bezel {
-  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+  border-radius: 12px;
   isolation: isolate;
 }
 
@@ -20,7 +37,7 @@
   inset: 4px;
   z-index: 45;
   border: 1px solid rgba(255, 255, 255, 0.045);
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  border-radius: 8px;
   pointer-events: none;
   content: '';
 }
@@ -36,11 +53,19 @@
   transform: scale(1.01);
 }
 
-.engine-telemetry-card,
+/* OLED readout: a black glass window with its own faint sheen. */
+.engine-telemetry-card {
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.06), transparent 38%),
+    #060508;
+  border-radius: 10px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
 .engine-chip,
 .engine-focus-hint,
 .engine-critical-alert {
-  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  border-radius: 6px;
 }
 
 .engine-chip {
@@ -55,12 +80,12 @@
   width: 2px;
   min-height: 12px;
   margin-right: 7px;
-  background: rgba(52, 211, 153, 0.8);
+  background: rgba(134, 214, 166, 0.8);
   content: '';
 }
 
 .engine-chip--objective::before {
-  background: #34d399;
+  background: #86d6a6;
 }
 
 .engine-chip--consequence::before {
@@ -68,23 +93,8 @@
 }
 
 .engine-decision-overlay {
-  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+  border-radius: 12px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), inset 0 0 80px rgba(0, 0, 0, 0.55);
-}
-
-.engine-decision-card {
-  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  animation: engine-decision-card-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.engine-decision-card--stealth {
-  animation-delay: 90ms;
-}
-
-@keyframes engine-decision-card-in {
-  from { opacity: 0; transform: translateY(14px) scale(0.985); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 /* Older lines sink into the deck instead of competing with the active line:
@@ -94,31 +104,160 @@
   mask-image: linear-gradient(to bottom, transparent 0, black 72px);
 }
 
-.engine-decision-card::before {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 2px;
-  content: '';
+/* DECISION — the question is narrated in the prose cursive; the two
+   answers are wide keycaps you press with 1 or 2. */
+.engine-decision-head {
+  margin-bottom: 34px;
+  text-align: center;
 }
 
-.engine-decision-card--aggressive::before {
-  background: #f43f5e;
-  box-shadow: 0 0 14px rgba(244, 63, 94, 0.45);
+.engine-decision-eyebrow {
+  margin-bottom: 14px;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--signal);
 }
 
-.engine-decision-card--stealth::before {
-  background: #34d399;
-  box-shadow: 0 0 14px rgba(52, 211, 153, 0.45);
+.engine-decision-question {
+  max-width: 760px;
+  margin: 0 auto;
+  font-family: var(--font-prose);
+  font-size: clamp(22px, 1.2vw + 14px, 32px);
+  font-style: italic;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--legend);
+}
+
+.engine-decision-fuse {
+  background: linear-gradient(90deg, var(--signal-deep), var(--signal), var(--signal-hi));
+  box-shadow: 0 0 12px rgb(var(--signal-rgb) / 0.7);
+}
+
+.engine-decision-keys {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+}
+
+.engine-decision-card {
+  --decision-heat: 0;
+  --cap-skirt: #17161b;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 6px;
+  padding: 22px 24px 24px;
+  border-radius: 16px;
+  text-align: left;
+  cursor: pointer;
+  background:
+    radial-gradient(140% 110% at 50% 0%, rgba(255, 255, 255, 0.06), transparent 55%),
+    linear-gradient(180deg, #312f37, #26242b);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 6px 0 0 var(--cap-skirt),
+    0 6px 0 1px rgba(0, 0, 0, 0.6),
+    0 14px 28px rgba(0, 0, 0, 0.55);
+  transform: translateY(-6px);
+  transition: transform 80ms cubic-bezier(.3,.7,.4,1), box-shadow 80ms cubic-bezier(.3,.7,.4,1), filter 160ms ease;
+  animation: engine-decision-card-in 420ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.engine-decision-card:hover { filter: brightness(1.1); }
+.engine-decision-card:focus-visible { outline: 2px solid var(--signal); outline-offset: 4px; }
+
+.engine-decision-card:active,
+.engine-decision-card[data-pressed="true"] {
+  transform: translateY(0);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.6), 0 3px 6px rgba(0, 0, 0, 0.6);
+}
+
+/* The loud option heats up as the window drains. */
+.engine-decision-card--aggressive {
+  --cap-skirt: #2a1117;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 6px 0 0 var(--cap-skirt),
+    0 6px 0 1px rgba(0, 0, 0, 0.6),
+    0 14px 28px rgba(0, 0, 0, 0.55),
+    0 0 calc(var(--decision-heat) * 34px) rgba(255, 77, 109, calc(0.1 + var(--decision-heat) * 0.4));
+}
+
+.engine-decision-card--stealth {
+  --cap-skirt: #10201a;
+  animation-delay: 90ms;
+}
+
+.engine-decision-card-top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.engine-decision-cap {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding-bottom: 5px;
+  border-radius: 9px;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 800;
+  color: #1d1a16;
+  background:
+    radial-gradient(90% 70% at 50% 25%, rgba(255, 255, 255, 0.55), transparent 70%),
+    linear-gradient(180deg, #f6efe0, #ddd1b8);
+  box-shadow: inset 0 -6px 0 rgba(120, 105, 80, 0.35), 0 2px 0 #8d8169, 0 4px 8px rgba(0, 0, 0, 0.5);
+}
+
+.engine-decision-stance {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.engine-decision-card--aggressive .engine-decision-stance { color: #ff7d90; }
+.engine-decision-card--stealth .engine-decision-stance { color: #8fe3b4; }
+
+.engine-decision-option {
+  font-family: var(--font-prose);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--legend);
+}
+
+.engine-decision-preview {
+  font-size: var(--fs-label);
+  line-height: 1.55;
+  color: #a39d95;
+}
+
+@media (max-width: 767px) {
+  .engine-decision-keys { grid-template-columns: 1fr; gap: 16px; }
+  .engine-decision-option { font-size: 18px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .engine-decision-card { animation: none; }
 }
 
 .engine-focus-hint {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 0 16px rgba(52, 211, 153, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 0 16px rgba(134, 214, 166, 0.2);
 }
 
 .engine-skill-briefing {
   overflow-y: auto;
   background:
-    linear-gradient(rgba(7, 10, 17, 0.92), rgba(7, 10, 17, 0.97)),
+    linear-gradient(rgba(14, 13, 16, 0.92), rgba(14, 13, 16, 0.97)),
     repeating-linear-gradient(to bottom, transparent 0 3px, rgba(34, 211, 238, 0.06) 3px 4px);
   backdrop-filter: blur(12px);
 }
@@ -126,8 +265,8 @@
 .engine-skill-briefing-panel {
   padding: clamp(20px, 4vw, 34px);
   border: 1px solid rgba(34, 211, 238, 0.28);
-  background: rgba(11, 16, 26, 0.96);
-  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+  background: rgba(21, 20, 24, 0.96);
+  border-radius: 12px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 0 54px rgba(34, 211, 238, 0.08);
 }
 
@@ -142,13 +281,13 @@
   padding: 16px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.025);
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  border-radius: 8px;
 }
 
 .engine-skill-briefing-card strong {
   display: block;
   margin-top: 17px;
-  font-family: Rajdhani, sans-serif;
+  font-family: var(--font-display);
   font-size: var(--fs-title);
   color: #f8fafc;
 }
@@ -167,20 +306,20 @@
   justify-content: center;
   gap: 12px;
   min-height: 48px;
-  border: 1px solid rgba(52, 211, 153, 0.42);
-  background: rgba(52, 211, 153, 0.1);
-  color: #a7f3d0;
-  font-family: Rajdhani, sans-serif;
+  border: 1px solid rgba(134, 214, 166, 0.42);
+  background: rgba(134, 214, 166, 0.1);
+  color: #bfeccf;
+  font-family: var(--font-display);
   font-weight: 700;
   letter-spacing: 0.08em;
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  border-radius: 8px;
   transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
 }
 
 .engine-skill-briefing-start:hover,
 .engine-skill-briefing-start:focus-visible {
-  border-color: rgba(52, 211, 153, 0.8);
-  background: rgba(52, 211, 153, 0.18);
+  border-color: rgba(134, 214, 166, 0.8);
+  background: rgba(134, 214, 166, 0.18);
   color: #fff;
   outline: none;
 }
@@ -203,47 +342,45 @@
 .engine-cursor-skill {
   position: relative;
   display: inline-flex;
-  width: 108px;
-  min-height: 26px;
+  width: 112px;
+  min-height: 28px;
   align-items: center;
   justify-content: flex-start;
-  gap: 6px;
-  padding: 3px 6px;
-  border: 1px solid rgba(52, 211, 153, 0.4);
-  background: rgba(11, 16, 26, 0.97);
-  color: #a7f3d0;
-  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+  gap: 7px;
+  padding: 3px 8px 3px 4px;
+  border: 1px solid rgba(239, 231, 214, 0.1);
+  border-radius: 8px;
+  background: rgba(21, 20, 24, 0.96);
+  color: var(--legend);
   white-space: nowrap;
   animation: engine-skill-arrive 180ms ease-out both;
 }
 
 .engine-cursor-skill--charging {
-  border-color: rgba(148, 163, 184, 0.18);
-  color: rgba(148, 163, 184, 0.72);
+  color: rgba(160, 154, 144, 0.72);
   opacity: 0.78;
 }
 
 .engine-cursor-skill--ready {
-  border-color: rgba(52, 211, 153, 0.52);
+  border-color: rgb(var(--signal-rgb) / 0.35);
 }
 
 .engine-cursor-skill--focus.engine-cursor-skill--ready {
-  border-color: rgba(34, 211, 238, 0.7);
-  color: #a5f3fc;
-  box-shadow: inset 0 0 10px rgba(34, 211, 238, 0.08), 0 0 14px rgba(34, 211, 238, 0.18);
+  border-color: rgba(127, 224, 168, 0.55);
+  color: #bff0d3;
+  box-shadow: 0 0 14px rgba(127, 224, 168, 0.16);
 }
 
 button.engine-cursor-skill:not(:disabled):hover,
 button.engine-cursor-skill:not(:disabled):focus-visible {
-  border-color: rgba(52, 211, 153, 0.85);
+  border-color: rgb(var(--signal-rgb) / 0.8);
   color: #fff;
   outline: none;
-  box-shadow: 0 0 16px rgba(52, 211, 153, 0.2);
 }
 
 .engine-cursor-skill--active {
-  border-color: rgba(34, 211, 238, 0.52);
-  color: #a5f3fc;
+  border-color: rgba(127, 224, 168, 0.5);
+  color: #bff0d3;
   opacity: 1;
 }
 
@@ -265,7 +402,7 @@ button.engine-cursor-skill:disabled {
   max-width: min(240px, calc(100vw - 150px));
   padding: 5px 7px;
   border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(7, 10, 17, 0.98);
+  background: rgba(14, 13, 16, 0.98);
   font-size: var(--fs-micro);
   line-height: 1.35;
   color: #94a3b8;
@@ -282,11 +419,11 @@ button.engine-cursor-skill:disabled {
 }
 
 .engine-type-panel {
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
+  border-radius: 12px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
   /* The art shows through the top of the panel and sinks under the text:
      a gradient scrim instead of a flat fill. */
-  background: linear-gradient(to bottom, rgba(11, 16, 26, 0.55) 0%, rgba(11, 16, 26, 0.92) 22%, rgba(11, 16, 26, 0.97) 100%);
+  background: linear-gradient(to bottom, rgba(14, 13, 16, 0.2) 0%, rgba(14, 13, 16, 0.55) 16%, rgba(14, 13, 16, 0.9) 34%, rgba(14, 13, 16, 0.96) 100%);
 }
 
 /* During a decision the backdrop glitches — the world reacts to the pause. */
@@ -391,7 +528,7 @@ button.engine-cursor-skill:disabled {
   background: rgba(255, 255, 255, 0.03);
   overflow: hidden;
   box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.55);
-  clip-path: polygon(0 6px, 6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%);
+  border-radius: 6px;
 }
 
 .engine-rail-fill {
@@ -408,7 +545,7 @@ button.engine-cursor-skill:disabled {
   right: 0;
   z-index: 2;
   text-align: center;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-ui);
   font-weight: 700;
   letter-spacing: 0.08em;
   color: rgba(226, 232, 240, 0.9);
@@ -438,7 +575,7 @@ button.engine-cursor-skill:disabled {
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.02);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  border-radius: 8px;
   transition: border-color 200ms ease, box-shadow 200ms ease, color 200ms ease;
 }
 
@@ -448,9 +585,9 @@ button.engine-cursor-skill:disabled {
 
 .engine-skill-ready {
   cursor: pointer;
-  color: #6ee7b7;
-  border-color: rgba(52, 211, 153, 0.6);
-  box-shadow: 0 0 18px rgba(52, 211, 153, 0.4), inset 0 0 12px rgba(52, 211, 153, 0.12);
+  color: #a3e3bc;
+  border-color: rgba(134, 214, 166, 0.6);
+  box-shadow: 0 0 18px rgba(134, 214, 166, 0.4), inset 0 0 12px rgba(134, 214, 166, 0.12);
   animation: focus-ready-pulse 1.2s ease-in-out infinite;
 }
 
@@ -495,7 +632,7 @@ button.engine-cursor-skill:disabled {
 
 /* Skill bar surface — matches the deck panels so slots aren't floating in the dark */
 .engine-skillbar {
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 10px 100%, 0 calc(100% - 10px));
+  border-radius: 10px;
 }
 
 /* THE FORK REVEAL — the branch the player's accuracy just bought them.
@@ -509,13 +646,13 @@ button.engine-cursor-skill:disabled {
   padding: 10px 12px;
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-left-width: 3px;
-  background: rgba(7, 10, 17, 0.93);
+  background: rgba(14, 13, 16, 0.93);
   backdrop-filter: blur(2px);
-  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  border-radius: 6px;
   animation: engine-fork-in 220ms ease-out both;
 }
 
-.engine-fork-reveal--good { border-left-color: rgba(52, 211, 153, 0.9); }
+.engine-fork-reveal--good { border-left-color: rgba(134, 214, 166, 0.9); }
 .engine-fork-reveal--average { border-left-color: rgba(251, 191, 36, 0.9); }
 .engine-fork-reveal--bad { border-left-color: rgba(244, 63, 94, 0.9); }
 
@@ -526,7 +663,7 @@ button.engine-cursor-skill:disabled {
   text-transform: uppercase;
 }
 
-.engine-fork-reveal--good .engine-fork-verdict { color: #6ee7b7; }
+.engine-fork-reveal--good .engine-fork-verdict { color: #a3e3bc; }
 .engine-fork-reveal--average .engine-fork-verdict { color: #fcd34d; }
 .engine-fork-reveal--bad .engine-fork-verdict { color: #fda4af; }
 
@@ -617,7 +754,7 @@ button.engine-cursor-skill:disabled {
   padding: 3px 7px;
   border: 1px solid rgba(148, 163, 184, 0.2);
   background: rgba(255, 255, 255, 0.02);
-  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+  border-radius: 4px;
 }
 
 .engine-impact-chip-label {
@@ -635,11 +772,11 @@ button.engine-cursor-skill:disabled {
 }
 
 .engine-impact-chip--good {
-  border-color: rgba(52, 211, 153, 0.35);
+  border-color: rgba(134, 214, 166, 0.35);
 }
 
 .engine-impact-chip--good .engine-impact-chip-value {
-  color: #6ee7b7;
+  color: #a3e3bc;
 }
 
 .engine-impact-chip--bad {
@@ -658,25 +795,132 @@ button.engine-cursor-skill:disabled {
 }
 
 .engine-cursor-skill--introducing {
-  border-color: rgba(52, 211, 153, 0.9);
-  box-shadow: 0 0 18px rgba(52, 211, 153, 0.28);
+  border-color: rgb(var(--signal-rgb) / 0.9);
+  box-shadow: 0 0 18px rgb(var(--signal-rgb) / 0.25);
 }
 
-/* THE CARET — where you are. It used to be a grey block on a dark panel, which
-   made the one thing a typist must never lose the least visible mark on screen. */
-@keyframes engine-caret-pulse {
-  0%, 100% { box-shadow: 0 0 0 rgba(103, 232, 249, 0); }
-  50% { box-shadow: 0 0 14px rgba(103, 232, 249, 0.65); }
+/* THE LINE — set in Victor Mono. Untyped text is a dim legend; typed text
+   is the cream ink of a finished key legend. Speech inside quotes is set in
+   the face's true cursive italic (see renderActive). */
+.engine-prose {
+  font-size: clamp(21px, 0.9vw + 13px, 30px);
+  font-weight: 500;
+  line-height: 1.72;
+  letter-spacing: 0.005em;
+  font-feature-settings: 'calt' 1, 'liga' 0;
 }
 
-.engine-caret {
-  background: #67e8f9;
-  border-radius: 1px;
-  animation: engine-caret-pulse 1.1s ease-in-out infinite;
+.ch-todo { color: #6f6a76; transition: color 90ms ease-out; }
+.ch-todo--breach { color: rgba(127, 224, 168, 0.5); }
+.ch-todo--focus { color: #fbf6ec; text-shadow: 0 0 8px rgba(127, 224, 168, 0.35); }
+.ch-done { color: var(--legend); transition: color 90ms ease-out; }
+.ch-done--breach { color: #8fe3b4; }
+.ch-done--dialog { color: #a9d2f5; }
+.ch-done--signal { color: #f2c46b; }
+
+/* A miss keeps the letter it should have been, marked the way every typist
+   already reads a mistake: red ink and a heavy underline. */
+.ch-miss {
+  color: #ff6b80;
+  background: rgba(255, 77, 109, 0.14);
+  border-radius: 2px;
+  box-shadow: inset 0 -2px 0 #ff4d6d;
+}
+
+.ch-forgiven {
+  color: #bff0d3;
+  background: rgba(127, 224, 168, 0.14);
+  border-radius: 2px;
+  box-shadow: inset 0 -2px 0 rgba(127, 224, 168, 0.8);
+}
+
+/* The character under the caret brightens so the next key reads first. */
+.engine-caret { color: #fbf6ec; }
+.engine-caret--focus { color: #fff; }
+
+.engine-glide-caret {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background: var(--signal);
+  box-shadow: 0 0 10px rgb(var(--signal-rgb) / 0.65);
+  pointer-events: none;
+  transition: transform 85ms cubic-bezier(0.2, 0.9, 0.3, 1), height 85ms ease-out;
+  will-change: transform;
+}
+
+.engine-glide-caret.is-focus {
+  background: #8fe3b4;
+  box-shadow: 0 0 12px rgba(127, 224, 168, 0.8);
+}
+
+@keyframes engine-caret-blink {
+  0%, 45% { opacity: 1; }
+  55%, 100% { opacity: 0.15; }
+}
+
+.engine-glide-caret.is-idle {
+  animation: engine-caret-blink 1.05s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .engine-caret { animation: none; box-shadow: 0 0 10px rgba(103, 232, 249, 0.5); }
+  .engine-glide-caret { transition: none; }
+  .engine-glide-caret.is-idle { animation: none; }
+}
+
+/* THE LEDGER — lines already typed this sector. A clean line is plain ink;
+   a flawed one carries the dotted underline, a broken one the red squiggle
+   a spellchecker would give it. Performance, read the way typists read. */
+.engine-ledger-line {
+  margin-right: 0.5em;
+  color: #a8a298;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.3em;
+  transition: color 500ms ease;
+}
+
+.engine-ledger-line--flawed {
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: rgba(242, 196, 107, 0.75);
+}
+
+.engine-ledger-line--broken {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: rgba(255, 77, 109, 0.8);
+  text-decoration-thickness: 1.5px;
+}
+
+/* RUNNING HEAD — what this line is for, set small above the text. */
+.engine-running-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  font-size: var(--fs-micro);
+  line-height: 1.5;
+  color: #78736d;
+}
+
+.engine-running-head-skill {
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--signal);
+}
+
+.engine-running-head-objective {
+  color: #a8a298;
+}
+
+.engine-running-head-consequence {
+  font-style: italic;
+  color: #78736d;
 }
 
 /* MISSION RAIL — the run's world state, on the HUD instead of in a side column. */
@@ -697,4 +941,9 @@ button.engine-cursor-skill:disabled {
 .engine-mission-meter .hud-gauge {
   flex: 1;
   min-width: 60px;
+}
+
+@keyframes engine-decision-card-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: translateY(-6px) scale(1); }
 }

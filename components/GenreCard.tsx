@@ -3,6 +3,7 @@ import type { Language, StoryGenreId } from '../types';
 import { getGenrePack } from '../services/genreConfig';
 import EmblemTile from './EmblemTile';
 import { GenreIcon } from './icons';
+import { COLORWAY_NAMES, colorwayForGenre } from '../services/colorway';
 
 interface GenreCardProps {
     genreId: StoryGenreId;
@@ -17,7 +18,7 @@ const GenreCard: React.FC<GenreCardProps> = ({ genreId, index, language, onSelec
         <button
             type="button"
             onClick={() => onSelect(genreId)}
-            className="screens-cut-card screens-world-card group relative min-h-[286px] overflow-hidden border bg-[#0b101a] text-left h-full transition-all focus-visible:outline-none"
+            className="screens-cut-card screens-world-card group relative min-h-[286px] overflow-hidden border bg-[#151418] text-left h-full transition-all focus-visible:outline-none"
             style={{
                 borderColor: `${pack.accent}55`,
                 boxShadow: `inset 0 1px 0 rgba(255,255,255,0.04), 0 0 24px ${pack.accent}0c`
@@ -41,6 +42,13 @@ const GenreCard: React.FC<GenreCardProps> = ({ genreId, index, language, onSelec
             </div>
             <p className="screens-world-description fs-body text-slate-400 leading-relaxed">{pack.tagline[language]}</p>
             <p className="screens-world-goal fs-label text-slate-500 border-t border-white/[0.06] pt-3">{pack.ui.campaignGoal[language]}</p>
+            {/* The keycap set this world is played on, scoped to the card. */}
+            <span className="colorway-swatch px-5 pb-4" data-colorway={colorwayForGenre(genreId)}>
+                <span className="colorway-swatch-cap colorway-swatch-cap--dark" />
+                <span className="colorway-swatch-cap colorway-swatch-cap--legend" />
+                <span className="colorway-swatch-cap colorway-swatch-cap--signal" />
+                <span className="colorway-swatch-name">{COLORWAY_NAMES[colorwayForGenre(genreId)][language]}</span>
+            </span>
         </button>
     );
 };

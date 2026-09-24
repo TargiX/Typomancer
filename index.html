@@ -6,7 +6,7 @@
     <title>Typomancer — Operation Black Ledger</title>
     <link rel="canonical" href="https://typomancer.xyz" />
     <meta name="description" content="An AI-narrated typing roguelite where every keystroke rewrites the story and its generated art." />
-    <meta name="theme-color" content="#070a11" />
+    <meta name="theme-color" content="#0e0d10" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" type="image/png" href="/icon-192.png" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
@@ -23,54 +23,143 @@
     <meta name="twitter:description" content="An AI-narrated typing roguelite where every keystroke rewrites the story and its generated art." />
     <meta name="twitter:image" content="https://typomancer.xyz/og.png" />
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Martian+Mono:wdth,wght@75..112.5,300..800&family=Unbounded:wght@400..900&family=Victor+Mono:ital,wght@0,400..700;1,400..700&display=swap');
+      /* TYPE — three faces, three jobs.
+         Unbounded: display. Wide, heavy, reads like a thick keycap legend.
+         Victor Mono: the line you type. Its italic is a true cursive, so a
+           character's speech is set in handwriting — in Russian too.
+         Martian Mono: instruments. Condensed a notch so tracked labels fit. */
+      :root {
+        --font-display: 'Unbounded', 'Martian Mono', system-ui, sans-serif;
+        --font-prose: 'Victor Mono', 'Martian Mono', ui-monospace, monospace;
+        --font-ui: 'Martian Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+        /* PALETTE — a keycap colourway, not a dashboard. Warm charcoal case,
+           cream doubleshot legends, one orange modifier. Green and red stay
+           semantic (clean / broken) and never decorate. */
+        --ink-0: #0e0d10;     /* the desk */
+        --ink-1: #151418;     /* the case */
+        --ink-2: #1e1c22;     /* raised plate */
+        --cap-top: #2d2b33;   /* dark alpha keycap, top face */
+        --cap-side: #1b1a1f;  /* keycap skirt */
+        --cap-lip: #08070a;   /* the shadow a keycap throws */
+        --legend: #efe7d6;    /* cream legend */
+        --legend-dim: #7c7684;
+        --signal-rgb: 255 106 43;     /* orange modifier */
+        --signal-hi-rgb: 255 143 92;
+        --signal-deep-rgb: 184 65 15;
+        --on-signal: #1c0c04;         /* legend printed on the modifier */
+        --hairline: rgba(239, 231, 214, 0.08);
+      }
+      /* Derived accent tokens are re-declared wherever a colourway can change,
+         so a [data-colorway] element recomputes them from its own channels. */
+      :root, [data-colorway] {
+        --signal: rgb(var(--signal-rgb));
+        --signal-hi: rgb(var(--signal-hi-rgb));
+        --signal-deep: rgb(var(--signal-deep-rgb));
+        --signal-press: color-mix(in srgb, var(--signal) 84%, #000);
+      }
+      html { background-color: var(--ink-0); }
       body {
-        font-family: 'JetBrains Mono', monospace;
-        background-color: #070a11;
-        color: #e2e8f0;
+        font-family: var(--font-ui);
+        font-stretch: 87.5%;
+        background-color: var(--ink-0);
+        color: var(--legend);
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
       }
-      /* Grotesk for display/headings — pairs with the mono data readouts */
-      .font-display { font-family: 'Space Grotesk', 'JetBrains Mono', monospace; }
-      /* Subtle dotted-grid texture for premium panel depth */
+      .font-mono { font-family: var(--font-ui); }
+      .font-display { font-family: var(--font-display); font-stretch: normal; letter-spacing: -0.01em; }
+      .font-prose { font-family: var(--font-prose); font-stretch: normal; }
+      ::selection { background: var(--signal); color: #140a05; }
+      /* Matte PBT grain, instead of a dotted dashboard grid */
       .tex-grid {
-        background-image: radial-gradient(rgba(148,163,184,0.06) 1px, transparent 1px);
-        background-size: 22px 22px;
+        background-image: radial-gradient(rgba(239,231,214,0.035) 1px, transparent 1px);
+        background-size: 3px 3px;
       }
-      /* Keyboard keycap — use for every key hint instead of "[1]" / "TAB" text */
+      /* KEYCAP — a sculpted cap, not a bordered chip. Top face with a slight
+         dish, a darker skirt below it, and the lip shadow it throws on the
+         plate. It sinks when pressed (see [data-pressed] and :active). */
       .keycap {
+        position: relative;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        min-width: 1.5em;
-        height: 1.55em;
-        padding: 0 0.45em;
-        font-family: 'JetBrains Mono', monospace;
+        min-width: 1.75em;
+        height: 1.75em;
+        padding: 0 0.5em 0.12em;
+        font-family: var(--font-ui);
+        font-stretch: 87.5%;
         font-size: 0.72em;
         font-weight: 700;
-        color: #cbd5e1;
-        background: linear-gradient(180deg, #1a2230, #0d131d);
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        border-bottom-width: 2px;
-        border-bottom-color: rgba(255, 255, 255, 0.24);
-        border-radius: 5px;
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 1px 2px rgba(0, 0, 0, 0.6);
-        letter-spacing: 0.05em;
-        vertical-align: baseline;
         line-height: 1;
+        letter-spacing: 0.02em;
+        color: var(--legend);
+        background:
+          radial-gradient(120% 90% at 50% 20%, rgba(255,255,255,0.09), transparent 60%),
+          linear-gradient(180deg, #3a3842, var(--cap-top) 55%, #26242b);
+        border-radius: 0.34em;
+        box-shadow:
+          inset 0 1px 0 rgba(255,255,255,0.14),
+          inset 0 -1px 0 rgba(0,0,0,0.35),
+          0 0.18em 0 0 var(--cap-side),
+          0 0.18em 0 1px rgba(0,0,0,0.55),
+          0 0.34em 0.5em rgba(0,0,0,0.55);
+        transform: translateY(-0.1em);
+        vertical-align: baseline;
+        transition: transform 70ms ease-out, box-shadow 70ms ease-out;
+        text-shadow: 0 1px 0 rgba(0,0,0,0.4);
+      }
+      .keycap--signal {
+        color: var(--on-signal);
+        text-shadow: 0 1px 0 rgba(255,255,255,0.25);
+        background:
+          radial-gradient(120% 90% at 50% 20%, rgba(255,255,255,0.28), transparent 60%),
+          linear-gradient(180deg, var(--signal-hi), var(--signal) 55%, var(--signal-press));
+        box-shadow:
+          inset 0 1px 0 rgba(255,255,255,0.35),
+          inset 0 -1px 0 rgba(0,0,0,0.2),
+          0 0.18em 0 0 var(--signal-deep),
+          0 0.18em 0 1px rgba(0,0,0,0.55),
+          0 0.34em 0.6em rgba(0,0,0,0.5);
+      }
+      .keycap--cream {
+        color: #1d1a16;
+        text-shadow: 0 1px 0 rgba(255,255,255,0.4);
+        background:
+          radial-gradient(120% 90% at 50% 20%, rgba(255,255,255,0.5), transparent 60%),
+          linear-gradient(180deg, #f6efe0, #e6dcc6 55%, #d9cdb4);
+        box-shadow:
+          inset 0 1px 0 rgba(255,255,255,0.6),
+          inset 0 -1px 0 rgba(0,0,0,0.12),
+          0 0.18em 0 0 #a89c84,
+          0 0.18em 0 1px rgba(0,0,0,0.55),
+          0 0.34em 0.6em rgba(0,0,0,0.5);
+      }
+      .keycap[data-pressed="true"],
+      *:active > .keycap,
+      [data-pressed="true"] .keycap {
+        transform: translateY(0.08em);
+        box-shadow:
+          inset 0 1px 0 rgba(255,255,255,0.1),
+          inset 0 -1px 0 rgba(0,0,0,0.35),
+          0 0 0 0 var(--cap-side),
+          0 0 0 1px rgba(0,0,0,0.55),
+          0 0.08em 0.2em rgba(0,0,0,0.6);
       }
       /* Custom scrollbar for log */
       ::-webkit-scrollbar {
         width: 8px;
       }
       ::-webkit-scrollbar-track {
-        background: #1e293b; 
+        background: transparent;
       }
       ::-webkit-scrollbar-thumb {
-        background: #475569; 
+        background: #3a3740;
         border-radius: 4px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #64748b; 
+        background: #56525e;
       }
       
       .cursor-blink {
@@ -153,17 +242,19 @@
       }
 
       /* CRACK OVERLAY */
+      /* Glass cracks: hairlines that stay hairlines at any panel size
+         (vector-effect: non-scaling-stroke on the paths). */
       .crack-path {
         fill: none;
-        stroke: rgba(255, 255, 255, 0.6);
-        stroke-width: 2;
+        stroke: rgba(239, 231, 214, 0.42);
+        stroke-width: 1.25;
         stroke-linecap: round;
-        stroke-linejoin: round;
-        filter: drop-shadow(0 0 2px rgba(0,0,0,0.8));
+        stroke-linejoin: miter;
+        filter: drop-shadow(0 1px 0 rgba(0,0,0,0.9));
       }
       .crack-path.deep {
-         stroke: rgba(200, 240, 255, 0.9);
-         stroke-width: 3;
+         stroke: rgba(255, 214, 220, 0.75);
+         stroke-width: 1.75;
       }
 
       /* TENSE Mood Effect */
@@ -211,23 +302,29 @@
       /* THE TRACER — the Security Trace drawn on the line you are typing.
          Characters behind the burn front are being consumed; the gap between
          the front and your caret is your safety margin, made visible. */
+      /* The burn front leaves redaction behind it: typed text is blacked out
+         the way a leaked ledger is, with an ember line where it still smoulders.
+         Characters stay in the DOM (and the layout), only their ink is gone. */
       @keyframes tracer-flicker {
-          0%, 100% { opacity: 0.55; }
-          40% { opacity: 0.28; }
-          70% { opacity: 0.7; }
+          0%, 100% { box-shadow: inset 0 -2px 0 rgba(255, 77, 109, 0.55); }
+          50% { box-shadow: inset 0 -2px 0 rgba(255, 77, 109, 0.25); }
       }
       .tracer-burned {
-          color: rgba(244, 63, 94, 0.55);
-          text-shadow: 0 0 10px rgba(244, 63, 94, 0.5);
-          animation: tracer-flicker 1.1s steps(4) infinite;
+          color: transparent;
+          background: #050406;
+          box-shadow: inset 0 -2px 0 rgba(255, 77, 109, 0.45);
+          text-shadow: none;
+          animation: tracer-flicker 1.4s ease-in-out infinite;
       }
       @keyframes tracer-head-pulse {
-          from { box-shadow: 0 0 8px rgba(244, 63, 94, 0.7); }
-          to { box-shadow: 0 0 20px rgba(244, 63, 94, 1); }
+          from { box-shadow: inset -2px 0 0 var(--signal-hi), 0 0 4px rgba(255, 77, 109, 0.5); }
+          to { box-shadow: inset -2px 0 0 var(--signal-hi), 0 0 14px rgb(var(--signal-rgb) / 0.9); }
       }
       .tracer-head {
-          color: #fff;
-          background: linear-gradient(90deg, rgba(244, 63, 94, 0.95), rgba(217, 70, 239, 0.75));
+          color: #ffd6dc;
+          background: rgba(255, 77, 109, 0.28);
+          border-radius: 0 2px 2px 0;
+          box-shadow: inset -2px 0 0 var(--signal-hi);
           animation: tracer-head-pulse 0.45s ease-in-out infinite alternate;
       }
       .tracer-panel-closing {
@@ -293,9 +390,9 @@
           100% { transform: translateY(-10px) scale(1.03); opacity: 0; filter: blur(5px); }
       }
       @keyframes type-cue-word {
-          0% { letter-spacing: 0.55em; text-shadow: 0 0 4px rgba(52,211,153,0.4); }
-          45% { letter-spacing: 0.22em; text-shadow: 0 0 28px rgba(52,211,153,0.95), 0 0 46px rgba(34,211,238,0.55); }
-          100% { letter-spacing: 0.28em; text-shadow: 0 0 16px rgba(52,211,153,0.75); }
+          0% { letter-spacing: 0.5em; text-shadow: 0 0 4px rgb(var(--signal-rgb) / 0.3); }
+          45% { letter-spacing: 0.2em; text-shadow: 0 0 26px rgb(var(--signal-rgb) / 0.7), 0 0 50px rgb(var(--signal-hi-rgb) / 0.35); }
+          100% { letter-spacing: 0.24em; text-shadow: 0 0 14px rgb(var(--signal-rgb) / 0.5); }
       }
       @keyframes type-cue-glyph {
           0% { transform: rotate(0deg) scale(0.5); opacity: 0; }
@@ -319,13 +416,13 @@
           width: min(42vw, 340px);
           height: 1px;
           transform: translateX(-50%);
-          background: linear-gradient(90deg, transparent, rgba(52,211,153,0.9), rgba(34,211,238,0.75), transparent);
+          background: linear-gradient(90deg, transparent, rgb(var(--signal-rgb) / 0.9), rgba(239,231,214,0.6), transparent);
           overflow: hidden;
       }
       .type-cue-lockup::before { top: -18px; }
       .type-cue-lockup::after { bottom: -18px; }
       .type-cue-word {
-          color: #d1fae5;
+          color: var(--legend);
           font-size: clamp(3.2rem, 9vw, 7.4rem);
           font-weight: 700;
           line-height: 0.85;
@@ -336,13 +433,13 @@
           place-items: center;
           width: 44px;
           height: 44px;
-          color: #67e8f9;
+          color: var(--signal);
           font-size: 34px;
-          text-shadow: 0 0 18px rgba(103,232,249,0.95);
+          text-shadow: 0 0 18px rgb(var(--signal-rgb) / 0.9);
           animation: type-cue-glyph 1.5s ease-out both;
       }
       .type-cue-sub {
-          color: #5eead4;
+          color: #a39d95;
           font-size: 0.68rem;
           font-weight: 800;
           letter-spacing: 0.32em;
@@ -350,60 +447,80 @@
           opacity: 0.9;
       }
 
-      /* ===== Cyber / gamer buttons — cut corners, accent frame, glow, running sheen ===== */
+      /* ===== Buttons are keycaps =====
+         Every action is a key you could press: a top face, a skirt that shows
+         below it, the shadow it throws on the plate. Pressing it — with the
+         mouse or the matching key on the real keyboard ([data-pressed]) —
+         sinks the cap into the plate. No cut corners, no running sheen. */
       .btn-cyber {
+          --cap-face: linear-gradient(180deg, #34323a 0%, #2a2830 60%, #25232a 100%);
+          --cap-skirt: #17161b;
+          --cap-ring: rgba(0, 0, 0, 0.6);
+          --cap-travel: 5px;
           position: relative;
           isolation: isolate;
-          background: transparent;
           border: 0;
+          border-radius: 12px;
           cursor: pointer;
-          clip-path: polygon(11px 0, 100% 0, 100% calc(100% - 11px), calc(100% - 11px) 100%, 0 100%, 0 11px);
-          transition: transform 0.1s ease, filter 0.2s ease;
+          color: var(--legend);
+          background:
+            radial-gradient(140% 120% at 50% 0%, rgba(255,255,255,0.07), transparent 55%),
+            var(--cap-face);
+          box-shadow:
+            inset 0 1px 0 rgba(255,255,255,0.10),
+            inset 0 -2px 0 rgba(0,0,0,0.25),
+            0 var(--cap-travel) 0 0 var(--cap-skirt),
+            0 var(--cap-travel) 0 1px var(--cap-ring),
+            0 calc(var(--cap-travel) + 6px) 18px rgba(0,0,0,0.55);
+          transform: translateY(calc(var(--cap-travel) * -1));
+          margin-top: var(--cap-travel);
+          transition: transform 80ms cubic-bezier(.3,.7,.4,1), box-shadow 80ms cubic-bezier(.3,.7,.4,1), filter 160ms ease, color 160ms ease;
       }
-      .btn-cyber::before { /* accent frame */
-          content: "";
-          position: absolute;
-          inset: 0;
-          clip-path: inherit;
-          z-index: -2;
-          transition: background 0.2s ease, opacity 0.2s ease;
-      }
-      .btn-cyber::after { /* inner face, inset to reveal the frame */
-          content: "";
-          position: absolute;
-          inset: 1.5px;
-          clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
-          z-index: -1;
-          background-size: 220% 100%;
-          transition: filter 0.2s ease;
-      }
-      .btn-cyber:hover { filter: drop-shadow(0 0 16px var(--btn-glow, rgba(52,211,153,0.55))); }
-      .btn-cyber:active { transform: translateY(1px); }
-
-      /* Primary — bright emerald face with a slow running sheen */
-      .btn-cyber-primary { --btn-glow: rgba(52,211,153,0.6); }
-      .btn-cyber-primary::before { background: linear-gradient(180deg, #bbf7d0, #10b981); }
-      .btn-cyber-primary::after {
-          background-image: linear-gradient(110deg, #34d399 0%, #10b981 42%, #6ee7b7 50%, #10b981 58%, #059669 100%);
-          animation: btn-sheen 5s linear infinite;
-      }
-      .btn-cyber-primary:hover::after { filter: brightness(1.08); }
-      @keyframes btn-sheen {
-          0% { background-position: 160% 0; }
-          100% { background-position: -60% 0; }
+      .btn-cyber::before,
+      .btn-cyber::after { content: none; }
+      .btn-cyber:hover { filter: brightness(1.12); }
+      .btn-cyber:focus-visible { outline: 2px solid var(--signal); outline-offset: 4px; }
+      .btn-cyber:active:not(:disabled),
+      .btn-cyber[data-pressed="true"] {
+          transform: translateY(-1px);
+          box-shadow:
+            inset 0 1px 0 rgba(255,255,255,0.08),
+            inset 0 -1px 0 rgba(0,0,0,0.25),
+            0 1px 0 0 var(--cap-skirt),
+            0 1px 0 1px var(--cap-ring),
+            0 3px 6px rgba(0,0,0,0.6);
       }
 
-      /* Ghost — dark glass face, emerald frame that lights up on hover */
-      .btn-cyber-ghost { --btn-glow: rgba(52,211,153,0.35); }
-      .btn-cyber-ghost::before { background: linear-gradient(180deg, rgba(52,211,153,0.45), rgba(52,211,153,0.12)); }
-      .btn-cyber-ghost::after { background-image: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01)); background-color: #0b101a; }
-      .btn-cyber-ghost:hover::before { background: linear-gradient(180deg, rgba(52,211,153,0.95), rgba(52,211,153,0.4)); }
+      /* Unbounded is wide: a keycap label set in it stays one size smaller
+         and barely tracked, so two-word actions fit on one cap. */
+      .btn-cyber.font-display {
+          font-size: 14px;
+          letter-spacing: 0.02em;
+          padding-left: 16px;
+          padding-right: 16px;
+          line-height: 1.2;
+      }
 
-      /* Danger ghost — for destructive / failure screens */
-      .btn-cyber-danger { --btn-glow: rgba(244,63,94,0.4); }
-      .btn-cyber-danger::before { background: linear-gradient(180deg, rgba(244,63,94,0.5), rgba(244,63,94,0.15)); }
-      .btn-cyber-danger::after { background-image: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01)); background-color: #0b101a; }
-      .btn-cyber-danger:hover::before { background: linear-gradient(180deg, rgba(244,63,94,0.95), rgba(244,63,94,0.45)); }
+      /* Primary — the orange modifier. There is at most one per screen. */
+      .btn-cyber-primary {
+          --cap-face: linear-gradient(180deg, var(--signal-hi) 0%, var(--signal) 55%, var(--signal-press) 100%);
+          --cap-skirt: var(--signal-deep);
+          color: var(--on-signal) !important;
+          text-shadow: 0 1px 0 rgba(255,255,255,0.22);
+      }
+      .btn-cyber-primary .keycap {
+          color: var(--legend);
+          background: linear-gradient(180deg, color-mix(in srgb, var(--signal) 16%, #0b0706), #0b0706);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 0.14em 0 0 #0b0503, 0 0.24em 0.4em rgba(0,0,0,0.35);
+          text-shadow: none;
+      }
+
+      /* Ghost — a dark alpha cap. */
+      .btn-cyber-ghost { color: var(--legend) !important; }
+      .btn-cyber-ghost:hover { color: #fff !important; }
+
+      /* Danger — a dark cap with a red legend. */
+      .btn-cyber-danger { color: #ff8a9c !important; --cap-skirt: #1f1015; }
 
       /* ===== System beacon — live signal monitor ===== */
       @keyframes scope-scroll {
@@ -438,13 +555,13 @@
           100% { background-position: 200% 50%; }
       }
       .focus-holo {
-          background-image: linear-gradient(100deg, #22d3ee 0%, #4ade80 18%, #bef264 33%, #a78bfa 50%, #22d3ee 66%, #4ade80 84%, #22d3ee 100%);
+          background-image: linear-gradient(100deg, #86d6a6 0%, #efe7d6 20%, #a3e3bc 40%, #62bf88 60%, #efe7d6 80%, #86d6a6 100%);
           background-size: 200% 100%;
           animation: focus-holo 1.4s linear infinite;
       }
       @keyframes focus-ready-pulse {
-          0%, 100% { box-shadow: 0 0 10px rgba(74,222,128,0.45); }
-          50% { box-shadow: 0 0 20px rgba(74,222,128,0.85); }
+          0%, 100% { box-shadow: 0 0 10px rgba(134,214,166,0.4); }
+          50% { box-shadow: 0 0 20px rgba(134,214,166,0.8); }
       }
       .focus-ready-pulse { animation: focus-ready-pulse 1.2s ease-in-out infinite; }
     </style>

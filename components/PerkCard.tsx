@@ -20,7 +20,7 @@ const PerkCard: React.FC<PerkCardProps> = ({ perk, index, onSelect, disabled = f
         ? 'screens-perk-legendary border-amber-400/60 shadow-[0_0_28px_rgba(251,191,36,0.12)] hover:shadow-[0_0_36px_rgba(251,191,36,0.2)]'
         : isRare
             ? 'border-violet-400/60 shadow-[0_0_24px_rgba(167,139,250,0.12)] hover:shadow-[0_0_32px_rgba(167,139,250,0.2)]'
-            : 'border-white/10 hover:border-emerald-400/35 hover:shadow-[0_0_24px_rgba(52,211,153,0.1)]';
+            : 'border-white/10 hover:border-emerald-400/35 hover:shadow-[0_0_24px_rgba(134,214,166,0.1)]';
     const rarityColor = isLegendary ? 'text-amber-300' : isRare ? 'text-violet-300' : 'text-slate-300';
     const rarityLabel = {
         common: ui.rarity_common,
@@ -32,7 +32,7 @@ const PerkCard: React.FC<PerkCardProps> = ({ perk, index, onSelect, disabled = f
         <button
             onClick={() => onSelect(perk)}
             disabled={disabled}
-            className={`screens-cut-card screens-perk-card group relative overflow-hidden border bg-[#0b101a] ${rarityClass} transition-all duration-300 text-left h-full focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-400/70 disabled:cursor-wait disabled:opacity-55`}
+            className={`screens-cut-card screens-perk-card group relative overflow-hidden border bg-[#151418] ${rarityClass} transition-all duration-300 text-left h-full focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-400/70 disabled:cursor-wait disabled:opacity-55`}
         >
             <div className="screens-card-art-frame screens-card-banner screens-perk-card-banner">
                 <EmblemTile

@@ -173,8 +173,8 @@ const OperatorTelemetry: React.FC<OperatorTelemetryProps> = ({ language, progres
                aria-label={`${ui.trace}: ${headline.baselineWpm} → ${headline.currentWpm} WPM`}>
             <defs>
               <linearGradient id="telemetry-wpm-fill" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0" stopColor="#34d399" stopOpacity="0.22" />
-                <stop offset="1" stopColor="#34d399" stopOpacity="0" />
+                <stop offset="0" stopColor="#86d6a6" stopOpacity="0.22" />
+                <stop offset="1" stopColor="#86d6a6" stopOpacity="0" />
               </linearGradient>
             </defs>
             {[0.25, 0.5, 0.75].map((fraction) => (

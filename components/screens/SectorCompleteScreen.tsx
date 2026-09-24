@@ -45,13 +45,13 @@ const SectorCompleteScreen: React.FC<SectorCompleteScreenProps> = ({
     const coach = { accuracy: ui.focus_accuracy, consistency: ui.focus_consistency, speed: ui.focus_speed, mastery: ui.focus_mastery }[focus];
 
     return (
-        <div className="screens-cut-panel w-full max-w-4xl max-h-[calc(100vh-3rem)] overflow-y-auto bg-[#0b101a]/95 border border-white/[0.07] p-8 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_80px_rgba(0,0,0,0.4)] animate-fade-in-up">
+        <div className="screens-cut-panel w-full max-w-4xl max-h-[calc(100vh-3rem)] overflow-y-auto bg-[#151418]/95 border border-white/[0.07] p-8 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_80px_rgba(0,0,0,0.4)] animate-fade-in-up">
             <div className="border-b border-white/[0.06] pb-5 mb-6">
                 <div className="flex justify-between items-start mb-2">
                     <h2 className="font-display text-3xl font-bold text-white">{ui.seq_complete}</h2>
                     <div className="text-right">
                         <span className="fs-micro text-slate-500 uppercase tracking-[0.2em] block">{ui.xp_gained}</span>
-                        <span className="font-display text-2xl font-bold text-emerald-300 tabular-nums">+{xpGained} XP</span>
+                        <span className="font-display text-2xl font-bold text-signal tabular-nums">+{xpGained} XP</span>
                     </div>
                 </div>
                 <p className="text-slate-300 text-base leading-relaxed italic">
@@ -131,7 +131,7 @@ const SectorCompleteScreen: React.FC<SectorCompleteScreenProps> = ({
                     {logOpen && (
                         <div className="mt-3 max-h-56 space-y-2 overflow-y-auto no-scrollbar">
                             {storyLog.slice().reverse().map((log, idx) => (
-                                <div key={idx} className="border-l border-emerald-500/25 pl-3">
+                                <div key={idx} className="border-l border-white/10 pl-3">
                                     <p className="fs-label text-slate-300">{log.text}</p>
                                     {log.wpm > 0 && (
                                         <span className="fs-micro text-slate-600">

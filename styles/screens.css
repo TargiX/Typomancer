@@ -55,16 +55,16 @@
 }
 
 .screens-cut-panel {
-  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+  border-radius: 12px;
 }
 
 .screens-cut-card {
-  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  border-radius: 10px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .screens-stat-tile {
-  clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
+  border-radius: 7px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }
 
@@ -139,7 +139,7 @@
 }
 
 .screens-death-copy span {
-  font-family: Rajdhani, sans-serif;
+  font-family: var(--font-display);
   font-size: clamp(2.4rem, 8vw, 6rem);
   font-weight: 800;
   line-height: 0.9;
@@ -147,7 +147,7 @@
 }
 
 .screens-death-copy small {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-ui);
   font-size: clamp(0.55rem, 1.5vw, 0.75rem);
   letter-spacing: 0.32em;
   color: rgba(254, 205, 211, 0.68);
@@ -169,7 +169,7 @@
   min-width: 0;
   border: 1px solid rgba(255, 255, 255, 0.075);
   background: rgba(255, 255, 255, 0.022);
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  border-radius: 8px;
 }
 
 .screens-debrief-primary {
@@ -182,7 +182,7 @@
 
 .screens-debrief-primary strong,
 .screens-debrief-metric strong {
-  font-family: Rajdhani, sans-serif;
+  font-family: var(--font-display);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   line-height: 0.9;
@@ -323,7 +323,7 @@
 
 .calibration-header h2 {
   margin-top: 8px;
-  font-family: Rajdhani, sans-serif;
+  font-family: var(--font-display);
   font-size: clamp(2.2rem, 6vw, 3.75rem);
   font-weight: 800;
   line-height: 0.95;
@@ -386,7 +386,7 @@
 }
 
 .calibration-readout strong {
-  font-family: Rajdhani, sans-serif;
+  font-family: var(--font-display);
   font-size: var(--fs-title);
   line-height: 1;
   color: #e0f2fe;
@@ -403,7 +403,7 @@
   z-index: 1;
   margin-top: 28px;
   padding: 24px 2px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-ui);
   font-size: clamp(1.05rem, 2.4vw, 1.45rem);
   line-height: 1.9;
   letter-spacing: 0.025em;
@@ -894,7 +894,7 @@
 
 .screens-cut-chip,
 .screens-icon-tile {
-  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  border-radius: 6px;
 }
 
 .screens-emblem-tile {
@@ -929,7 +929,7 @@
   position: relative;
   min-width: 0;
   overflow: hidden;
-  background: #070a11;
+  background: #0e0d10;
 }
 
 .screens-card-art {
@@ -941,7 +941,7 @@
 }
 
 .screens-card-art.screens-emblem-failed {
-  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  border-radius: 6px;
   box-shadow:
     inset 0 0 18px rgba(0, 0, 0, 0.42),
     inset 0 1px 0 rgba(255, 255, 255, 0.055);
@@ -969,7 +969,7 @@
   bottom: 0;
   left: 0;
   height: 42%;
-  background: linear-gradient(to bottom, transparent 0%, rgba(11, 16, 26, 0.35) 62%, #0b101a 100%);
+  background: linear-gradient(to bottom, transparent 0%, rgba(21, 20, 24, 0.35) 62%, #151418 100%);
 }
 
 .screens-perk-card {
@@ -1139,7 +1139,7 @@
   right: 0;
   bottom: 0;
   width: 40%;
-  background: linear-gradient(to right, transparent 0%, rgba(11, 16, 26, 0.32) 62%, #0b101a 100%);
+  background: linear-gradient(to right, transparent 0%, rgba(21, 20, 24, 0.32) 62%, #151418 100%);
 }
 
 .screens-upgrade-content {
@@ -1205,19 +1205,23 @@
    paragraphs between menu buttons. Quiet, single-line, truncating. */
 .screens-btn-sub {
   margin-top: 3px;
+  font-family: var(--font-ui);
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
   font-size: var(--fs-micro);
   font-weight: 500;
   letter-spacing: 0.02em;
   line-height: 1.4;
-  color: rgba(148, 163, 184, 0.85);
+  color: #9d978e;
 }
 
 .btn-cyber-primary .screens-btn-sub {
-  color: rgba(4, 18, 11, 0.72);
+  color: rgba(28, 12, 4, 0.72);
 }
 
 .screens-perk-legendary::after {
@@ -1237,85 +1241,32 @@
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
-  background: #070a11;
+  background: var(--ink-0);
 }
 
-.screens-ambient-blob {
+/* A lamp over the desk rather than neon blobs: one warm pool, slightly
+   off-centre, that never animates. */
+.screens-desk-light {
   position: absolute;
-  width: min(64vw, 920px);
-  aspect-ratio: 1;
-  border-radius: 999px;
-  filter: blur(120px);
-  opacity: 0.055;
-  will-change: transform;
-  animation: screens-drift 58s ease-in-out infinite alternate;
+  inset: 0;
+  background:
+    radial-gradient(70% 55% at 50% 18%, rgba(255, 190, 140, 0.07), transparent 70%),
+    radial-gradient(50% 40% at 50% 110%, rgb(var(--signal-rgb) / 0.05), transparent 70%);
 }
 
-.screens-ambient-blob-emerald {
-  top: -34%;
-  left: 17%;
-  background: radial-gradient(circle, #34d399 0%, rgba(52, 211, 153, 0) 68%);
-}
-
-.screens-ambient-blob-indigo {
-  right: -21%;
-  bottom: -42%;
-  background: radial-gradient(circle, #6366f1 0%, rgba(99, 102, 241, 0) 68%);
-  animation-delay: -29s;
-  animation-direction: alternate-reverse;
+/* Matte PBT grain. Static noise, so it reads as material, not as effect. */
+.screens-grain {
+  position: absolute;
+  inset: -50%;
+  opacity: 0.22;
+  mix-blend-mode: soft-light;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 0.95  0 0 0 0 0.88  0 0 0 0.55 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 
 .screens-vignette {
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at center, transparent 48%, rgba(0, 0, 0, 0.3) 100%);
-}
-
-.screens-deck-frame {
-  position: fixed;
-  inset: 10px;
-  z-index: 80;
-  pointer-events: none;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.08);
-}
-
-.screens-deck-corner {
-  position: absolute;
-  width: 22px;
-  height: 22px;
-  border-color: rgba(52, 211, 153, 0.75);
-  border-style: solid;
-  border-width: 0;
-  filter: drop-shadow(0 0 5px rgba(52, 211, 153, 0.2));
-}
-
-.screens-deck-corner-tl {
-  top: -1px;
-  left: -1px;
-  border-top-width: 2px;
-  border-left-width: 2px;
-}
-
-.screens-deck-corner-tr {
-  top: -1px;
-  right: -1px;
-  border-top-width: 2px;
-  border-right-width: 2px;
-}
-
-.screens-deck-corner-bl {
-  bottom: -1px;
-  left: -1px;
-  border-bottom-width: 2px;
-  border-left-width: 2px;
-}
-
-.screens-deck-corner-br {
-  right: -1px;
-  bottom: -1px;
-  border-right-width: 2px;
-  border-bottom-width: 2px;
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(0, 0, 0, 0.55) 100%);
 }
 
 @keyframes screens-drift {
@@ -1502,13 +1453,13 @@
   border: 1px solid rgba(148, 163, 184, 0.18);
   border-left-width: 3px;
   background: rgba(255, 255, 255, 0.02);
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  border-radius: 8px;
 }
 
 .screens-accuracy-hero--accuracy { border-left-color: rgba(251, 146, 60, 0.9); }
 .screens-accuracy-hero--consistency { border-left-color: rgba(167, 139, 250, 0.9); }
 .screens-accuracy-hero--speed { border-left-color: rgba(56, 189, 248, 0.9); }
-.screens-accuracy-hero--mastery { border-left-color: rgba(52, 211, 153, 0.9); }
+.screens-accuracy-hero--mastery { border-left-color: rgba(134, 214, 166, 0.9); }
 
 .screens-accuracy-value {
   font-size: var(--fs-hero);
@@ -1520,7 +1471,7 @@
 .screens-accuracy-hero--accuracy .screens-accuracy-value { color: #fdba74; }
 .screens-accuracy-hero--consistency .screens-accuracy-value { color: #c4b5fd; }
 .screens-accuracy-hero--speed .screens-accuracy-value { color: #7dd3fc; }
-.screens-accuracy-hero--mastery .screens-accuracy-value { color: #6ee7b7; }
+.screens-accuracy-hero--mastery .screens-accuracy-value { color: #a3e3bc; }
 
 .screens-accuracy-coach {
   margin-top: 3px;
@@ -1547,16 +1498,16 @@
 .screens-accuracy-hero--accuracy .screens-accuracy-bar-fill { background: #fb923c; }
 .screens-accuracy-hero--consistency .screens-accuracy-bar-fill { background: #a78bfa; }
 .screens-accuracy-hero--speed .screens-accuracy-bar-fill { background: #38bdf8; }
-.screens-accuracy-hero--mastery .screens-accuracy-bar-fill { background: #34d399; }
+.screens-accuracy-hero--mastery .screens-accuracy-bar-fill { background: #86d6a6; }
 
 /* THE PACT — opt-in difficulty, the one progression axis that raises the bar. */
 .screens-pact {
   width: 100%;
-  max-width: 34rem;
-  padding: 14px 16px;
-  border: 1px solid rgba(251, 146, 60, 0.22);
-  background: rgba(251, 146, 60, 0.03);
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  max-width: none;
+  padding: 12px 16px;
+  border: 1px solid var(--hairline);
+  background: rgba(239, 231, 214, 0.02);
+  border-radius: 12px;
   text-align: left;
 }
 
@@ -1576,7 +1527,7 @@
 }
 
 .screens-pact-reward.is-active {
-  color: #6ee7b7;
+  color: #a3e3bc;
 }
 
 .screens-pact-hint {
@@ -1644,7 +1595,7 @@
 }
 
 .screens-pact-clause.is-active .screens-pact-clause-reward {
-  color: #6ee7b7;
+  color: #a3e3bc;
 }
 
 /* A Pact-taken run should be legible as one at a glance in the record. */
@@ -1669,17 +1620,26 @@
   align-items: center;
 }
 
+/* Recessed LEDs: unlit segments sit below the plate, lit ones glow in the
+   colour of what they measure (--led). */
 .hud-gauge-notch {
   flex: 1;
-  height: 7px;
-  background: rgba(255, 255, 255, 0.07);
-  transform: skewX(-18deg);
+  height: 6px;
+  border-radius: 1.5px;
+  background: #0a090c;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.85), 0 1px 0 rgba(255, 255, 255, 0.04);
   transition: background-color 320ms ease, box-shadow 320ms ease;
 }
 
 .hud-gauge-notch.is-lit {
-  background: currentcolor;
+  background: var(--led, currentcolor);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--led, currentcolor) 55%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
+
+.led-cream { --led: #efe7d6; }
+.led-amber { --led: #ffb347; }
+.led-red { --led: #ff4d6d; }
+.led-mint { --led: #a3e3bc; }
 
 .screens-pact-toggle {
   margin-left: 8px;
@@ -1700,11 +1660,13 @@
   gap: 16px;
   padding: 8px 18px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(7, 10, 17, 0.92);
+  background: rgba(14, 13, 16, 0.92);
   backdrop-filter: blur(4px);
 }
 
 .hud-strip-button {
+  flex-shrink: 0;
+  white-space: nowrap;
   padding: 4px 10px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.02);
@@ -1713,13 +1675,13 @@
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: #94a3b8;
-  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+  border-radius: 4px;
   transition: color 160ms ease, border-color 160ms ease;
 }
 
 .hud-strip-button:hover {
   color: #fff;
-  border-color: rgba(52, 211, 153, 0.5);
+  border-color: rgba(134, 214, 166, 0.5);
 }
 
 /* On narrow screens the strip carries wallet + four controls; the account
@@ -1727,6 +1689,18 @@
 @media (max-width: 640px) {
   .account-chip-label {
     display: none;
+  }
+
+  .hud-strip {
+    gap: 10px;
+    padding: 8px 10px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .hud-strip-button {
+    padding: 4px 7px;
+    letter-spacing: 0.08em;
   }
 }
 
@@ -1920,11 +1894,11 @@
   border-left-width: 3px;
   border-left-color: rgba(148, 163, 184, 0.5);
   background: rgba(255, 255, 255, 0.015);
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  border-radius: 8px;
   text-align: left;
 }
 
-.screens-return--up { border-left-color: #34d399; }
+.screens-return--up { border-left-color: #86d6a6; }
 .screens-return--down { border-left-color: #fb923c; }
 
 .screens-return-figure {
@@ -1941,7 +1915,7 @@
   color: #cbd5e1;
 }
 
-.screens-return--up .screens-return-figure strong { color: #6ee7b7; }
+.screens-return--up .screens-return-figure strong { color: #a3e3bc; }
 .screens-return--down .screens-return-figure strong { color: #fdba74; }
 
 .screens-return-figure span {
@@ -1964,4 +1938,448 @@
   font-size: var(--fs-micro);
   letter-spacing: 0.12em;
   color: rgba(148, 163, 184, 0.7);
+}
+
+/* ======================================================================
+   TITLE SCREEN — keycap wordmark, dossier label, a keyboard-cluster menu.
+   ====================================================================== */
+.menu-screen {
+  width: 100%;
+  max-width: 620px;
+  padding-bottom: 32px;
+}
+
+.menu-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding-top: clamp(8px, 4vh, 40px);
+  text-align: center;
+}
+
+/* WORDMARK — ten sculpted caps. The outer body is the skirt; ::before is the
+   dished top face, inset and lighter, the way a Cherry-profile cap reads
+   from above. */
+.wordmark {
+  /* Ten caps and nine 0.1-cap gaps must fit phones and the 620px menu. */
+  --cap: clamp(24px, 8.2vw, 56px);
+  display: flex;
+  gap: calc(var(--cap) * 0.1);
+  margin: 0;
+  padding-bottom: calc(var(--cap) * 0.16);
+  font-family: var(--font-display);
+  line-height: 1;
+}
+
+.wordmark-cap {
+  /* One keycap model for both colourways, lit from above:
+       top face (::before) → skirt (the body) → front wall (--wall, below)
+     Every layer is a shade of the cap's own plastic, so the front wall reads
+     as part of the key in both colours. The only true shadow is the soft,
+     neutral one under the whole cap. */
+  --face: linear-gradient(180deg, #4d4a56, #3d3b45);
+  --skirt: linear-gradient(180deg, #37353f, #2b2931);
+  --wall: #23212a;
+  --rim: rgba(255, 255, 255, 0.1);
+  --legend-color: var(--legend);
+  --travel: calc(var(--cap) * 0.09);
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--cap);
+  height: var(--cap);
+  border-radius: calc(var(--cap) * 0.14);
+  background: var(--skirt);
+  box-shadow:
+    inset 0 1px 0 var(--rim),
+    0 var(--travel) 0 0 var(--wall),
+    0 0 0 1px rgba(0, 0, 0, 0.55),
+    0 var(--travel) 0 1px rgba(0, 0, 0, 0.55),
+    0 calc(var(--travel) + var(--cap) * 0.12) calc(var(--cap) * 0.28) rgba(0, 0, 0, 0.5);
+  transform: translateY(0);
+  transition: transform 70ms cubic-bezier(.3,.7,.4,1), box-shadow 70ms cubic-bezier(.3,.7,.4,1);
+}
+
+.wordmark-cap::before {
+  position: absolute;
+  inset: 5% 11% 17% 11%;
+  border-radius: calc(var(--cap) * 0.1);
+  background:
+    radial-gradient(90% 70% at 50% 30%, rgba(255, 255, 255, 0.1), transparent 70%),
+    var(--face);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 1px 2px rgba(0, 0, 0, 0.3);
+  content: '';
+}
+
+.wordmark-cap--cream {
+  --face: linear-gradient(180deg, #f8f2e5, #ece2cd);
+  --skirt: linear-gradient(180deg, #ddd2b8, #cbbfa2);
+  --wall: #a69879;
+  --rim: rgba(255, 255, 255, 0.45);
+  --legend-color: #221e19;
+}
+
+.wordmark-cap[data-pressed='true'] {
+  transform: translateY(calc(var(--travel) * 0.8));
+  box-shadow:
+    inset 0 1px 0 var(--rim),
+    0 calc(var(--travel) * 0.2) 0 0 var(--wall),
+    0 0 0 1px rgba(0, 0, 0, 0.55),
+    0 calc(var(--travel) * 0.2) 0 1px rgba(0, 0, 0, 0.55),
+    0 calc(var(--cap) * 0.05) calc(var(--cap) * 0.1) rgba(0, 0, 0, 0.55);
+}
+
+.wordmark-legend {
+  position: relative;
+  margin-top: -12%;
+  font-size: calc(var(--cap) * 0.4);
+  font-weight: 800;
+  color: var(--legend-color);
+  opacity: 0;
+  transform: translateY(-3px);
+  transition: opacity 120ms ease-out, transform 120ms ease-out;
+}
+
+.wordmark-legend.is-set {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Dossier label: the mission name as a stamped file heading. */
+.menu-dossier {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 460px;
+}
+
+.menu-dossier-rule {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(239, 231, 214, 0.28));
+}
+
+.menu-dossier-rule:last-child {
+  background: linear-gradient(270deg, transparent, rgba(239, 231, 214, 0.28));
+}
+
+.menu-dossier-title {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-label);
+  font-weight: 700;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--signal);
+}
+
+/* The pitch, in the face the story is typed in. */
+.menu-pitch {
+  max-width: 470px;
+  margin: 0;
+  font-family: var(--font-prose);
+  font-size: 17px;
+  line-height: 1.55;
+  color: #a39d95;
+}
+
+.menu-pitch em {
+  font-style: italic;
+  color: var(--legend);
+}
+
+/* KEY CLUSTER */
+.menu-keys {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 12px;
+}
+
+.menu-key {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  min-height: 74px;
+  padding: 14px 18px;
+  text-align: left;
+}
+
+.menu-key--wide {
+  grid-column: 1 / -1;
+  min-height: 84px;
+  padding: 16px 22px;
+}
+
+.menu-key--small {
+  min-height: 62px;
+  padding: 11px 16px;
+}
+
+.menu-key .keycap {
+  flex-shrink: 0;
+  font-size: 15px;
+}
+
+.menu-key-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.menu-key-title {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.menu-key--wide .menu-key-title {
+  font-size: 19px;
+  font-weight: 800;
+}
+
+.menu-key--small .menu-key-title {
+  font-size: 13px;
+}
+
+.menu-key-enter {
+  flex-shrink: 0;
+  font-family: var(--font-ui);
+  font-size: 26px;
+  font-weight: 700;
+  opacity: 0.55;
+}
+
+.menu-key .screens-btn-sub {
+  font-family: var(--font-ui);
+}
+
+.menu-keys--meta .btn-cyber {
+  --cap-travel: 4px;
+}
+
+.menu-row-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: #57534f;
+}
+
+.menu-row-label::after {
+  flex: 1;
+  height: 1px;
+  background: var(--hairline);
+  content: '';
+}
+
+/* SWITCH — a dial, not another key. */
+.menu-switch {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: rgba(239, 231, 214, 0.02);
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.menu-switch:hover {
+  border-color: rgba(239, 231, 214, 0.16);
+}
+
+.menu-switch:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 3px;
+}
+
+.menu-switch-title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--legend);
+}
+
+.menu-switch-track {
+  position: relative;
+  flex-shrink: 0;
+  width: 44px;
+  height: 24px;
+  border-radius: 999px;
+  background: #0a090c;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.7), 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: background 180ms ease;
+}
+
+.menu-switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #4a4752, #34323a);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 2px 3px rgba(0, 0, 0, 0.6);
+  transition: transform 200ms cubic-bezier(.3,.7,.4,1), background 180ms ease;
+}
+
+.menu-switch.is-on .menu-switch-track {
+  background: rgb(var(--signal-rgb) / 0.35);
+}
+
+.menu-switch.is-on .menu-switch-thumb {
+  transform: translateX(20px);
+  background: linear-gradient(180deg, var(--signal-hi), var(--signal));
+}
+
+.menu-screen > div:last-child {
+  text-align: center;
+}
+
+@media (max-width: 560px) {
+  .menu-keys {
+    grid-template-columns: 1fr;
+  }
+
+  .menu-key {
+    min-height: 64px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wordmark-cap,
+  .wordmark-legend {
+    transition: none;
+  }
+}
+
+/* COMIC — the run replay is a printed page lying on the desk. */
+.comic-page-scroll {
+  padding: 6px 6px 10px;
+}
+
+.comic-page {
+  border-radius: 3px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06),
+    0 30px 60px -20px rgba(0, 0, 0, 0.85),
+    0 12px 24px rgba(0, 0, 0, 0.5);
+  transform: rotate(-0.4deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .comic-page { transform: none; }
+}
+
+/* CASE PANEL — debrief cards sit on the desk like a keyboard case: machined
+   top, bevelled edge, soft shadow. The accent lives in the content, not in a
+   glowing border. */
+.screens-case-panel {
+  border: 1px solid rgba(0, 0, 0, 0.6);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 30%),
+    linear-gradient(180deg, #1c1b20, #151418);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 24px 60px rgba(0, 0, 0, 0.55);
+}
+
+.screens-case-panel--danger {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 3px 0 rgba(255, 77, 109, 0.55),
+    0 24px 60px rgba(0, 0, 0, 0.55);
+}
+
+/* STAMP — an outcome label pressed into the page in the orange modifier. */
+.screens-stamp {
+  display: inline-block;
+  padding: 5px 12px;
+  border: 1.5px solid var(--signal);
+  border-radius: 4px;
+  font-size: var(--fs-micro);
+  font-weight: 800;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--signal);
+  transform: rotate(-1.5deg);
+}
+
+/* COLOURWAYS — a genre swaps the modifier colour and tints the desk. Legends
+   stay cream in every set; only the accent and the ink move. */
+[data-colorway='abyss'] {
+  --signal-rgb: 64 196 196;
+  --signal-hi-rgb: 132 224 220;
+  --signal-deep-rgb: 20 104 112;
+  --on-signal: #041416;
+  --ink-0: #0b0e11;
+}
+
+[data-colorway='ribbon'] {
+  --signal-rgb: 226 60 64;
+  --signal-hi-rgb: 242 112 108;
+  --signal-deep-rgb: 132 22 30;
+  --on-signal: #fbf1e4;
+  --ink-0: #0f0d0c;
+}
+
+[data-colorway='moss'] {
+  --signal-rgb: 164 190 92;
+  --signal-hi-rgb: 198 216 136;
+  --signal-deep-rgb: 86 106 36;
+  --on-signal: #121607;
+  --ink-0: #0d0e0b;
+}
+
+[data-colorway='phosphor'] {
+  --signal-rgb: 212 200 72;
+  --signal-hi-rgb: 234 226 128;
+  --signal-deep-rgb: 120 110 20;
+  --on-signal: #131205;
+  --ink-0: #0b0d0b;
+}
+
+/* Colourway swatch on a world card: three caps from the set. */
+.colorway-swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.colorway-swatch-cap {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.colorway-swatch-cap--legend { background: var(--legend); }
+.colorway-swatch-cap--signal { background: var(--signal); }
+.colorway-swatch-cap--dark { background: #36343e; }
+
+.colorway-swatch-name {
+  margin-left: 4px;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--signal-hi);
 }
