@@ -5,6 +5,7 @@ import { generateStoryStart, generateCharacterProfile, generateLevelSummary, gen
 import { GENRE_ORDER, getGenrePack } from './services/genreConfig';
 import { getGenreSkin } from './services/genreSkin';
 import { pressThen } from './services/keyPress';
+import { colorwayForGenre } from './services/colorway';
 import { TRANSLATIONS } from './services/i18n';
 import { DAILY_MAX_ATTEMPTS, DailyBrief, getDailyBrief, getDailyState, pickDailyItems, recordDailyAttempt } from './services/dailyMode';
 import { CAMPAIGN_SECTORS, DEFAULT_BRANCH_THRESHOLDS, getStealthLevel, getTypingAccuracy, getTypingFocus, summarizeSector } from './services/gameRules';
@@ -212,6 +213,8 @@ const App: React.FC = () => {
     gameState === GameState.STARTER_PERK_SELECTION ||
     gameState === GameState.VICTORY ||
     gameState === GameState.GAME_OVER;
+  // A run is played on its world's colourway; menus and meta screens stay on the house set.
+  const inWorldColorway = inSimulation;
 
   const UI = useMemo(() => {
     const base = TRANSLATIONS[language];
@@ -1379,7 +1382,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="screens-app-shell min-h-screen bg-[#0e0d10] text-slate-200 flex flex-col md:flex-row font-mono overflow-hidden">
+    <div data-colorway={inWorldColorway ? colorwayForGenre(selectedGenre) : 'ember'} className="screens-app-shell min-h-screen bg-[#0e0d10] text-slate-200 flex flex-col md:flex-row font-mono overflow-hidden">
       {/* The desk the game sits on: matte grain and a warm pool of light, no
           frame brackets. The deck frame drew a second set of corners around
           every panel that already had its own. */}

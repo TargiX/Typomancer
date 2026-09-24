@@ -45,10 +45,19 @@
         --cap-lip: #08070a;   /* the shadow a keycap throws */
         --legend: #efe7d6;    /* cream legend */
         --legend-dim: #7c7684;
-        --signal: #ff6a2b;    /* orange modifier */
-        --signal-hi: #ff8f5c;
-        --signal-deep: #b8410f;
+        --signal-rgb: 255 106 43;     /* orange modifier */
+        --signal-hi-rgb: 255 143 92;
+        --signal-deep-rgb: 184 65 15;
+        --on-signal: #1c0c04;         /* legend printed on the modifier */
         --hairline: rgba(239, 231, 214, 0.08);
+      }
+      /* Derived accent tokens are re-declared wherever a colourway can change,
+         so a [data-colorway] element recomputes them from its own channels. */
+      :root, [data-colorway] {
+        --signal: rgb(var(--signal-rgb));
+        --signal-hi: rgb(var(--signal-hi-rgb));
+        --signal-deep: rgb(var(--signal-deep-rgb));
+        --signal-press: color-mix(in srgb, var(--signal) 84%, #000);
       }
       html { background-color: var(--ink-0); }
       body {
@@ -102,11 +111,11 @@
         text-shadow: 0 1px 0 rgba(0,0,0,0.4);
       }
       .keycap--signal {
-        color: #1a0b04;
+        color: var(--on-signal);
         text-shadow: 0 1px 0 rgba(255,255,255,0.25);
         background:
           radial-gradient(120% 90% at 50% 20%, rgba(255,255,255,0.28), transparent 60%),
-          linear-gradient(180deg, var(--signal-hi), var(--signal) 55%, #e8561c);
+          linear-gradient(180deg, var(--signal-hi), var(--signal) 55%, var(--signal-press));
         box-shadow:
           inset 0 1px 0 rgba(255,255,255,0.35),
           inset 0 -1px 0 rgba(0,0,0,0.2),
@@ -308,14 +317,14 @@
           animation: tracer-flicker 1.4s ease-in-out infinite;
       }
       @keyframes tracer-head-pulse {
-          from { box-shadow: inset -2px 0 0 #ff8f5c, 0 0 4px rgba(255, 77, 109, 0.5); }
-          to { box-shadow: inset -2px 0 0 #ff8f5c, 0 0 14px rgba(255, 106, 43, 0.9); }
+          from { box-shadow: inset -2px 0 0 var(--signal-hi), 0 0 4px rgba(255, 77, 109, 0.5); }
+          to { box-shadow: inset -2px 0 0 var(--signal-hi), 0 0 14px rgb(var(--signal-rgb) / 0.9); }
       }
       .tracer-head {
           color: #ffd6dc;
           background: rgba(255, 77, 109, 0.28);
           border-radius: 0 2px 2px 0;
-          box-shadow: inset -2px 0 0 #ff8f5c;
+          box-shadow: inset -2px 0 0 var(--signal-hi);
           animation: tracer-head-pulse 0.45s ease-in-out infinite alternate;
       }
       .tracer-panel-closing {
@@ -381,9 +390,9 @@
           100% { transform: translateY(-10px) scale(1.03); opacity: 0; filter: blur(5px); }
       }
       @keyframes type-cue-word {
-          0% { letter-spacing: 0.5em; text-shadow: 0 0 4px rgba(255,106,43,0.3); }
-          45% { letter-spacing: 0.2em; text-shadow: 0 0 26px rgba(255,106,43,0.7), 0 0 50px rgba(255,143,92,0.35); }
-          100% { letter-spacing: 0.24em; text-shadow: 0 0 14px rgba(255,106,43,0.5); }
+          0% { letter-spacing: 0.5em; text-shadow: 0 0 4px rgb(var(--signal-rgb) / 0.3); }
+          45% { letter-spacing: 0.2em; text-shadow: 0 0 26px rgb(var(--signal-rgb) / 0.7), 0 0 50px rgb(var(--signal-hi-rgb) / 0.35); }
+          100% { letter-spacing: 0.24em; text-shadow: 0 0 14px rgb(var(--signal-rgb) / 0.5); }
       }
       @keyframes type-cue-glyph {
           0% { transform: rotate(0deg) scale(0.5); opacity: 0; }
@@ -407,7 +416,7 @@
           width: min(42vw, 340px);
           height: 1px;
           transform: translateX(-50%);
-          background: linear-gradient(90deg, transparent, rgba(255,106,43,0.9), rgba(239,231,214,0.6), transparent);
+          background: linear-gradient(90deg, transparent, rgb(var(--signal-rgb) / 0.9), rgba(239,231,214,0.6), transparent);
           overflow: hidden;
       }
       .type-cue-lockup::before { top: -18px; }
@@ -426,7 +435,7 @@
           height: 44px;
           color: var(--signal);
           font-size: 34px;
-          text-shadow: 0 0 18px rgba(255,106,43,0.9);
+          text-shadow: 0 0 18px rgb(var(--signal-rgb) / 0.9);
           animation: type-cue-glyph 1.5s ease-out both;
       }
       .type-cue-sub {
@@ -494,14 +503,14 @@
 
       /* Primary — the orange modifier. There is at most one per screen. */
       .btn-cyber-primary {
-          --cap-face: linear-gradient(180deg, #ff8a52 0%, #ff6a2b 55%, #f05a1c 100%);
-          --cap-skirt: #a8390c;
-          color: #1c0c04 !important;
+          --cap-face: linear-gradient(180deg, var(--signal-hi) 0%, var(--signal) 55%, var(--signal-press) 100%);
+          --cap-skirt: var(--signal-deep);
+          color: var(--on-signal) !important;
           text-shadow: 0 1px 0 rgba(255,255,255,0.22);
       }
       .btn-cyber-primary .keycap {
           color: var(--legend);
-          background: linear-gradient(180deg, #2a1208, #1a0b05);
+          background: linear-gradient(180deg, color-mix(in srgb, var(--signal) 16%, #0b0706), #0b0706);
           box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 0.14em 0 0 #0b0503, 0 0.24em 0.4em rgba(0,0,0,0.35);
           text-shadow: none;
       }

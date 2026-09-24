@@ -957,9 +957,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
 
   const comboAccent = () => {
     // A streak runs hot: orange modifier, then hotter, then white-hot.
-    if (combo >= 50) return { text: 'text-[#fff1e0]', glow: 'rgba(255,143,92,0.95)' };
-    if (combo >= 25) return { text: 'text-[#ffb07a]', glow: 'rgba(255,106,43,0.8)' };
-    if (combo >= 10) return { text: 'text-[#ff8f5c]', glow: 'rgba(255,106,43,0.6)' };
+    if (combo >= 50) return { text: 'text-legend', glow: 'rgb(var(--signal-hi-rgb) / 0.95)' };
+    if (combo >= 25) return { text: 'text-signal-hi', glow: 'rgb(var(--signal-rgb) / 0.8)' };
+    if (combo >= 10) return { text: 'text-signal', glow: 'rgb(var(--signal-rgb) / 0.6)' };
     return { text: 'text-slate-200', glow: 'rgba(148,163,184,0.5)' };
   };
 

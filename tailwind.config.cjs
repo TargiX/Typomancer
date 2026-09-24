@@ -43,9 +43,10 @@ module.exports = {
           950: '#122c1f'
         },
         signal: {
-          DEFAULT: '#ff6a2b',
-          hi: '#ff8f5c',
-          deep: '#b8410f'
+          // Channels live in CSS so a genre's colourway can swap the accent.
+          DEFAULT: 'rgb(var(--signal-rgb) / <alpha-value>)',
+          hi: 'rgb(var(--signal-hi-rgb) / <alpha-value>)',
+          deep: 'rgb(var(--signal-deep-rgb) / <alpha-value>)'
         },
         legend: '#efe7d6'
       },

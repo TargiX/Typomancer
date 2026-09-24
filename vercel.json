@@ -4,7 +4,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/og.ts": { "includeFiles": "public/fonts/*.ttf" }
+    "api/og.ts": { "includeFiles": "public/fonts/*.woff" }
   },
   "rewrites": [
     {

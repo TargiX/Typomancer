@@ -114,7 +114,9 @@ const renderComic = async (
   const canvas = document.createElement('canvas');
   const { frames, title, endingTitle, outcome, tagline, stats, dailyLabel, ui } = props;
   const selected = selectRunComicFrames(frames, 6);
-  const accent = outcome === 'victory' ? '#ff6a2b' : '#d7263d';
+  // The page is printed in the run's colourway accent; a defeat is red ink.
+  const signalRgb = getComputedStyle(target).getPropertyValue('--signal-rgb').trim();
+  const accent = outcome === 'victory' ? (signalRgb ? `rgb(${signalRgb})` : '#ff6a2b') : '#d7263d';
 
   // Wait for the faces before measuring — otherwise wrapText measures with the
   // fallback font while the final draw uses the loaded (wider) one and captions clip.
@@ -467,8 +469,8 @@ const RunComic: React.FC<RunComicProps> = ({
           />
           {status === 'rendering' && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/60 pointer-events-none">
-              <div className="w-10 h-10 border-4 border-[#ff6a2b]/30 border-t-[#ff6a2b] rounded-full animate-spin"></div>
-              <span className="text-[#ff8f5c] fs-body tracking-widest animate-pulse">{ui.building}</span>
+              <div className="w-10 h-10 border-4 border-signal/30 border-t-signal rounded-full animate-spin"></div>
+              <span className="text-signal-hi fs-body tracking-widest animate-pulse">{ui.building}</span>
             </div>
           )}
           {status === 'error' && (
