@@ -34,3 +34,11 @@ test('a later privacy opt-out or authentication URL stops sends',()=>{
  const {send,context}=browser();context.location.search='?token=private';assert.equal(send('event',{url:'/'}),null);
  context.location.search='';context.navigator.globalPrivacyControl=true;assert.equal(send('event',{url:'/'}),null);
 });
+test('game events pass with flat allowlisted values only',()=>{
+ const {send,context}=browser();
+ const safe=send('event',{url:'/?utm_source=x',name:'typomancer_run_started',data:{genre:'noir',run_number:2,returning_player:true,typed_text:'Mira is trapped',Email:'a@b.c',nested:{a:1}}});
+ assert.equal(safe.name,'typomancer_run_started');assert.equal(safe.url,'/');
+ assert.deepEqual(JSON.parse(JSON.stringify(safe.data)),{genre:'noir',run_number:2,returning_player:true});
+ for(const name of ['form','signup','typomancer_','TYPOMANCER_run']) assert.equal(send('event',{url:'/',name,data:{}}),null);
+ context.location.search='?token=private';assert.equal(send('event',{url:'/',name:'typomancer_run_started',data:{}}),null);
+});

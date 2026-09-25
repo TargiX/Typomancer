@@ -42,6 +42,10 @@ interface AnalyticsIdentity {
 export type SafeEventProperty = string | number | boolean;
 export type SafeEventProperties = Record<string, SafeEventProperty | undefined>;
 
+export interface UmamiTracker {
+  track: (name: string, data?: Record<string, SafeEventProperty>) => unknown;
+}
+
 interface AnalyticsRuntime {
   storage?: Storage;
   search?: string;
@@ -50,6 +54,7 @@ interface AnalyticsRuntime {
   host?: string;
   now?: () => Date;
   randomId?: () => string;
+  umami?: UmamiTracker | null;
 }
 
 const EMPTY_ATTRIBUTION: CampaignAttribution = {
@@ -271,11 +276,69 @@ const getEnv = (): Record<string, string | undefined> => (
   (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env || {}
 );
 
+// Self-hosted Umami receives the same allowlisted events. public/traffic.js
+// decides whether the tracker loads at all (production host, DNT/GPC, no
+// auth URLs), so an event only leaves the browser where pageviews already do.
+const UMAMI_QUEUE_LIMIT = 50;
+const UMAMI_WAIT_MS = 15_000;
+const UMAMI_POLL_MS = 500;
+const umamiQueue: Array<[ProductEventName, Record<string, SafeEventProperty>]> = [];
+let umamiPoll: ReturnType<typeof setInterval> | null = null;
+
+const getWindowUmami = (): UmamiTracker | undefined => {
+  if (typeof window === 'undefined') return undefined;
+  const tracker = (window as Window & { umami?: Partial<UmamiTracker> }).umami;
+  return typeof tracker?.track === 'function' ? tracker as UmamiTracker : undefined;
+};
+
+const flushUmamiQueue = (tracker: UmamiTracker) => {
+  while (umamiQueue.length) {
+    const [name, data] = umamiQueue.shift()!;
+    try {
+      tracker.track(name, data);
+    } catch {
+      // Analytics must never block the game.
+    }
+  }
+};
+
+export const sendUmamiEvent = (
+  event: ProductEventName,
+  data: Record<string, SafeEventProperty>,
+  runtime: AnalyticsRuntime = {}
+): void => {
+  if (runtime.umami === null) return;
+  const tracker = runtime.umami ?? getWindowUmami();
+  if (tracker) {
+    umamiQueue.push([event, data]);
+    flushUmamiQueue(tracker);
+    return;
+  }
+  // The tracker loads deferred, after the first events fire. Hold a few of
+  // them briefly; if it never arrives (dev, preview, opt-out), drop them.
+  if (typeof window === 'undefined' || umamiQueue.length >= UMAMI_QUEUE_LIMIT) return;
+  umamiQueue.push([event, data]);
+  if (umamiPoll) return;
+  const startedAt = Date.now();
+  umamiPoll = setInterval(() => {
+    const ready = getWindowUmami();
+    if (ready) flushUmamiQueue(ready);
+    if (ready || Date.now() - startedAt > UMAMI_WAIT_MS) {
+      umamiQueue.length = 0;
+      if (umamiPoll) clearInterval(umamiPoll);
+      umamiPoll = null;
+    }
+  }, UMAMI_POLL_MS);
+};
+
 export const captureProductEvent = (
   event: ProductEventName,
   properties: SafeEventProperties = {},
   runtime: AnalyticsRuntime = {}
 ): void => {
+  const identity = getAnalyticsIdentity(runtime);
+  sendUmamiEvent(event, sanitizeEventProperties(event, properties, identity.firstTouch), runtime);
+
   const env = getEnv();
   const projectToken = runtime.projectToken ?? env.VITE_POSTHOG_KEY;
   if (!projectToken) return;
@@ -284,7 +347,6 @@ export const captureProductEvent = (
   const send = runtime.fetch ?? (typeof fetch !== 'undefined' ? fetch : undefined);
   if (!send) return;
 
-  const identity = getAnalyticsIdentity(runtime);
   const payload = buildPostHogPayload(projectToken, event, identity, properties);
   void send(`${host}/i/v0/e/`, {
     method: 'POST',
