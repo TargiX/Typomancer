@@ -239,10 +239,10 @@ const normalizeRun = (value: unknown): RunRecord | null => {
   };
 };
 
-// The prologue leads the menu until the player has finished it or played
+// The prologue leads the menu until the player has completed it or played
 // anything else. Runs recorded before the tag existed count as "anything else".
 export const shouldLeadWithPrologue = (progress: PlayerProgress): boolean => (
-  progress.runs.every((run) => run.mission === 'last_relay' && run.outcome === 'defeat')
+  progress.runs.every((run) => run.mission === 'last_relay' && (run.outcome === 'defeat' || run.outcome === 'banked'))
 );
 
 export const normalizePlayerProgress = (value: unknown): PlayerProgress => {

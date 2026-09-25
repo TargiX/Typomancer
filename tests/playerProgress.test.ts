@@ -174,10 +174,15 @@ test('a player graduates out of the guided preset by improving, not by rememberi
   assert.equal(getAdaptiveDifficulty(progress.calibration).preset, 'guided');
 });
 
-test('the prologue leads the menu until it is finished or anything else is played', () => {
+test('the prologue leads the menu until it is completed or anything else is played', () => {
   const progress = (runs: RunRecord[]): PlayerProgress => ({ ...EMPTY_PLAYER_PROGRESS, runs });
   assert.equal(shouldLeadWithPrologue(progress([])), true);
   assert.equal(shouldLeadWithPrologue(progress([makeRun({ mission: 'last_relay', outcome: 'defeat' })])), true);
+  assert.equal(shouldLeadWithPrologue(progress([makeRun({ mission: 'last_relay', outcome: 'banked' })])), true);
+  assert.equal(shouldLeadWithPrologue(progress([
+    makeRun({ id: 'banked', mission: 'last_relay', outcome: 'banked' }),
+    makeRun({ id: 'defeat', mission: 'last_relay', outcome: 'defeat' })
+  ])), true);
   assert.equal(shouldLeadWithPrologue(progress([makeRun({ mission: 'last_relay', outcome: 'victory' })])), false);
   // A run recorded before the tag existed means the player has played before.
   assert.equal(shouldLeadWithPrologue(progress([makeRun({ outcome: 'defeat' })])), false);
