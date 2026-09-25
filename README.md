@@ -6,7 +6,7 @@ A consequence-driven RPG typing game. You play as Agent Nox, a field hacker tryi
 
 ## The Last Relay
 
-Start **The Last Relay** from the main menu with `5` or `ENTER`. This authored two-sector mission begins immediately: Mira is trapped, the evidence is ready, and one transmitter remains online. Camera accuracy changes your escape route; rescuing Mira earns help at the relay; publishing her identity or redacting it changes the final verification and ending. English and Russian are supported. A checkpoint preserves the first sector's choices.
+**The Last Relay** is the prologue: start it with `1`, or `ENTER` while it leads the menu. This authored two-sector mission begins immediately: Mira is trapped, the evidence is ready, and one transmitter remains online. Camera accuracy changes your escape route; rescuing Mira earns help at the relay; publishing her identity or redacting it changes the final verification and ending. English and Russian are supported. A checkpoint preserves the first sector's choices.
 
 The mission uses bundled artwork and authored text, with no AI requests. See [mission design and playtest questions](docs/last-relay.md). The four-sector campaign remains available with `1`, and Daily with `3`.
 
@@ -37,7 +37,8 @@ The mission uses bundled artwork and authored text, with no AI requests. See [mi
 
 ## Controls
 
-- `5` / `ENTER` on the main menu: start The Last Relay.
+- `1` on the main menu: start The Last Relay (the prologue). `2`: start the campaign.
+- `ENTER` on the main menu: start whichever leads — the prologue until it is finished, then the campaign.
 - `1`, `2`, `3`: choose perks/upgrades/options where shown.
 - `TAB`: activate Focus Mode when the Focus meter is full.
 - `↑` / `↓`: activate Firewall or Purge when they appear beside the typing caret. Purge also throws the tracer back down the line.

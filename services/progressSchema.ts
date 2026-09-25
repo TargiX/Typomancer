@@ -19,7 +19,8 @@ export const runSchema = z.object({
   outcome: z.enum(['victory', 'defeat', 'banked']), daily: z.boolean(), genre,
   level: z.number().check(z.int(), z.minimum(1), z.maximum(100)), score: count, wpm: speed, bestWpm: speed,
   accuracy: percent, consistency: percent, mistakes: count, characters: count, durationSeconds: count,
-  focus: z.enum(['accuracy', 'consistency', 'speed', 'mastery']), pact
+  focus: z.enum(['accuracy', 'consistency', 'speed', 'mastery']), pact,
+  mission: z.optional(z.enum(['last_relay']))
 });
 const pattern = z.object({
   token: z.string().check(z.minLength(1), z.maxLength(2)), attempts: count, errors: count,

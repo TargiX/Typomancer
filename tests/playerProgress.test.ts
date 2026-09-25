@@ -9,11 +9,13 @@ import {
   getDifficultyPreset,
   normalizePlayerProgress,
   recordRun,
+  shouldLeadWithPrologue,
   summarizeProgress,
   getEffectiveBaseline,
   type PlayerProgress,
   type RunRecord
 } from '../services/playerProgress.ts';
+import { runSchema } from '../services/progressSchema.ts';
 
 const makeRun = (overrides: Partial<RunRecord> = {}): RunRecord => ({
   id: 'run-1',
@@ -170,4 +172,22 @@ test('a player graduates out of the guided preset by improving, not by rememberi
   assert.equal(getAdaptiveDifficulty(progress.calibration, progress).preset, 'intense');
   // Without the run history the old frozen answer stands.
   assert.equal(getAdaptiveDifficulty(progress.calibration).preset, 'guided');
+});
+
+test('the prologue leads the menu until it is finished or anything else is played', () => {
+  const progress = (runs: RunRecord[]): PlayerProgress => ({ ...EMPTY_PLAYER_PROGRESS, runs });
+  assert.equal(shouldLeadWithPrologue(progress([])), true);
+  assert.equal(shouldLeadWithPrologue(progress([makeRun({ mission: 'last_relay', outcome: 'defeat' })])), true);
+  assert.equal(shouldLeadWithPrologue(progress([makeRun({ mission: 'last_relay', outcome: 'victory' })])), false);
+  // A run recorded before the tag existed means the player has played before.
+  assert.equal(shouldLeadWithPrologue(progress([makeRun({ outcome: 'defeat' })])), false);
+});
+
+test('the prologue tag survives normalisation and the cloud run schema', () => {
+  const tagged = normalizePlayerProgress({ ...EMPTY_PLAYER_PROGRESS, runs: [makeRun({ mission: 'last_relay' })] });
+  assert.equal(tagged.runs[0].mission, 'last_relay');
+  const forged = normalizePlayerProgress({ ...EMPTY_PLAYER_PROGRESS, runs: [{ ...makeRun(), mission: 'other' }] });
+  assert.equal('mission' in forged.runs[0], false);
+  assert.equal(runSchema.safeParse(makeRun({ mission: 'last_relay' })).success, true);
+  assert.equal(runSchema.safeParse({ ...makeRun(), mission: 'other' }).success, false);
 });
