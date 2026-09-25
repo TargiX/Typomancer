@@ -58,6 +58,7 @@ export interface RunRecord {
 export interface PlayerProgress {
   version: 1;
   calibration: CalibrationResult | null;
+  hasMovedPastPrologue: boolean;
   runs: RunRecord[];
 }
 
@@ -76,6 +77,7 @@ export interface ProgressSummary {
 export const EMPTY_PLAYER_PROGRESS: PlayerProgress = {
   version: PLAYER_PROGRESS_VERSION,
   calibration: null,
+  hasMovedPastPrologue: false,
   runs: []
 };
 
@@ -239,25 +241,30 @@ const normalizeRun = (value: unknown): RunRecord | null => {
   };
 };
 
-// The prologue leads the menu until the player has finished it or played
-// anything else. Runs recorded before the tag existed count as "anything else".
+// The flag survives when the run that moved the player past the prologue drops
+// out of the bounded history. Runs recorded before tagging count as other modes.
+const movesPastPrologue = (run: RunRecord): boolean => (
+  run.mission !== 'last_relay' || run.outcome === 'victory'
+);
+
 export const shouldLeadWithPrologue = (progress: PlayerProgress): boolean => (
-  progress.runs.every((run) => run.mission === 'last_relay' && run.outcome === 'defeat')
+  !progress.hasMovedPastPrologue && progress.runs.every((run) => !movesPastPrologue(run))
 );
 
 export const normalizePlayerProgress = (value: unknown): PlayerProgress => {
   if (!value || typeof value !== 'object') return { ...EMPTY_PLAYER_PROGRESS, runs: [] };
   const progress = value as Partial<PlayerProgress>;
-  const runs = Array.isArray(progress.runs)
+  const normalizedRuns = Array.isArray(progress.runs)
     ? progress.runs.flatMap((run) => {
         const normalized = normalizeRun(run);
         return normalized ? [normalized] : [];
-      }).slice(0, MAX_RUN_HISTORY)
+      })
     : [];
   return {
     version: PLAYER_PROGRESS_VERSION,
     calibration: normalizeCalibration(progress.calibration),
-    runs
+    hasMovedPastPrologue: progress.hasMovedPastPrologue === true || normalizedRuns.some(movesPastPrologue),
+    runs: normalizedRuns.slice(0, MAX_RUN_HISTORY)
   };
 };
 
@@ -294,6 +301,7 @@ export const recordRun = (progress: PlayerProgress, run: RunRecord): PlayerProgr
   const current = normalizePlayerProgress(progress);
   return {
     ...current,
+    hasMovedPastPrologue: current.hasMovedPastPrologue || movesPastPrologue(normalized),
     runs: [normalized, ...current.runs.filter((existing) => existing.id !== normalized.id)].slice(0, MAX_RUN_HISTORY)
   };
 };
