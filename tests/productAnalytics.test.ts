@@ -180,3 +180,41 @@ test('capture is provider-gated and posts only the anonymous allowlisted payload
     assert.equal('typed_text' in payload, false);
   }
 });
+
+test('Umami receives the same allowlisted event data and no anonymous id', () => {
+  const tracked: Array<{ name: string; data?: Record<string, unknown> }> = [];
+  const umami = { track: (name: string, data?: Record<string, unknown>) => { tracked.push({ name, data }); } };
+
+  captureProductEvent('typomancer_run_started', {
+    genre: 'noir',
+    run_number: 2,
+    typed_text: 'private'
+  }, {
+    umami,
+    storage: new MemoryStorage(),
+    search: '?utm_source=observed-playtest',
+    randomId: () => 'anonymous-3'
+  });
+
+  assert.equal(tracked.length, 1);
+  assert.equal(tracked[0].name, 'typomancer_run_started');
+  assert.equal(tracked[0].data?.genre, 'noir');
+  assert.equal(tracked[0].data?.run_number, 2);
+  assert.equal(tracked[0].data?.source, 'observed-playtest');
+  assert.equal(JSON.stringify(tracked).includes('private'), false);
+  assert.equal(JSON.stringify(tracked).includes('anonymous-3'), false);
+});
+
+test('the page tracker is used when present and skipped when disabled', () => {
+  const tracked: string[] = [];
+  const globals = globalThis as { window?: unknown };
+  globals.window = { umami: { track: (name: string) => { tracked.push(name); } } };
+  try {
+    captureProductEvent('typomancer_landing_viewed', {}, { umami: null, storage: new MemoryStorage() });
+    assert.deepEqual(tracked, []);
+    captureProductEvent('typomancer_landing_viewed', {}, { storage: new MemoryStorage() });
+    assert.deepEqual(tracked, ['typomancer_landing_viewed']);
+  } finally {
+    delete globals.window;
+  }
+});

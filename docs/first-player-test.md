@@ -9,12 +9,11 @@ scores as evidence of improvement.
 
 ## Measurement readiness
 
-The application already emits allowlisted anonymous events for landing, run
-start, first segment, run completion, debrief and practice. As of the initial
-2026-09-18 release preparation, production Vercel had no `VITE_POSTHOG_KEY`, so
-these calls were a no-op. A dedicated Typomancer project and production-only
-`VITE_POSTHOG_KEY` / `VITE_POSTHOG_HOST` must be configured, rebuilt and verified
-at ingestion before recruiting. Do not reuse another product's token.
+The application emits allowlisted anonymous events for landing, run start,
+first segment, run completion, debrief and practice. They go to self-hosted
+Umami (stats.phosphene.cc, see UMAMI.md) and, during the migration, to PostHog
+as well. On 2026-09-25 the production bundle carried a PostHog key. Verify
+ingestion in Umami from the deployed site before recruiting.
 
 Use `utm_source=observed-playtest`, `utm_medium=invite`, and
 `utm_campaign=first-10-game` or `first-10-trainer` on invitation URLs. Internal
