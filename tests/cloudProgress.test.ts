@@ -51,6 +51,16 @@ test('snapshot roundtrip includes stats and upgrades but excludes typed text and
   assert.ok(!fingerprint(read).includes('private story'));
   assert.ok(!fingerprint(read).includes('secret'));
 });
+test('snapshot roundtrip keeps prologue progression and accepts older snapshots', () => {
+  const storage = memoryStorage();
+  const snapshot = readSnapshot(storage);
+  snapshot.progress.hasMovedPastPrologue = true;
+  writeSnapshot(storage, snapshot);
+  assert.equal(readSnapshot(storage).progress.hasMovedPastPrologue, true);
+  const legacy = { ...snapshot, progress: { version: 1, calibration: null, runs: [] } };
+  assert.equal(snapshotSchema.safeParse(legacy).success, true);
+  assert.equal(snapshotSchema.safeParse({ ...legacy, progress: { ...legacy.progress, hasMovedPastPrologue: 'yes' } }).success, false);
+});
 test('schema strips unknown fields and rejects malformed or oversized game data', () => {
   const initial = readSnapshot(memoryStorage());
   assert.equal('rawText' in snapshotSchema.parse({ ...initial, rawText: 'private' }), false);

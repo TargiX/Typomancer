@@ -130,7 +130,7 @@ const runAt = (id: string, wpm: number, accuracy = 97): RunRecord => ({
 });
 
 const progressWith = (calibrationWpm: number, runs: RunRecord[]): PlayerProgress => ({
-  version: 1,
+  ...EMPTY_PLAYER_PROGRESS,
   calibration: createCalibrationResult(calibrationWpm, 97, 30_000, '2026-08-20T00:00:00.000Z'),
   runs
 });
@@ -157,7 +157,7 @@ test('the baseline ratchets up and never quietly lowers the bar', () => {
 test('with no runs yet the baseline is exactly the calibration', () => {
   const progress = progressWith(52, []);
   assert.equal(getEffectiveBaseline(progress).wpm, 52);
-  assert.equal(getEffectiveBaseline({ version: 1, calibration: null, runs: [] }).wpm, 0);
+  assert.equal(getEffectiveBaseline({ ...EMPTY_PLAYER_PROGRESS, runs: [] }).wpm, 0);
 });
 
 test('only the recent window counts, so old runs stop holding the bar up', () => {
@@ -186,6 +186,24 @@ test('the prologue leads the menu until it is completed or anything else is play
   assert.equal(shouldLeadWithPrologue(progress([makeRun({ mission: 'last_relay', outcome: 'victory' })])), false);
   // A run recorded before the tag existed means the player has played before.
   assert.equal(shouldLeadWithPrologue(progress([makeRun({ outcome: 'defeat' })])), false);
+});
+
+test('the menu choice survives eviction of the run that moved the player past the prologue', () => {
+  let progress = recordRun(EMPTY_PLAYER_PROGRESS, makeRun({ id: 'campaign' }));
+  for (let index = 0; index < MAX_RUN_HISTORY; index += 1) {
+    progress = recordRun(progress, makeRun({ id: `relay-${index}`, mission: 'last_relay', outcome: 'banked' }));
+  }
+  assert.equal(progress.runs.length, MAX_RUN_HISTORY);
+  assert.equal(progress.runs.some((run) => run.id === 'campaign'), false);
+  assert.equal(progress.hasMovedPastPrologue, true);
+  assert.equal(shouldLeadWithPrologue(normalizePlayerProgress(JSON.parse(JSON.stringify(progress)))), false);
+});
+
+test('older progress without the flag derives it from visible runs', () => {
+  const legacy = { version: 1, calibration: null, runs: [makeRun({ mission: 'last_relay', outcome: 'victory' })] };
+  assert.equal(normalizePlayerProgress(legacy).hasMovedPastPrologue, true);
+  assert.equal(normalizePlayerProgress({ ...legacy, runs: [makeRun({ mission: 'last_relay', outcome: 'banked' })] }).hasMovedPastPrologue, false);
+  assert.equal(recordRun(EMPTY_PLAYER_PROGRESS, makeRun({ mission: 'last_relay', outcome: 'victory' })).hasMovedPastPrologue, true);
 });
 
 test('the prologue tag survives normalisation and the cloud run schema', () => {

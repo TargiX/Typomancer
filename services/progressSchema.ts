@@ -37,7 +37,7 @@ export const snapshotSchema = z.object({
     language: z.enum(['en', 'ru']), strictCase: z.boolean(), relaxed: z.optional(z.boolean()), pact,
     lastGenre: z.optional(genre)
   }),
-  progress: z.object({ version: z.literal(1), calibration: z.nullable(calibration), runs: z.array(runSchema).check(z.maxLength(60)) }),
+  progress: z.object({ version: z.literal(1), calibration: z.nullable(calibration), hasMovedPastPrologue: z.optional(z.boolean()), runs: z.array(runSchema).check(z.maxLength(60)) }),
   training: z.object({ version: z.literal(1), samples: count,
     keys: z.array(pattern).check(z.maxLength(64)), bigrams: z.array(pattern).check(z.maxLength(64)),
     benchmarks: z.array(z.object({ kind: z.enum(['calibration', 'drill', 'run']),

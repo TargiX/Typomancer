@@ -10,7 +10,7 @@ import {
   getSteadiestPatterns
 } from '../services/progressAnalytics.ts';
 import { EMPTY_TYPING_TRAINING, type PatternStat } from '../services/typingTraining.ts';
-import type { PlayerProgress, RunRecord } from '../services/playerProgress.ts';
+import { EMPTY_PLAYER_PROGRESS, type PlayerProgress, type RunRecord } from '../services/playerProgress.ts';
 
 const run = (index: number, wpm: number, accuracy = 96): RunRecord => ({
   id: `run-${index}`,
@@ -33,7 +33,7 @@ const run = (index: number, wpm: number, accuracy = 96): RunRecord => ({
   pact: []
 });
 
-const progressOf = (runs: RunRecord[]): PlayerProgress => ({ version: 1, calibration: null, runs });
+const progressOf = (runs: RunRecord[]): PlayerProgress => ({ ...EMPTY_PLAYER_PROGRESS, runs });
 
 const stat = (token: string, attempts: number, errors: number, latencyMs: number): PatternStat => ({
   token,
