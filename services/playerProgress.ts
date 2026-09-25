@@ -51,6 +51,8 @@ export interface RunRecord {
    * same row.
    */
   pact: PactClauseId[];
+  /** Set for the authored prologue, so the menu knows when to stop leading with it. */
+  mission?: 'last_relay';
 }
 
 export interface PlayerProgress {
@@ -232,9 +234,16 @@ const normalizeRun = (value: unknown): RunRecord | null => {
     characters: Math.max(0, Math.round(finite(run.characters))),
     durationSeconds: Math.max(0, Math.round(finite(run.durationSeconds))),
     focus: run.focus,
-    pact: normalizePact(run.pact)
+    pact: normalizePact(run.pact),
+    ...(run.mission === 'last_relay' ? { mission: 'last_relay' as const } : {})
   };
 };
+
+// The prologue leads the menu until the player has finished it or played
+// anything else. Runs recorded before the tag existed count as "anything else".
+export const shouldLeadWithPrologue = (progress: PlayerProgress): boolean => (
+  progress.runs.every((run) => run.mission === 'last_relay' && run.outcome === 'defeat')
+);
 
 export const normalizePlayerProgress = (value: unknown): PlayerProgress => {
   if (!value || typeof value !== 'object') return { ...EMPTY_PLAYER_PROGRESS, runs: [] };

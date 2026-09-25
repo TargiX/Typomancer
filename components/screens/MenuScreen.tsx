@@ -28,7 +28,7 @@ interface MenuScreenProps {
     pactRewardMultiplier: number;
     activePact: PactClauseId[];
     relaxed: boolean;
-    isNewcomer: boolean;
+    leadWithPrologue: boolean;
     onToggleRelaxed: () => void;
     onTogglePactClause: (id: PactClauseId) => void;
     onPactOpened?: () => void;
@@ -57,7 +57,7 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
     pactRewardMultiplier,
     activePact,
     relaxed,
-    isNewcomer,
+    leadWithPrologue,
     onToggleRelaxed,
     onTogglePactClause,
 
@@ -87,6 +87,35 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
         ? `${skillHeadline.deltaWpm > 0 ? '+' : ''}${skillHeadline.deltaWpm} ${ui.wpm} · ${skillHeadline.sessions} ${ui.return_sessions}`
         : ui.operator_record_hint;
 
+    // The leading mode gets the wide cap (orange unless a checkpoint leads) and
+    // the Enter hint; the other sits in the row below as an ordinary alpha.
+    const leadClass = (lead: boolean) => lead
+        ? `menu-key menu-key--wide btn-cyber ${runCheckpoint ? 'btn-cyber-ghost' : 'btn-cyber-primary'}`
+        : 'menu-key btn-cyber btn-cyber-ghost';
+    const enterHint = (lead: boolean) => lead && !runCheckpoint
+        ? <span className="menu-key-enter" aria-hidden="true">↵</span>
+        : null;
+    const relayKey = (lead: boolean) => (
+        <button onClick={onRelay} data-hotkey="1" className={leadClass(lead)}>
+            <span className="keycap">1</span>
+            <span className="menu-key-text">
+                <span className="menu-key-title">{language === 'ru' ? 'ПОСЛЕДНИЙ КАНАЛ' : 'THE LAST RELAY'}</span>
+                <span className="screens-btn-sub">{leadWithPrologue ? ui.relay_hint : ui.relay_replay_hint}</span>
+            </span>
+            {enterHint(lead)}
+        </button>
+    );
+    const campaignKey = (lead: boolean) => (
+        <button onClick={onInitialize} data-hotkey="2" className={leadClass(lead)}>
+            <span className="keycap">2</span>
+            <span className="menu-key-text">
+                <span className="menu-key-title">{stripKeyHint(ui.init_link)}</span>
+                <span className="screens-btn-sub">{ui.campaign_hint}</span>
+            </span>
+            {enterHint(lead)}
+        </button>
+    );
+
     return (
         <div className="menu-screen animate-fade-in-up">
             {/* TITLE — the name of the game, set in keycaps that type themselves
@@ -113,8 +142,9 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
             </div>
 
             {/* PLAY — laid out like a keyboard cluster: one wide modifier on the
-                top row, two alphas under it. An in-flight checkpoint takes the
-                primary slot: continuing beats starting over. */}
+                top row, two alphas under it. A newcomer is led into the prologue;
+                once it is done, the campaign takes the wide key. The digits stay
+                with their modes. An in-flight checkpoint beats both. */}
             <div className="menu-keys mt-7">
                 {runCheckpoint && (
                     <button
@@ -128,18 +158,7 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                         </span>
                     </button>
                 )}
-                <button
-                    onClick={onRelay}
-                    data-hotkey="1"
-                    className={`menu-key menu-key--wide btn-cyber ${runCheckpoint ? 'btn-cyber-ghost' : 'btn-cyber-primary'}`}
-                >
-                    <span className="keycap">1</span>
-                    <span className="menu-key-text">
-                        <span className="menu-key-title">{language === 'ru' ? 'ПОСЛЕДНИЙ КАНАЛ' : 'THE LAST RELAY'}</span>
-                        <span className="screens-btn-sub">{ui.relay_hint}</span>
-                    </span>
-                    {!runCheckpoint && <span className="menu-key-enter" aria-hidden="true">↵</span>}
-                </button>
+                {leadWithPrologue ? relayKey(true) : campaignKey(true)}
                 {incomingChallenge && (
                     <div className={`menu-key--wide screens-cut-card border p-4 text-left ${isCurrentChallenge ? 'border-amber-400/35 bg-amber-400/[0.06]' : 'border-white/10 bg-white/[0.02]'}`}>
                         <div className="fs-micro font-bold uppercase tracking-[0.2em] text-amber-300">{ui.challenge_title}</div>
@@ -151,17 +170,7 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                         ) : <p className="mt-2 fs-label leading-relaxed text-slate-400">{ui.challenge_expired}</p>}
                     </div>
                 )}
-                <button
-                    onClick={onInitialize}
-                    data-hotkey="2"
-                    className="menu-key btn-cyber btn-cyber-ghost"
-                >
-                    <span className="keycap">2</span>
-                    <span className="menu-key-text">
-                        <span className="menu-key-title">{stripKeyHint(ui.init_link)}</span>
-                        <span className="screens-btn-sub">{isNewcomer ? (language === 'ru' ? 'Полная история — начни здесь.' : 'The full story — start here.') : ui.quick_session}</span>
-                    </span>
-                </button>
+                {leadWithPrologue ? campaignKey(false) : relayKey(false)}
                 <button
                     onClick={onDaily}
                     data-hotkey="3"

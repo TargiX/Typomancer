@@ -30,6 +30,7 @@ import {
   getLocalDateKey,
   loadPlayerProgress,
   recordRun,
+  shouldLeadWithPrologue,
   savePlayerProgress,
   setCalibration,
   type CalibrationResult
@@ -204,6 +205,7 @@ const App: React.FC = () => {
    * The typing screen only. Menus and debriefs keep the shell column — a sidebar
    * is fine on a menu; it is the game itself that should not look like a page.
    */
+  const leadWithPrologue = shouldLeadWithPrologue(playerProgress);
   const isTyping = gameState === GameState.PLAYING;
 
   const inSimulation =
@@ -479,7 +481,11 @@ const App: React.FC = () => {
       totalMistakes: stats.mistakes,
       score: stats.score
     });
+    const relayRun = isLastRelay(
+      (gameState === GameState.GAME_OVER ? finalStats?.mission : victoryReport?.mission) || campaignState
+    );
     setPlayerProgressState((current) => savePlayerProgress(recordRun(current, {
+      ...(relayRun ? { mission: 'last_relay' as const } : {}),
       id: `${endedAt.toISOString()}-${Math.random().toString(36).slice(2, 8)}`,
       endedAt: endedAt.toISOString(),
       dateKey: getLocalDateKey(endedAt),
@@ -513,9 +519,7 @@ const App: React.FC = () => {
     const eventContext = getAnalyticsContext();
     captureProductEvent('typomancer_run_completed', {
       ...eventContext,
-      mission: isLastRelay(
-        (gameState === GameState.GAME_OVER ? finalStats?.mission : victoryReport?.mission) || campaignState
-      ) ? 'last_relay' : (sessionRef.current.isDaily ? 'daily' : 'campaign'),
+      mission: relayRun ? 'last_relay' : (sessionRef.current.isDaily ? 'daily' : 'campaign'),
       daily: sessionRef.current.isDaily,
       genre: sessionRef.current.genre,
       level: stats.level,
@@ -605,8 +609,9 @@ const App: React.FC = () => {
         } else if (gameState === GameState.MENU) {
             // Each menu key sinks its cap on screen before the menu leaves.
             if (e.repeat) return;
-            if (e.key === '1' || e.key === 'Enter') { pressThen('1', initializeRelay); consume(); }
-            if (e.key === '2') { pressThen('2', initializeSession); consume(); }
+            // Enter starts whichever mode leads the menu; the digits never move.
+            if (e.key === '1' || (e.key === 'Enter' && leadWithPrologue)) { pressThen('1', initializeRelay); consume(); }
+            if (e.key === '2' || (e.key === 'Enter' && !leadWithPrologue)) { pressThen('2', initializeSession); consume(); }
             if (e.key === '3' && !dailyAttemptsExhausted) { pressThen('3', initializeDailySession); consume(); }
             if (e.key === '4') { pressThen('4', () => setGameState(GameState.BLACK_MARKET)); consume(); }
             if (e.key === '5') { pressThen('5', () => setGameState(GameState.OPERATOR_RECORD)); consume(); }
@@ -632,7 +637,7 @@ const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [dailyAttemptsExhausted, deathSequenceActive, gameState, isSectorSummaryReady, offeredPerks, playerProgress.calibration, runCheckpoint, userProfile]);
+  }, [dailyAttemptsExhausted, deathSequenceActive, gameState, isSectorSummaryReady, leadWithPrologue, offeredPerks, playerProgress.calibration, runCheckpoint, userProfile]);
 
   // Browsers refuse to open an AudioContext outside a user gesture, so the very
   // first click or keypress is what actually brings audio up — including on the
@@ -1192,6 +1197,7 @@ const App: React.FC = () => {
       const runNumber = playerProgress.runs.length + 1;
 
       setPlayerProgressState((current) => savePlayerProgress(recordRun(current, {
+          ...(isLastRelay(campaignState) ? { mission: 'last_relay' as const } : {}),
           id: `${endedAt.toISOString()}-${Math.random().toString(36).slice(2, 8)}`,
           endedAt: endedAt.toISOString(),
           dateKey: getLocalDateKey(endedAt),
@@ -1427,7 +1433,7 @@ const App: React.FC = () => {
                     pactRewardMultiplier={pactRewardMultiplier}
                     activePact={activePact}
                     relaxed={!!userProfile.relaxed}
-                    isNewcomer={playerProgress.runs.length === 0}
+                    leadWithPrologue={leadWithPrologue}
                     onToggleRelaxed={() => setUserProfile(prev => ({ ...prev, relaxed: !prev.relaxed }))}
                     onTogglePactClause={handleTogglePactClause}
                     dailyGenrePack={dailyGenrePack}
