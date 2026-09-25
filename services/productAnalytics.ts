@@ -73,7 +73,7 @@ const COMMON_PROPERTIES = [
   'challenge'
 ] as const;
 
-const EVENT_PROPERTY_ALLOWLIST: Record<ProductEventName, readonly string[]> = {
+export const EVENT_PROPERTY_ALLOWLIST: Record<ProductEventName, readonly string[]> = {
   typomancer_landing_viewed: COMMON_PROPERTIES,
   typomancer_calibration_started: [...COMMON_PROPERTIES, 'recalibration'],
   typomancer_calibration_completed: [...COMMON_PROPERTIES, 'recalibration', 'skipped', 'wpm_bucket', 'accuracy_bucket', 'preset'],

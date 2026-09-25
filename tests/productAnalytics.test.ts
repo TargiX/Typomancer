@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
   ANALYTICS_STORAGE_KEY,
+  EVENT_PROPERTY_ALLOWLIST,
   buildPostHogPayload,
   captureProductEvent,
   getAccuracyBucket,
@@ -217,4 +219,12 @@ test('the page tracker is used when present and skipped when disabled', () => {
   } finally {
     delete globals.window;
   }
+});
+
+test('the Umami page gate knows every property the app may send', () => {
+  const traffic = readFileSync('public/traffic.js', 'utf8');
+  const gate = JSON.parse(traffic.match(/const eventKeys = (\[[^\]]*\]);/)![1]) as string[];
+  const sent = new Set(Object.values(EVENT_PROPERTY_ALLOWLIST).flat());
+  for (const key of sent) assert.ok(gate.includes(key), `traffic.js drops ${key}`);
+  for (const key of gate) assert.ok(sent.has(key), `traffic.js allows unused ${key}`);
 });

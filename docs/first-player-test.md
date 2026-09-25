@@ -26,11 +26,17 @@ for the story cohort; calibration is optional and must not block that funnel.
 For training, record calibration and at least one segment, then compare a
 repeat calibration in the same language after five practice sessions.
 
-`returning_player` means a stored previous run exists, not retention. Measure
-returning play using the same anonymous distinct_id with run_started on a later
-UTC date. Exclude `resumed=true` from new-run counts, distinguish Daily/story,
-and report actual observation windows. Identity is browser-local and is not
-merged across devices or account login; cleared storage creates a new identity.
+`returning_player` means a stored previous run exists, not retention.
+
+- PostHog: measure returning play as the same anonymous distinct_id with
+  run_started on a later UTC date. Identity is browser-local and is not merged
+  across devices or account login; cleared storage creates a new identity.
+- Umami: it never receives that ID, so it cannot show later-day retention.
+  Use `returning_player` and `run_number` on run_started only as the share of
+  starts by players with earlier runs on this device.
+
+In both, exclude `resumed=true` from new-run counts, distinguish Daily/story,
+and report actual observation windows.
 The saved run list is capped, so run_number is not a lifetime session counter.
 Analytics uses score buckets; use consenting participant measurements for
 precise paired learning comparisons, not an invented precision from buckets.

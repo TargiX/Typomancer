@@ -7,6 +7,8 @@
       document.getElementById("site-traffic")) return;
   // Fail closed: authentication/recovery links do not load third-party code.
   if (/[?&#](?:token|code|reset-password|access_token|id_token|email)=?/i.test(location.search + location.hash)) return;
+  // Property names services/productAnalytics.ts may send; anything else is dropped.
+  const eventKeys = ["language", "device_class", "source", "medium", "campaign", "challenge", "recalibration", "skipped", "wpm_bucket", "accuracy_bucket", "preset", "daily", "genre", "mission", "run_number", "returning_player", "resumed", "level", "skill", "outcome", "consistency_bucket", "duration_bucket", "focus", "samples_bucket", "weak_pattern_count", "daily_id_present", "target_score_bucket", "kind", "ok", "generator", "reason", "clause", "active"];
   window.siteTrafficBeforeSend = (type, payload) => {
     if (type !== "event" || !payload || navigator.doNotTrack === "1" ||
         navigator.globalPrivacyControl === true) return null;
@@ -18,7 +20,7 @@
     if (name && payload.data && typeof payload.data === "object") {
       data = {};
       for (const [key, value] of Object.entries(payload.data).slice(0, 20)) {
-        if (!/^[a-z_]{1,32}$/.test(key)) continue;
+        if (!eventKeys.includes(key)) continue;
         if (typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value))) data[key] = value;
         else if (typeof value === "string" && /^[a-z0-9._:/-]{1,64}$/.test(value)) data[key] = value;
       }
