@@ -22,7 +22,7 @@ const installReturningPlayer = async (page: Page) => {
 
 const startCampaign = async (page: Page) => {
   await page.goto('/');
-  await page.getByRole('button', { name: /INITIALIZE LINK/ }).click();
+  await page.getByRole('button', { name: /Other world/ }).click();
   await page.getByRole('button', { name: /Cyberpunk Espionage Operation Black Ledger/ }).click();
   await page.locator('.screens-perk-card').first().click();
   await expect(page.getByRole('textbox', { name: 'Typing practice input' })).toBeEnabled();
@@ -188,8 +188,10 @@ test('ready skills sit under the caret, not in the corner', async ({ page }) => 
 
 test('ready skills can sit in the corner when that layout is chosen', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'FOCUS: CURSOR' }).click();
-  await expect(page.getByRole('button', { name: 'FOCUS: CORNER' })).toBeVisible();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const settings = page.getByRole('dialog', { name: 'Settings' });
+  await settings.getByLabel('Skills in the corner, not at the cursor').check();
+  await settings.getByRole('button', { name: 'Done' }).click();
   await startCampaign(page);
   const input = page.getByRole('textbox', { name: 'Typing practice input' });
   const activeText = await page.locator('.engine-type-scroll span.relative.inline-block').innerText();
@@ -223,7 +225,7 @@ test('a newcomer reaches the story without sitting a typing test first', async (
   });
   await page.goto('/');
 
-  await page.getByRole('button', { name: /INITIALIZE LINK/ }).click();
+  await page.getByRole('button', { name: /Other world/ }).click();
 
   // Calibration used to be the first thing a stranger saw: 93 characters to type
   // before the game had shown them anything. The baseline tracks real runs now.
@@ -252,6 +254,8 @@ test('the Pact raises the bar and pays for it', async ({ page }) => {
   await page.goto('/');
   const clauses = page.locator('.screens-pact-clause');
   const reward = page.locator('.screens-pact-reward');
+  // The Pact lives inside the folded run-difficulty panel.
+  await page.getByRole('button', { name: /Run difficulty/ }).click();
 
   // Collapsed by default: five clauses expanded is a wall of text on the first
   // screen, and the multiplier alone says whether anything is taken on.
@@ -276,6 +280,7 @@ test('the Pact raises the bar and pays for it', async ({ page }) => {
   // even though the panel itself reopens collapsed.
   const before = await reward.innerText();
   await page.reload();
+  await page.getByRole('button', { name: /Run difficulty/ }).click();
   await expect(page.locator('.screens-pact-reward')).toHaveText(before);
   await expect(page.locator('.screens-pact-clause')).toHaveCount(0);
 });
@@ -380,4 +385,24 @@ test('mobile mistakes show the impact sequence, debrief, and recorded defeat', a
   await page.getByRole('button', { name: /MAIN MENU/ }).click();
   await page.getByRole('button', { name: /OPERATOR RECORD/ }).click();
   await expect(page.locator('.operator-record-run')).toContainText('SEVERED');
+});
+
+test("a returning player's Play goes straight into a rotated world with its focus perk", async ({ page }) => {
+  await page.addInitScript(() => {
+    const endedAt = new Date(Date.now() - 3600_000).toISOString();
+    localStorage.setItem('typomancerPlayerProgress', JSON.stringify({ version: 1, calibration: null, hasMovedPastPrologue: true, runs: [{
+      id: 'played-cyberpunk', endedAt, dateKey: endedAt.slice(0, 10), outcome: 'victory', daily: false, genre: 'cyberpunk',
+      level: 4, score: 900, wpm: 60, bestWpm: 70, accuracy: 93, consistency: 90, mistakes: 8, characters: 1200,
+      durationSeconds: 600, focus: 'accuracy', pact: [], language: 'en', measurementVersion: 2
+    }] }));
+  });
+  await page.goto('/');
+  const play = page.locator('[data-hotkey="1"]');
+  await expect(play).toContainText('Space Horror');
+  await expect(play).toContainText('focus: accuracy');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('textbox', { name: 'Typing practice input' })).toBeEnabled();
+  // No world or perk picker on the way in; the run wears the next world's colourway.
+  await expect(page.locator('.screens-world-card')).toHaveCount(0);
+  await expect(page.locator('[data-colorway]')).toHaveAttribute('data-colorway', 'abyss');
 });

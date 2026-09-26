@@ -1,3 +1,5 @@
+import SessionGoalLine from '../SessionGoalLine';
+import type { SessionGoal } from '../../services/sessionPlan';
 import TrainingPlan from '../TrainingPlan';
 import type { TypingTrainingProfile } from '../../services/typingTraining';
 import type { Language } from '../../types';
@@ -9,6 +11,7 @@ import { getPactRewardMultiplier, type PactClauseId } from '../../services/pact'
 import PerkCard from '../PerkCard';
 
 interface SectorCompleteScreenProps {
+    sessionGoal?: SessionGoal | null;
     language: Language;
     training: TypingTrainingProfile;
     onPractice: () => void;
@@ -25,7 +28,7 @@ interface SectorCompleteScreenProps {
 }
 
 const SectorCompleteScreen: React.FC<SectorCompleteScreenProps> = ({
-    ui, language, training, onPractice,
+    ui, language, training, onPractice, sessionGoal = null,
     report,
     xpGained,
     storyLog,
@@ -64,6 +67,7 @@ const SectorCompleteScreen: React.FC<SectorCompleteScreenProps> = ({
                     "{report.narrativeSummary}"
                 </p>
             </div>
+            <SessionGoalLine goal={sessionGoal} ui={ui} stats={{ wpm: report.avgWpm, accuracy: report.accuracy, consistency: report.consistency }} />
             <TrainingPlan language={language} training={training} onPractice={onPractice} />
             <div className={`screens-accuracy-hero screens-accuracy-hero--${focus} mb-3`}>
                 <div className="flex items-end justify-between gap-4">
