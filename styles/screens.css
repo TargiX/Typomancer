@@ -2424,7 +2424,7 @@
 .play-settings::backdrop { background: #000b; }
 .play-settings h2 { font-size: 1.4rem; margin-bottom: 1rem; }
 .play-settings label { display: flex; gap: .7rem; align-items: center; justify-content: space-between; margin: 1rem 0; }
-.play-settings select { color: white; background: #282631; padding: .4rem; }
+.play-settings select { color: white; background: #282631; padding: .4rem; min-width: 0; max-width: 65%; text-overflow: ellipsis; }
 .play-settings p { color: #bdb6c8; margin: 1rem 0; line-height: 1.5; }
 .play-settings input { accent-color: #86d6a6; }
 button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid #86d6a6; outline-offset: 4px; }

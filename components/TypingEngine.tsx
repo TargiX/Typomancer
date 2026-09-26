@@ -307,6 +307,11 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const activeRef = useRef<HTMLSpanElement>(null); 
   const cursorRef = useRef<HTMLSpanElement>(null);
   const decisionOpenRef = useRef(false);
+  const DECISION_WINDOW_MS = 12_000;
+  const timedDecisions = preferences.timedDecisions && !deterministicStory;
+  // The fuse's remaining time lives here, so pausing (which unmounts the
+  // choice) keeps it; StoryDecision burns it down and re-renders only itself.
+  const decisionClockRef = useRef<{ left: number } | null>(null);
   // A gliding caret, positioned via its DOM node. State would add a second
   // engine render per keystroke.
   const caretRef = useRef<HTMLSpanElement>(null);
@@ -600,7 +605,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
             }
             return;
         }
-        if (!isDecisionActive && e.key === preferences.keys.focus) {
+        // Tab only casts Focus from the typing line; on a control it still navigates.
+        const onControl = !!(e.target as HTMLElement)?.closest('button, select, a, dialog');
+        if (!isDecisionActive && e.key === preferences.keys.focus && !(e.key === 'Tab' && onControl)) {
             e.preventDefault(); 
             if (!isOverclockActive && overclockCharge >= modifiers.maxOverclock) {
                 flashKey(preferences.keys.focus.toLowerCase());
@@ -784,7 +791,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     const fetchImage = async () => {
         setIsImageLoading(true);
         const isStoryBeat = round === 1 || round === DECISION_ROUND + 1 || round === SECTOR_ROUNDS;
-        const base64 = isLastRelay(missionRef.current) || deterministicStory
+        // Daily keeps local art so every player waits the same; the prologue's
+        // comic pages need real scene art.
+        const base64 = deterministicStory
           ? generateLocalSceneImage(activeSegment.text, characterDescription, genre)
           : await generateSceneImage(activeSegment.text, characterDescription, genre, isStoryBeat);
         if (isMounted && base64) {
@@ -1304,6 +1313,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       setHistory(h => [...h, { ...activeSegment, performance }]);
   };
 
+  const decisionSelectRef = useRef<(index: number) => void>(() => {});
   const handleDecisionSelect = (index: number) => {
       // One answer per decision: a key press that lands its beat after the
       // window has already fired must not apply a second outcome.
@@ -1328,10 +1338,16 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       }, 50);
   };
 
+  decisionSelectRef.current = handleDecisionSelect;
   useEffect(() => {
       if (!isDecisionActive) return;
       decisionOpenRef.current = true;
       audioEngine.duckMusic(true);
+      // Warm both outcomes' art during the pause, so the pick lands on a cached scene.
+      if (!deterministicStory) nextDecision?.options.forEach(option => {
+          generateSceneImage(option.outcome.text, characterDescription, genre, true);
+      });
+      decisionClockRef.current = timedDecisions ? { left: DECISION_WINDOW_MS } : null;
       return () => { audioEngine.duckMusic(false); };
   }, [isDecisionActive]);
 
@@ -1668,7 +1684,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       )}
 
       {isDecisionActive && nextDecision && !paused && <StoryDecision decision={nextDecision} language={language}
-        onSelect={handleDecisionSelect} describe={describeImpact} chips={renderImpactChips} />}
+        onSelect={handleDecisionSelect} describe={describeImpact} chips={renderImpactChips}
+        clock={decisionClockRef.current} windowMs={DECISION_WINDOW_MS} onTimeout={() => decisionSelectRef.current(0)} />}
       {showSkillBriefing && (
           <div className="engine-skill-briefing absolute inset-0 z-[85] flex items-center justify-center p-5 md:p-8">
               <div className="engine-skill-briefing-panel w-full max-w-3xl">

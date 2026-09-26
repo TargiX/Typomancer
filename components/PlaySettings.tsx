@@ -26,6 +26,7 @@ export default function PlaySettings({ value, language, onChange, onClose }: {
       {[20, 24, 28].map(n => <option key={n} value={n}>{n} px</option>)}
     </select></label>
     <label><input type="checkbox" checked={value.reducedMotion} onChange={e => onChange({ ...value, reducedMotion: e.target.checked })} /> {ru ? 'Уменьшить движение и вспышки' : 'Reduce motion and flashes'}</label>
+    <label><input type="checkbox" checked={!value.timedDecisions} onChange={e => onChange({ ...value, timedDecisions: !e.target.checked })} /> {ru ? 'Решения без таймера' : 'Choices without a timer'}</label>
     {(Object.keys(value.keys) as Array<keyof PlayPreferences['keys']>).map(skill => <label key={skill}>{skill === 'focus' ? (ru ? 'Фокус' : 'Focus') : skill === 'firewall' ? (ru ? 'Щит' : 'Firewall') : (ru ? 'Сброс следа' : 'Purge trace')}
       <select value={value.keys[skill]} onChange={e => remap(skill, e.target.value as SkillKey)}>{SKILL_KEYS.map(key => <option key={key} value={key}>{keyLabel(key)}</option>)}</select>
     </label>)}
@@ -39,7 +40,7 @@ export default function PlaySettings({ value, language, onChange, onClose }: {
       <input type="range" min={0} max={100} value={musicVol}
         onChange={e => { const v = Number(e.target.value); setMusicVol(v); audioEngine.setMusicVolume(v / 100); }} />
     </label>
-    <p>{ru ? 'Tab перемещает фокус. Совпадающие клавиши меняются местами. Настройки сохраняются на этом устройстве.' : 'Tab moves focus. Assigning an occupied key swaps the two skills. Preferences are saved on this device.'}</p>
+    <p>{ru ? 'По умолчанию Tab включает Фокус; переназначь его, чтобы Tab переключал элементы. Совпадающие клавиши меняются местами. Настройки сохраняются на этом устройстве.' : 'Tab triggers Focus by default; reassign it to use Tab for moving between controls. Assigning an occupied key swaps the two skills. Preferences are saved on this device.'}</p>
     <button type="button" className="btn-cyber" onClick={onClose}>{ru ? 'Готово' : 'Done'}</button>
   </dialog>;
 }

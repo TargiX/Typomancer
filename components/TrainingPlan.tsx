@@ -17,3 +17,15 @@ export default function TrainingPlan({ training, language, onPractice }: { train
     <button type="button" className="btn-cyber btn-cyber-ghost" onClick={onPractice}>{ru ? 'Тренироваться · 5 мин' : 'Practice · 5 min'}</button>
   </aside>;
 }
+
+// One line for the menu's practice key: what is due for review, else the
+// weakest recent patterns, else null (the key keeps its generic subtitle).
+export function trainingHint(training: TypingTrainingProfile, language: Language): string | null {
+  if (!training.samples && !training.reviews?.length) return null;
+  const ru = language === 'ru';
+  const due = getDuePatterns(training, language);
+  if (due.length) return `${ru ? 'Пора повторить' : 'Ready to review'}: ${due.slice(0, 3).map(r => r.token).join(' · ')}`;
+  const weak = getDrillPatterns(language, training, 3);
+  if (weak.length) return `${ru ? 'Слабые места' : 'Weak spots'}: ${weak.map(r => r.token).join(' · ')}`;
+  return null;
+}

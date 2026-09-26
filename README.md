@@ -8,7 +8,7 @@ A consequence-driven RPG typing game. You play as Agent Nox, a field hacker tryi
 
 **The Last Relay** is the prologue: start it with `1`, or `ENTER` while it leads the menu. This authored two-sector mission begins immediately: Mira is trapped, the evidence is ready, and one transmitter remains online. Camera accuracy changes your escape route; rescuing Mira earns help at the relay; publishing her identity or redacting it changes the final verification and ending. English and Russian are supported. Local checkpoints preserve completed lines, choices, rewards and run conditions.
 
-The mission uses deterministic local SVG artwork and authored text, with no AI requests. See [mission design and playtest questions](docs/last-relay.md). The four-sector campaign remains available with `2`, and Daily with `3`.
+The mission uses authored text with no AI text requests; its scenes and comic pages still use generated art. See [mission design and playtest questions](docs/last-relay.md). The four-sector campaign remains available with `2`, and Daily with `3`.
 
 ## Practice and measurement
 
@@ -25,7 +25,8 @@ The mission uses deterministic local SVG artwork and authored text, with no AI r
 - A successful review requires at least eight actual attempts at 98% accuracy. Progress advances only on a later day after its due time, with 1/3/7-day revisit intervals. Repeated success is a practice milestone; durable skill transfer still needs a delayed test on unfamiliar text.
 - The menu and sector debrief show a next practice action; the weekly table includes completed practice days. Speed summaries use matching language and run conditions. Controlled benchmark anchors and the first five completed runs per condition survive rolling history (up to 24 condition groups).
 - Story goals are selected in Reading & controls before the next run: **Story flow**, **Repair** (all characters must be corrected before sending), or **Codes** (seeded numerical transmissions between story beats). The goal is frozen in the checkpoint and comparison metadata. Offline authored context can contain the current target; each line shows target occurrences and offers practice when the story lacks exposure.
-- Reading preferences include clear text without italics, 20/24/28px type, reduced animation/flash effects, and skill key remapping. Tab remains navigation. Preferences are device-local; OS reduced-motion preferences remain supported.
+- Reading preferences include clear text without italics (off by default), 20/24/28px type, reduced animation/flash effects, untimed story choices, and skill key remapping. Focus defaults to `Tab`, which casts only from the typing line; on a control, Tab still navigates. Preferences are device-local; OS reduced-motion preferences remain supported.
+- Story choices run on a 12-second fuse by default: the loud option fires at zero, and pause stops the fuse. "Choices without a timer" in Reading & controls turns it off.
 - With at least six measured key intervals, consistency uses variation in active inter-key timing (25–1200ms). Explicit pauses reset the interval clock. Old or insufficient samples retain the legacy line-pace estimate.
 
 ## Daily rules v2
@@ -44,7 +45,7 @@ XP no longer secretly slows either trace. Explicit comfort settings, gear and sk
 - **Strategic decisions:** the mid-sector turning point shows what each option actually costs — every meter it moves, signed and coloured — before you commit, not after. Loud routes gain more evidence and credits but raise Heat; stealth routes lower Heat and build Trust.
 - **The Tracer:** the Security Trace runs along the line you are typing. A burn front eats the text behind your cursor at a pace set by your own calibration, so the gap between the front and your caret is your safety margin, drawn where you are already looking. Keep typing and it never reaches you; stall and it does. `PURGE` throws it back.
 - **Accuracy is the weapon:** an unbroken clean streak slows the tracer and shoves it backwards at every combo tier. One typo hands the whole advantage back at once. Speed alone already outruns the trace, so this is the pressure that trains accuracy rather than haste.
-- **Focus Mode:** charge it by typing correctly, then press `F2` to pause trace pressure, soften mistakes, and double typing rewards for a short burst.
+- **Focus Mode:** charge it by typing correctly, then press `TAB` to pause trace pressure, soften mistakes, and double typing rewards for a short burst.
 - **Typing variety:** narrative flow, terminal breach commands, signal/number drills, and dialogue/punctuation drills.
 - **Difficulty follows your hands:** the game measures you on your real runs and chases at a fraction of your *current* speed. A newcomer starts playing immediately — calibration is offered from Operator Record once they know what it tunes, not demanded as a typing test before the story. Getting faster makes the game faster with you instead of quietly retiring it.
 - **Perks change how you play, never how much you may fail:** a clean streak buys stealth and shoves the trace back; a perfect line heals; a mistake can keep your streak alive if you pay Energy for it. No perk lowers what your fingers are asked to do.
@@ -64,7 +65,7 @@ XP no longer secretly slows either trace. Explicit comfort settings, gear and sk
 - `1` on the main menu: start The Last Relay (the prologue). `2`: start the campaign.
 - `ENTER` on the main menu: start whichever leads — the prologue until it is finished, then the campaign.
 - `1`, `2`, `3`: choose perks/upgrades/options where shown.
-- `F2`: activate Focus Mode when the Focus meter is full. `Tab` moves keyboard focus. Skills can be remapped in Reading & controls.
+- `TAB`: activate Focus Mode when the Focus meter is full. Skills can be remapped in Reading & controls (for example to `F2`, freeing Tab for navigation).
 - `↑` / `↓`: activate Firewall or Purge when they appear beside the typing caret. Purge also throws the tracer back down the line.
 - `4`: open Black Market. `5`: open Operator Record. `6`: start five-minute practice.
 - `ESC`: pause/resume play or return from the Black Market. Pause also offers settings and a return to the menu.

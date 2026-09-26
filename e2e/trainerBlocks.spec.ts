@@ -11,9 +11,8 @@ const typeLine = async (page: Page) => {
   await input(page).pressSequentially(text, { delay: 2 });
   return text;
 };
-test('story choice waits beyond its old deadline, keeps keyboard focus, and Relay makes no AI requests', async ({ page }) => {
-  let requests = 0;
-  page.on('request', r => { if (r.url().includes('/api/gemini')) requests++; });
+test('with timed choices off, a story choice waits beyond the fuse and keeps keyboard focus', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('typomancerPlayPreferences', JSON.stringify({ timedDecisions: false, clearText: true })));
   await page.goto('/');
   await page.locator('[data-hotkey="1"]').click();
   for (let i = 0; i < 3; i++) { const text = await typeLine(page); if (i < 2) await expect(line(page)).not.toHaveText(text); }
@@ -34,8 +33,18 @@ test('story choice waits beyond its old deadline, keeps keyboard focus, and Rela
   await expect(buttons.last()).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(input(page)).toBeEnabled();
-  expect(requests).toBe(0);
   expect(await choice.count()).toBe(0);
+});
+test('by default a story choice runs on a fuse and the loud option fires at zero', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('[data-hotkey="1"]').click();
+  for (let i = 0; i < 3; i++) { const text = await typeLine(page); if (i < 2) await expect(line(page)).not.toHaveText(text); }
+  const buttons = page.locator('.engine-decision-overlay button');
+  await expect(buttons).toHaveCount(2);
+  await expect(page.locator('.engine-decision-fuse')).toBeVisible();
+  // Real time: the 12-second fuse burns down and chooses for the player.
+  await expect(buttons).toHaveCount(0, { timeout: 16000 });
+  await expect(input(page)).toBeEnabled();
 });
 test('reading settings persist, remap keys, leave Tab available and fit a narrow Russian screen', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -45,6 +54,7 @@ test('reading settings persist, remap keys, leave Tab available and fit a narrow
   const dialog = page.getByRole('dialog', { name: 'Чтение и управление' });
   await dialog.getByLabel('Размер текста').selectOption('28');
   await dialog.getByLabel('Уменьшить движение и вспышки').check();
+  await dialog.getByLabel('Чёткий текст без курсива').check();
   await dialog.getByRole('combobox', { name: 'Фокус', exact: true }).selectOption('F3');
   await page.screenshot({ path: '.context/trainer-settings-mobile.png', fullPage: true });
   await dialog.getByRole('button', { name: 'Готово' }).click();
@@ -95,7 +105,7 @@ test('pause can open settings and exit, then resume the saved line with working 
 test('Daily admission is persisted immediately, upgrades and pact do not change its starting health', async ({ page }) => {
   await page.goto('/');
   await page.evaluate(() => {
-    const p = JSON.parse(localStorage.getItem('narrativeFlowProfile')!);
+    const p = JSON.parse(localStorage.getItem('narrativeFlowProfile') || '{"upgrades":{}}');
     localStorage.setItem('narrativeFlowProfile', JSON.stringify({ ...p, totalXp: 10000, stealthLevel: 20, relaxed: true, strictCase: true, pact: ['hunted', 'hot_start', 'strict_case', 'no_grace'], upgrades: { ...p.upgrades, synapticWeave: 5, signalDampener: 5, cryptoMiner: 5 } }));
     localStorage.setItem('narrativeFlowSkillBriefingSeen', '1');
   });

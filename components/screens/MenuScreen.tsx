@@ -1,4 +1,4 @@
-import TrainingPlan from '../TrainingPlan';
+import { trainingHint } from '../TrainingPlan';
 import type { TypingTrainingProfile } from '../../services/typingTraining';
 import React, { useState } from 'react';
 import type { Language } from '../../types';
@@ -160,12 +160,11 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                         <span className="keycap">R</span>
                         <span className="menu-key-text">
                             <span className="menu-key-title">{ui.resume_run} · {ui.resume_sector} {runCheckpoint.nextLevel}</span>
-                            <span className="menu-key-hint">{language === 'ru' ? 'Продолжить с сохранённой строки' : 'Continue from the saved line'}</span>
+                            <span className="screens-btn-sub">{language === 'ru' ? 'Продолжить с сохранённой строки' : 'Continue from the saved line'}</span>
                         </span>
                     </button>
                 )}
                 {leadWithPrologue ? relayKey(true) : campaignKey(true)}
-                <TrainingPlan training={training} language={language} onPractice={onPractice} />
                 {incomingChallenge && (
                     <div className={`menu-key--wide screens-cut-card border p-4 text-left ${isCurrentChallenge ? 'border-amber-400/35 bg-amber-400/[0.06]' : 'border-white/10 bg-white/[0.02]'}`}>
                         <div className="fs-micro font-bold uppercase tracking-[0.2em] text-amber-300">{ui.challenge_title}</div>
@@ -193,7 +192,7 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                                 className="border bg-black/20 shrink-0"
                                 style={{ borderColor: `${dailyGenrePack.accent}44` }}
                             />
-                            {ui.daily_sector} · UTC · {language.toUpperCase()} · v2
+                            {ui.daily_sector}
                         </span>
                         {dailyAttemptsExhausted ? (
                             <span className="screens-btn-sub tabular-nums">
@@ -229,7 +228,7 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                     <button type="button" onClick={onPractice} className="menu-key btn-cyber btn-cyber-ghost" data-hotkey="6">
                     <span className="keycap">6</span><span className="menu-key-text">
                       <span className="menu-key-title">{language === 'ru' ? 'Тренировка · 5 мин' : 'Practice · 5 min'}</span>
-                      <span className="menu-key-hint">{language === 'ru' ? 'Замер → отработка → результат' : 'Check → practice → result'}</span>
+                      <span className="screens-btn-sub">{trainingHint(training, language) ?? (language === 'ru' ? 'Замер → отработка → результат' : 'Check → practice → result')}</span>
                     </span>
                 </button>
                 <button
