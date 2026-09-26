@@ -5,12 +5,12 @@ import type { Language } from '../../types';
 import { PACT_CLAUSE_TEXT_KEYS, type UITranslations } from '../../services/i18n';
 import type { DailyBrief, DailyState } from '../../services/dailyMode';
 import { DAILY_MAX_ATTEMPTS } from '../../services/dailyMode';
-import type { GenrePack } from '../../services/genreConfig';
+import { getGenrePack, type GenrePack } from '../../services/genreConfig';
 import type { RunCheckpoint } from '../../services/runCheckpoint';
 import type { TypomancerChallenge } from '../../services/challenge';
 import type { SkillHeadline } from '../../services/progressAnalytics';
 import { PACT_CLAUSES, isPactClauseActive, type PactClauseId } from '../../services/pact';
-import { stripKeyHint } from '../../services/text';
+import type { SessionPlan } from '../../services/sessionPlan';
 import KeycapWordmark from '../KeycapWordmark';
 import EmblemTile from '../EmblemTile';
 import { AccountDeletedNotice } from '../CloudProgress';
@@ -31,12 +31,13 @@ interface MenuScreenProps {
     pactRewardMultiplier: number;
     activePact: PactClauseId[];
     relaxed: boolean;
-    leadWithPrologue: boolean;
+    sessionPlan: SessionPlan;
     onToggleRelaxed: () => void;
     onTogglePactClause: (id: PactClauseId) => void;
     onPactOpened?: () => void;
     canInstall?: boolean;
     onInstall?: () => void;
+    onPlay: () => void;
     onRelay: () => void;
     onInitialize: () => void;
     onDaily: () => void;
@@ -46,86 +47,49 @@ interface MenuScreenProps {
     onOperatorRecord: () => void;
 }
 
-const MenuScreen: React.FC<MenuScreenProps> = ({
-    ui,
-    language,
-    incomingChallenge,
-    isCurrentChallenge,
-    dailyBrief,
-    dailyGenrePack,
-    dailyState,
-    dailyAttemptsLeft,
-    dailyAttemptsExhausted,
-    runCheckpoint,
-    skillHeadline, training,
-    pactRewardMultiplier,
-    activePact,
-    relaxed,
-    leadWithPrologue,
-    onToggleRelaxed,
-    onTogglePactClause,
+// Menu labels carry a legacy "[4] " key hint; the keycap shows it now.
+const stripHint = (label: string) => label.replace(/^\[\d\]\s*/, '');
 
-    onPactOpened,
-    canInstall,
-    onInstall,
-    onRelay,
-    onInitialize,
-    onDaily,
-    onResume,
-    onBlackMarket,
-    onPractice,
-    onOperatorRecord
+const MenuScreen: React.FC<MenuScreenProps> = ({
+    ui, language, incomingChallenge, isCurrentChallenge, dailyBrief, dailyGenrePack, dailyState,
+    dailyAttemptsLeft, dailyAttemptsExhausted, runCheckpoint, skillHeadline, training,
+    pactRewardMultiplier, activePact, relaxed, sessionPlan, onToggleRelaxed, onTogglePactClause,
+    onPactOpened, canInstall, onInstall, onPlay, onRelay, onInitialize, onDaily, onResume,
+    onBlackMarket, onPractice, onOperatorRecord
 }) => {
-    // Collapsed by default. Five clauses expanded is a wall of text on the first
-    // screen a newcomer sees, and it pushed the menu past the fold on a laptop.
-    // A returning player opens it deliberately.
+    // Both panels start collapsed: the first screen is the session, not its options.
     const [pactOpen, setPactOpen] = useState(false);
+    const [difficultyOpen, setDifficultyOpen] = useState(false);
     // The on-screen keyboard fights the game's case sensitivity and speed. Say
     // so honestly on touch devices instead of letting the tracer teach it.
     const [isTouchDevice] = useState(() =>
         typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
     );
+    const newcomer = sessionPlan.kind === 'prologue';
 
-    // The record button carries the returning-player signal that used to be a
-    // standalone card — one glance of pace delta, details live on the record.
-    const recordHint = skillHeadline.sessions > 0
-        ? `${skillHeadline.deltaWpm > 0 ? '+' : ''}${skillHeadline.deltaWpm} ${ui.wpm} · ${skillHeadline.sessions} ${ui.return_sessions}`
-        : ui.operator_record_hint;
+    // What "Play" will do, in one line: the prologue, or the session's world,
+    // focus, weak pairs and pace.
+    const sessionLine = sessionPlan.kind === 'prologue'
+        ? ui.play_prologue
+        : [
+            getGenrePack(sessionPlan.genre).name[language],
+            `${ui.play_session_focus}: ${ui[`focus_name_${sessionPlan.goal.focus}` as const]}`,
+            sessionPlan.weakPairs.length ? `${ui.play_session_pairs} ${sessionPlan.weakPairs.join(', ')}` : '',
+            sessionPlan.paceWpm ? `${ui.play_session_pace} ${sessionPlan.paceWpm} ${ui.wpm}` : ''
+        ].filter(Boolean).join(' · ');
 
-    // The leading mode gets the wide cap (orange unless a checkpoint leads) and
-    // the Enter hint; the other sits in the row below as an ordinary alpha.
-    const leadClass = (lead: boolean) => lead
-        ? `menu-key menu-key--wide btn-cyber ${runCheckpoint ? 'btn-cyber-ghost' : 'btn-cyber-primary'}`
-        : 'menu-key btn-cyber btn-cyber-ghost';
-    const enterHint = (lead: boolean) => lead && !runCheckpoint
-        ? <span className="menu-key-enter" aria-hidden="true">↵</span>
+    // A returning player sees progress where a newcomer sees the pitch.
+    const progressLine = !newcomer && skillHeadline.sessions >= 2 && skillHeadline.deltaWpm !== 0
+        ? `${skillHeadline.deltaWpm > 0 ? '+' : ''}${skillHeadline.deltaWpm} ${ui.wpm} ${ui.since_start} · ${skillHeadline.sessions} ${ui.return_sessions}`
         : null;
-    const relayKey = (lead: boolean) => (
-        <button onClick={onRelay} data-hotkey="1" className={leadClass(lead)}>
-            <span className="keycap">1</span>
-            <span className="menu-key-text">
-                <span className="menu-key-title">{language === 'ru' ? 'ПОСЛЕДНИЙ КАНАЛ' : 'THE LAST RELAY'}</span>
-                <span className="screens-btn-sub">{leadWithPrologue ? ui.relay_hint : ui.relay_replay_hint}</span>
-            </span>
-            {enterHint(lead)}
-        </button>
-    );
-    const campaignKey = (lead: boolean) => (
-        <button onClick={onInitialize} data-hotkey="2" className={leadClass(lead)}>
-            <span className="keycap">2</span>
-            <span className="menu-key-text">
-                <span className="menu-key-title">{stripKeyHint(ui.init_link)}</span>
-                <span className="screens-btn-sub">{ui.campaign_hint}</span>
-            </span>
-            {enterHint(lead)}
-        </button>
-    );
+
+    const difficultySummary = [
+        relaxed ? ui.relaxed_toggle.toLowerCase() : '',
+        pactRewardMultiplier > 1 ? `${ui.pact_title.toLowerCase()} ×${pactRewardMultiplier.toFixed(2)}` : ''
+    ].filter(Boolean).join(' · ') || ui.run_difficulty_standard;
 
     return (
         <div className="menu-screen animate-fade-in-up">
-            {/* TITLE — the name of the game, set in keycaps that type themselves
-                in. The mission title sits under it as a dossier label, and the
-                pitch is set in the prose face the story is typed in. */}
             <header className="menu-title">
                 <KeycapWordmark />
                 <div className="menu-dossier">
@@ -133,10 +97,8 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                     <h2 className="menu-dossier-title">{ui.main_title}</h2>
                     <span className="menu-dossier-rule" aria-hidden="true" />
                 </div>
-                <p className="menu-pitch">
-                    {ui.intro_desc}{' '}
-                    <em>{ui.mistakes_warn}</em>
-                </p>
+                {progressLine && <p className="menu-pitch menu-progress">{progressLine}</p>}
+                {newcomer && <p className="menu-pitch">{ui.intro_desc}{' '}<em>{ui.mistakes_warn}</em></p>}
                 {isTouchDevice && (
                     <p className="fs-micro uppercase tracking-[0.18em] text-slate-500">{ui.keyboard_notice}</p>
                 )}
@@ -146,17 +108,11 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                 <AccountDeletedNotice language={language} />
             </div>
 
-            {/* PLAY — laid out like a keyboard cluster: one wide modifier on the
-                top row, two alphas under it. A newcomer is led into the prologue;
-                once it is done, the campaign takes the wide key. The digits stay
-                with their modes. An in-flight checkpoint beats both. */}
+            {/* TIER 1 — one key that plays the session built for this player.
+                An in-flight checkpoint sits above it and takes the orange. */}
             <div className="menu-keys mt-7">
                 {runCheckpoint && (
-                    <button
-                        onClick={onResume}
-                        data-hotkey="r"
-                        className="menu-key menu-key--wide btn-cyber btn-cyber-primary"
-                    >
+                    <button onClick={onResume} data-hotkey="r" className="menu-key menu-key--wide btn-cyber btn-cyber-primary">
                         <span className="keycap">R</span>
                         <span className="menu-key-text">
                             <span className="menu-key-title">{ui.resume_run} · {ui.resume_sector} {runCheckpoint.nextLevel}</span>
@@ -164,7 +120,14 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                         </span>
                     </button>
                 )}
-                {leadWithPrologue ? relayKey(true) : campaignKey(true)}
+                <button onClick={onPlay} data-hotkey="1" className={`menu-key menu-key--wide btn-cyber ${runCheckpoint ? 'btn-cyber-ghost' : 'btn-cyber-primary'}`}>
+                    <span className="keycap">1</span>
+                    <span className="menu-key-text">
+                        <span className="menu-key-title">{ui.play}</span>
+                        <span className="screens-btn-sub">{sessionLine}</span>
+                    </span>
+                    {!runCheckpoint && <span className="menu-key-enter" aria-hidden="true">↵</span>}
+                </button>
                 {incomingChallenge && (
                     <div className={`menu-key--wide screens-cut-card border p-4 text-left ${isCurrentChallenge ? 'border-amber-400/35 bg-amber-400/[0.06]' : 'border-white/10 bg-white/[0.02]'}`}>
                         <div className="fs-micro font-bold uppercase tracking-[0.2em] text-amber-300">{ui.challenge_title}</div>
@@ -176,13 +139,17 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                         ) : <p className="mt-2 fs-label leading-relaxed text-slate-400">{ui.challenge_expired}</p>}
                     </div>
                 )}
-                {leadWithPrologue ? campaignKey(false) : relayKey(false)}
-                <button
-                    onClick={onDaily}
-                    data-hotkey="3"
-                    disabled={dailyAttemptsExhausted}
-                    className="menu-key screens-daily-button btn-cyber btn-cyber-ghost group"
-                >
+
+                {/* TIER 2 — the other two reasons to come back: hands-only practice
+                    and today's shared sector. */}
+                <button type="button" onClick={onPractice} data-hotkey="6" className="menu-key btn-cyber btn-cyber-ghost">
+                    <span className="keycap">6</span>
+                    <span className="menu-key-text">
+                        <span className="menu-key-title">{ui.practice_title}</span>
+                        <span className="screens-btn-sub">{trainingHint(training, language) ?? ui.practice_hint}</span>
+                    </span>
+                </button>
+                <button onClick={onDaily} data-hotkey="3" disabled={dailyAttemptsExhausted} className="menu-key screens-daily-button btn-cyber btn-cyber-ghost group">
                     <span className="keycap">3</span>
                     <span className="menu-key-text">
                         <span className="menu-key-title flex items-center gap-2">
@@ -207,47 +174,22 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                 </button>
             </div>
 
-            {/* META — progression between runs. Quieter than PLAY: a lower row
-                of smaller caps, then the two dials that tune a run. */}
-            <div className="mt-7">
-                <div className="menu-row-label" aria-hidden="true">
-                    <span>{language === 'ru' ? 'Между забегами' : 'Between runs'}</span>
-                </div>
-                <div className="menu-keys menu-keys--meta mt-3">
-                    <button
-                        onClick={onBlackMarket}
-                        data-hotkey="4"
-                        className="menu-key menu-key--small btn-cyber btn-cyber-ghost"
-                    >
-                        <span className="keycap">4</span>
-                        <span className="menu-key-text">
-                            <span className="menu-key-title">{stripKeyHint(ui.black_market)}</span>
-                            <span className="screens-btn-sub">{ui.market_subtitle}</span>
-                        </span>
-                    </button>
-                    <button type="button" onClick={onPractice} className="menu-key btn-cyber btn-cyber-ghost" data-hotkey="6">
-                    <span className="keycap">6</span><span className="menu-key-text">
-                      <span className="menu-key-title">{language === 'ru' ? 'Тренировка · 5 мин' : 'Practice · 5 min'}</span>
-                      <span className="screens-btn-sub">{trainingHint(training, language) ?? (language === 'ru' ? 'Замер → отработка → результат' : 'Check → practice → result')}</span>
-                    </span>
-                </button>
-                <button
-                        onClick={onOperatorRecord}
-                        data-hotkey="5"
-                        className="menu-key menu-key--small btn-cyber btn-cyber-ghost"
-                    >
-                        <span className="keycap">5</span>
-                        <span className="menu-key-text">
-                            <span className="menu-key-title">{stripKeyHint(ui.operator_record)}</span>
-                            <span className="screens-btn-sub">{recordHint}</span>
-                        </span>
-                    </button>
-                </div>
+            {/* TIER 3 — everything else, as one quiet row of links. */}
+            <nav className="menu-links" aria-label={language === 'ru' ? 'Ещё' : 'More'}>
+                <button type="button" onClick={onInitialize} data-hotkey="2" className="menu-link"><span className="keycap">2</span>{ui.other_world}</button>
+                <button type="button" onClick={onBlackMarket} data-hotkey="4" className="menu-link"><span className="keycap">4</span>{stripHint(ui.black_market)}</button>
+                <button type="button" onClick={onOperatorRecord} data-hotkey="5" className="menu-link"><span className="keycap">5</span>{stripHint(ui.operator_record)}</button>
+                {!newcomer && <button type="button" onClick={onRelay} className="menu-link">{ui.prologue_again}</button>}
+            </nav>
 
-                <div className="mt-4 flex flex-col gap-2">
-                    {/* Story pace sits beside the Pact: the one control that
-                        lowers the bar, priced like the dampener. A toggle, so
-                        it looks like a switch rather than another key. */}
+            {/* TIER 4 — run difficulty, folded: story pace and the Pact. */}
+            <div className="menu-difficulty">
+                <button type="button" className="menu-difficulty-toggle" aria-expanded={difficultyOpen} onClick={() => setDifficultyOpen(!difficultyOpen)}>
+                    <span>{ui.run_difficulty}</span>
+                    <span className="menu-difficulty-summary">{difficultySummary} {difficultyOpen ? '−' : '+'}</span>
+                </button>
+                {difficultyOpen && (
+                <div className="mt-3 flex flex-col gap-2">
                     <button
                         type="button"
                         onClick={onToggleRelaxed}
@@ -312,6 +254,7 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                         )}
                     </div>
                 </div>
+                )}
             </div>
 
             {/* Footer — system chrome, demoted to micro-copy. Account lives in

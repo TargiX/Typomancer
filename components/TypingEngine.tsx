@@ -1665,7 +1665,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         <h2>{language === 'ru' ? 'Канал на паузе' : 'Link paused'}</h2>
         <p>{language === 'ru' ? 'Время и погоня остановлены.' : 'The clock and chase are stopped.'}</p>
         <button type="button" autoFocus className="btn-cyber" onClick={resume}>{language === 'ru' ? 'Продолжить · Esc' : 'Resume · Esc'}</button>
-        <button type="button" onClick={onSettings}>{language === 'ru' ? 'Чтение и управление' : 'Reading & controls'}</button>
+        <button type="button" onClick={onSettings}>{language === 'ru' ? 'Настройки' : 'Settings'}</button>
         <button type="button" onClick={onExit}>{language === 'ru' ? 'В меню' : 'Back to menu'}</button>
         <p>{deterministicStory ? (language === 'ru' ? 'Попытка Daily уже использована.' : 'This Daily attempt has been used.') : (language === 'ru' ? 'Продолжение — с начала текущей строки.' : 'Resume from the start of this line.')}</p>
       </div>}

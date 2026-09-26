@@ -98,7 +98,7 @@ test('two sectors retain all line rewards and one cumulative run after banking a
 test('five-minute practice pauses its clock and finishes with a saved, comparable result', async ({ page }) => {
   await page.clock.install();
   await page.goto('/');
-  await page.getByRole('button', { name: /Practice · 5 min/ }).click();
+  await page.getByRole('button', { name: /Practice · 5 min/i }).click();
   for (let phase = 0; phase < 3; phase++) {
     await page.getByRole('button', { name: 'Start stage' }).click();
     const field = page.getByRole('textbox', { name: 'Type the practice passage' });
@@ -155,7 +155,7 @@ test('Russian practice stays readable on a narrow screen and resumes real keyboa
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
   await page.getByRole('button', { name: 'RU', exact: true }).click();
-  await page.getByRole('button', { name: /Тренировка · 5 мин/ }).click();
+  await page.getByRole('button', { name: /Тренировка · 5 мин/i }).click();
   await page.getByRole('button', { name: 'Начать этап' }).click();
   const field = page.getByRole('textbox', { name: 'Набери текст тренировки' });
   await expect(field).toBeFocused();
