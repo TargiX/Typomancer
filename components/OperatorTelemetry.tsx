@@ -30,8 +30,8 @@ interface OperatorTelemetryProps {
 const COPY = {
   en: {
     eyebrow: 'OPERATOR TELEMETRY',
-    faster: 'FASTER THAN WHEN YOU STARTED',
-    slower: 'SLOWER THAN WHEN YOU STARTED',
+    faster: 'FASTER THAN YOUR BASELINE',
+    slower: 'SLOWER THAN YOUR BASELINE',
     holding: 'HOLDING YOUR PACE',
     sessions: 'sessions',
     across: 'across',
@@ -42,7 +42,7 @@ const COPY = {
     then: 'THEN',
     now: 'NOW',
     reflex: 'REFLEX MAP',
-    reflexNote: 'Average delay before each key lands. Hesitation costs runs even when nothing is mistyped.',
+    reflexNote: 'Recent aggregate attempts (up to 8 batches per pattern, 14 days). Delays of 25–1200ms only; a dash means no timing sample.',
     costly: 'COSTLIEST',
     steady: 'STEADIEST',
     noPatterns: 'Not enough keystrokes measured yet.',
@@ -53,8 +53,8 @@ const COPY = {
   },
   ru: {
     eyebrow: 'ТЕЛЕМЕТРИЯ ОПЕРАТОРА',
-    faster: 'БЫСТРЕЕ, ЧЕМ В НАЧАЛЕ',
-    slower: 'МЕДЛЕННЕЕ, ЧЕМ В НАЧАЛЕ',
+    faster: 'БЫСТРЕЕ БАЗОВОЙ СЕРИИ',
+    slower: 'МЕДЛЕННЕЕ БАЗОВОЙ СЕРИИ',
     holding: 'ТЕМП ДЕРЖИТСЯ',
     sessions: 'сессий',
     across: 'за',
@@ -65,7 +65,7 @@ const COPY = {
     then: 'БЫЛО',
     now: 'СТАЛО',
     reflex: 'КАРТА РЕФЛЕКСОВ',
-    reflexNote: 'Средняя задержка перед нажатием. Промедление стоит забегов, даже когда опечаток нет.',
+    reflexNote: 'Недавние попытки: до 8 записей на сочетание за 14 дней. Задержки только 25–1200 мс; прочерк означает отсутствие замера.',
     costly: 'ДОРОЖЕ ВСЕГО',
     steady: 'ТВЕРЖЕ ВСЕГО',
     noPatterns: 'Пока измерено слишком мало нажатий.',
@@ -102,7 +102,7 @@ const LatencyBar: React.FC<{ diagnostic: PatternDiagnostic; ceiling: number; spa
   spaceLabel
 }) => {
   const segments = 14;
-  const lit = Math.max(1, Math.round((Math.min(diagnostic.avgLatencyMs, ceiling) / ceiling) * segments));
+  const lit = diagnostic.avgLatencyMs === null ? 0 : Math.max(1, Math.round((Math.min(diagnostic.avgLatencyMs ?? 0, ceiling) / ceiling) * segments));
   const hot = diagnostic.errorRate >= 12;
   return (
     <div className="telemetry-pattern">
@@ -118,7 +118,7 @@ const LatencyBar: React.FC<{ diagnostic: PatternDiagnostic; ceiling: number; spa
           />
         ))}
       </div>
-      <span className="telemetry-pattern-latency">{diagnostic.avgLatencyMs}<small>ms</small></span>
+      <span className="telemetry-pattern-latency">{diagnostic.avgLatencyMs === null ? '—' : <>{diagnostic.avgLatencyMs}<small>ms</small></>}</span>
       <span className={`telemetry-pattern-errors ${hot ? 'is-hot' : ''}`}>
         {Math.round(diagnostic.errorRate)}<small>%</small>
       </span>
@@ -128,11 +128,11 @@ const LatencyBar: React.FC<{ diagnostic: PatternDiagnostic; ceiling: number; spa
 
 const OperatorTelemetry: React.FC<OperatorTelemetryProps> = ({ language, progress, training }) => {
   const ui = COPY[language];
-  const headline = useMemo(() => getSkillHeadline(progress), [progress]);
-  const series = useMemo(() => getSkillSeries(progress), [progress]);
-  const costly = useMemo(() => getPatternDiagnostics(training, 6), [training]);
-  const steady = useMemo(() => getSteadiestPatterns(training, 4), [training]);
-  const spread = useMemo(() => getLatencySpread(training), [training]);
+  const headline = useMemo(() => getSkillHeadline(progress, language), [progress, language]);
+  const series = useMemo(() => getSkillSeries(progress, language), [progress, language]);
+  const costly = useMemo(() => getPatternDiagnostics(training, 6, 4, language), [training, language]);
+  const steady = useMemo(() => getSteadiestPatterns(training, 4, 6, language), [training, language]);
+  const spread = useMemo(() => getLatencySpread(training, 4, language), [training, language]);
 
   const wpmValues = series.map((point) => point.wpm);
   const accuracyValues = series.map((point) => point.accuracy);

@@ -20,7 +20,9 @@ test('training profile aggregates keys and bigrams without storing typed text', 
   ]);
 
   assert.equal(profile.samples, 3);
-  assert.deepEqual(profile.keys.find((item) => item.token === 'r'), {
+  const { recent, ...historical } = profile.keys.find((item) => item.token === 'r')!;
+  assert.equal(recent?.[0].errors, 1);
+  assert.deepEqual(historical, {
     token: 'r', attempts: 1, errors: 1, totalLatencyMs: 500, timedAttempts: 1
   });
   assert.equal(profile.bigrams.find((item) => item.token === 'tr')?.errors, 1);
@@ -40,14 +42,14 @@ test('weak patterns prioritize repeated errors and shape a deterministic drill',
   assert.equal(drill, buildTargetedDrill('ru', profile));
 });
 
-test('benchmark delta compares the latest drill with the first baseline', () => {
+test('benchmark delta refuses to compare a calibration with a different drill', () => {
   let profile = recordTypingSession(EMPTY_TYPING_TRAINING, [], {
     kind: 'calibration', wpm: 42, accuracy: 94, completedAt: '2026-08-20T00:00:00.000Z'
   });
   profile = recordTypingSession(profile, [], {
     kind: 'drill', wpm: 50, accuracy: 97, completedAt: '2026-08-23T00:00:00.000Z'
   });
-  assert.deepEqual(getBenchmarkDelta(profile), { wpm: 8, accuracy: 3, sessions: 2 });
+  assert.equal(getBenchmarkDelta(profile), null);
 });
 
 test('malformed training storage is normalized and bounded', () => {

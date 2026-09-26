@@ -5,7 +5,7 @@ import WeeklyProgress from './WeeklyProgress';
 import { getPactRewardMultiplier } from '../services/pact';
 
 import type { Language, StoryGenreId } from '../types';
-import { getAdaptiveDifficulty, summarizeProgress, type PlayerProgress, type RunRecord,
+import { getComparableRuns, getAdaptiveDifficulty, summarizeProgress, type PlayerProgress, type RunRecord,
   MAX_RUN_HISTORY
 } from '../services/playerProgress';
 import { getBenchmarkDelta, getDrillPatterns, type TypingTrainingProfile } from '../services/typingTraining';
@@ -129,12 +129,12 @@ const buildSignalPoints = (runs: RunRecord[]): string => {
 
 const OperatorRecord: React.FC<OperatorRecordProps> = ({ language, progress, training, onClose, onRecalibrate, onStartDrill }) => {
   const ui = COPY[language];
-  const summary = summarizeProgress(progress);
-  const difficulty = getAdaptiveDifficulty(progress.calibration);
-  const points = useMemo(() => buildSignalPoints(summary.recentRuns), [summary.recentRuns]);
+  const summary = summarizeProgress(progress, new Date(), language);
+  const difficulty = getAdaptiveDifficulty(progress.calibration, progress, language);
+  const points = useMemo(() => buildSignalPoints(getComparableRuns(progress, language).slice(0, 8)), [progress, language]);
   const trendLabel = summary.wpmDelta > 0.5 ? ui.up : summary.wpmDelta < -0.5 ? ui.down : ui.steady;
   const weakPatterns = getDrillPatterns(language, training, 6);
-  const benchmarkDelta = getBenchmarkDelta(training);
+  const benchmarkDelta = getBenchmarkDelta(training, language);
   const displayPattern = (token: string) => token === ' ' ? (language === 'ru' ? 'ПРОБЕЛ' : 'SPACE') : token;
 
   // Portal to <body>: the record is a full-page takeover, and the app shell's

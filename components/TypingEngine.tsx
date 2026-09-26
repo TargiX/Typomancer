@@ -1,9 +1,17 @@
+import { keepDialogFocus } from './dialogFocus';
+import { getSegmentResult } from '../services/segmentResult';
+import { GOAL_COPY, prepareCampaignSegment, canTransmit, type CampaignGoal } from '../services/campaignTraining';
+import StoryDecision from './StoryDecision';
+import { DEFAULT_PLAY_PREFERENCES, keyLabel, type PlayPreferences } from '../services/playPreferences';
+import type { EngineCheckpoint } from '../services/runCheckpoint';
+import { TypingMeter, measuredWpm, measuredAccuracy, type TypingMeasurement } from '../services/typingMetrics';
 import { RELAY_SECTORS, isLastRelay, getRelayBranch, getRelayDecision, getRelayBeatImpact } from '../services/lastRelay';
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from 'react';
 import { StorySegment, BranchingStory, GameStats, StoryMood, GameModifiers, SegmentType, DecisionPoint, Language, MissionState, DecisionImpact, ComicFrame, StoryGenreId } from '../types';
 import {
   generateNextSegments,
   generateSceneImage,
+  generateLocalSceneImage,
   generateStrategicDecision,
   getDeterministicStoryBranch,
   getDeterministicStrategicDecision
@@ -28,14 +36,10 @@ import {
 import {
   DECISION_ROUND,
   SECTOR_ROUNDS,
-  calculateSegmentCredits,
   DEFAULT_BRANCH_THRESHOLDS,
-  calculateSegmentScore,
-  getBranchPerformance,
   getComboMultiplier,
   getCursorSkillStack,
   getReadyActiveSkills,
-  getTypingAccuracy,
   isLowHealth,
   type BranchThresholds
 } from '../services/gameRules';
@@ -114,12 +118,19 @@ interface DeltaPopup {
 }
 
 interface TypingEngineProps {
+  campaignGoal?: CampaignGoal;
+  runSeed?: string;
+  preferences?: PlayPreferences;
+  onExit?: () => void;
+  onSettings?: () => void;
+  restored?: EngineCheckpoint;
+  onCheckpoint?: (snapshot: EngineCheckpoint, mission: MissionState) => void;
   initialSegment: StorySegment;
   currentLevel: number; 
   currentRoundHealth: number; 
   modifiers: GameModifiers; 
   onGameOver: (finalStats: GameStats) => void;
-  addToLog: (text: string, performance: 'good' | 'average' | 'bad' | 'neutral', score: number, wpm: number, mistakes: number, meta?: string, type?: SegmentType) => void;
+  addToLog: (text: string, performance: 'good' | 'average' | 'bad' | 'neutral', score: number, wpm: number, mistakes: number, meta?: string, type?: SegmentType, measurement?: TypingMeasurement) => void;
   fullHistory: string[]; 
   characterDescription: string;
   stealthLevel: number; 
@@ -196,7 +207,9 @@ const charsMatch = (typed: string, expected: string, strict = false) => {
 };
 
 const TypingEngine: React.FC<TypingEngineProps> = ({ 
-    initialSegment, 
+    initialSegment,
+    campaignGoal = 'flow' as CampaignGoal, runSeed = '',
+    preferences = DEFAULT_PLAY_PREFERENCES, onExit, onSettings,
     currentLevel,
     modifiers,
     onGameOver, 
@@ -216,19 +229,23 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     deterministicStory = false,
     onTypingObservation,
     baselineWpm,
-    trainingFocus,
+    trainingFocus = [],
     branchThresholds = DEFAULT_BRANCH_THRESHOLDS,
+    restored, onCheckpoint,
     skillStackAnchor = 'caret'
 }) => {
-  const [history, setHistory] = useState<StorySegment[]>([]);
-  const [activeSegment, setActiveSegment] = useState<StorySegment>(initialSegment);
+  const meterRef = useRef(new TypingMeter());
+  const [paused, setPaused] = useState(false);
+  const pausedAtRef = useRef<number | null>(null);
+  const focusUntilRef = useRef(0);
+  const [history, setHistory] = useState<StorySegment[]>(restored?.history || []);
+  const prepareSegment = (segment: StorySegment, nextRound: number) => deterministicStory ? segment : prepareCampaignSegment(segment, language, campaignGoal, trainingFocus, currentLevel, nextRound, runSeed);
+  const [activeSegment, setActiveSegment] = useState<StorySegment>(() => restored?.segment || prepareSegment(initialSegment, 1));
   const [nextBranch, setNextBranch] = useState<BranchingStory | null>(null);
-  const [nextDecision, setNextDecision] = useState<DecisionPoint | null>(null);
-  const [isDecisionActive, setIsDecisionActive] = useState(false);
+  const [nextDecision, setNextDecision] = useState<DecisionPoint | null>(restored?.decision || null);
+  const [isDecisionActive, setIsDecisionActive] = useState(!!restored?.decision);
   // Hesitation is a choice: the intervention window is finite, and letting it
   // lapse picks the aggressive option for you.
-  const DECISION_WINDOW_MS = 12_000;
-  const [decisionRemaining, setDecisionRemaining] = useState(DECISION_WINDOW_MS);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const currentImageRef = useRef<string | null>(null);
   // The outgoing frame stays mounted one transition so a new scene fades in
@@ -238,17 +255,17 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const [debris, setDebris] = useState<Debris[]>([]);
   const [sparks, setSparks] = useState<Spark[]>([]);
   const [showFlash, setShowFlash] = useState(false);
-  const [overclockCharge, setOverclockCharge] = useState(0);
-  const [isOverclockActive, setIsOverclockActive] = useState(false);
+  const [overclockCharge, setOverclockCharge] = useState(restored?.charge || 0);
+  const [isOverclockActive, setIsOverclockActive] = useState((restored?.focusRemainingMs || 0) > 0);
   const overclockTimerRef = useRef<number | null>(null);
   const [inputValue, setInputValue] = useState('');
   const [isWaitingForAi, setIsWaitingForAi] = useState(false);
   const [startTime, setStartTime] = useState<number>(Date.now());
   const [mistakesInSegment, setMistakesInSegment] = useState(0);
   const [currentWPM, setCurrentWPM] = useState(0); 
-  const [health, setHealth] = useState(currentRoundHealth); 
-  const [credits, setCredits] = useState(0);
-  const [combo, setCombo] = useState(0);
+  const [health, setHealth] = useState(restored?.health ?? currentRoundHealth);
+  const [credits, setCredits] = useState(restored?.credits || 0);
+  const [combo, setCombo] = useState(restored?.combo || 0);
   const [comboPulse, setComboPulse] = useState(0);
   const [deltaPopups, setDeltaPopups] = useState<DeltaPopup[]>([]);
   // The branch the player's accuracy just bought them, surfaced for a few seconds.
@@ -259,9 +276,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   // effect for the same segment, and a plain flag would cancel the cue instantly.
   const typeCueShownRef = useRef<StorySegment | null>(null);
   const deltaCounter = useRef(0);
-  const [round, setRound] = useState(1);
-  const [totalWPM, setTotalWPM] = useState(0);
-  const [tracePercent, setTracePercent] = useState(0);
+  const [round, setRound] = useState(restored?.round || 1);
+  const [tracePercent, setTracePercent] = useState(restored?.trace || 0);
   // The tracer's exact position lives in a ref and is integrated every frame; only
   // the whole-character burn front reaches React, so a 60fps chase re-renders the
   // line about twice a second instead of sixty times.
@@ -271,7 +287,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const hitStopUntilRef = useRef(0);
   const [tracerBurnFront, setTracerBurnFront] = useState<number>(Math.floor(getTracerStartIndex()));
   const inputLengthRef = useRef(0);
-  const healthRef = useRef(currentRoundHealth);
+  const healthRef = useRef(restored?.health ?? currentRoundHealth);
   /** Timestamp of the first keystroke of the current segment; null until it lands. */
   const segmentFirstKeyAtRef = useRef<number | null>(null);
   const tracerCaughtAtRef = useRef<number | null>(null);
@@ -303,8 +319,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const forgivenIndicesRef = useRef<Set<number>>(new Set());
   // Active-skill: Firewall grants a stock of "shield" charges that soak the next
   // mistakes (persists across segments until spent). Purge Trace is instant.
-  const firewallGraceRef = useRef(0);
-  const [firewallGrace, setFirewallGrace] = useState(0);
+  const firewallGraceRef = useRef(restored?.firewall || 0);
+  const [firewallGrace, setFirewallGrace] = useState(restored?.firewall || 0);
   const [showSkillBriefing, setShowSkillBriefing] = useState(() => {
     // The authored opening teaches in context through the existing caret cues.
     if (isLastRelay(missionSeed)) return false;
@@ -328,6 +344,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
 
   useEffect(() => {
       lastKeystrokeAtRef.current = null;
+      meterRef.current = new TypingMeter();
   }, [activeSegment]);
 
   const captureSkillEvent = (event: 'typomancer_skill_became_ready' | 'typomancer_skill_used', skill: string) => {
@@ -370,9 +387,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           clean: "clean",
           messy: "messy",
           compromised: "compromised",
-          focus_ready: "TAB ⚡ FOCUS",
-          focus_title: "Type correctly to build Focus. Press TAB when full.",
-          skill_focus: "FOCUS — pause trace, soften mistakes, 2x rewards (TAB, full Energy)",
+          focus_ready: `${keyLabel(preferences.keys.focus)} ⚡ FOCUS`,
+          focus_title: `Type correctly to build Focus. Press ${keyLabel(preferences.keys.focus)} when full.`,
+          skill_focus: `FOCUS — pause trace, soften mistakes, 2x rewards (${keyLabel(preferences.keys.focus)}, full Energy)`,
           skill_firewall: "FIREWALL — shield the next 3 mistakes (costs Energy)",
           skill_purge: "PURGE TRACE — instantly cut Security Trace by 25% (costs Energy)",
           skills_title: "ACTIVE PROTOCOLS",
@@ -427,9 +444,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           clean: "чисто",
           messy: "грязно",
           compromised: "скомпрометировано",
-          focus_ready: "TAB ⚡ ФОКУС",
-          focus_title: "Печатай верно, чтобы зарядить Фокус. Нажми TAB при полном заряде.",
-          skill_focus: "ФОКУС — пауза трассы, мягче ошибки, x2 награды (TAB, вся Energy)",
+          focus_ready: `${keyLabel(preferences.keys.focus)} ⚡ ФОКУС`,
+          focus_title: `Печатай верно, чтобы зарядить Фокус. Нажми ${keyLabel(preferences.keys.focus)} при полном заряде.`,
+          skill_focus: `ФОКУС — пауза трассы, мягче ошибки, x2 награды (${keyLabel(preferences.keys.focus)}, вся Energy)`,
           skill_firewall: "FIREWALL — щит на следующие 3 ошибки (тратит Energy)",
           skill_purge: "СБРОС ТРАССЫ — мгновенно −25% к трассировке (тратит Energy)",
           skills_title: "АКТИВНЫЕ ПРОТОКОЛЫ",
@@ -520,8 +537,62 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   }, [activeSegment, showSkillBriefing]);
 
   useEffect(() => {
+    if (!restored?.focusRemainingMs) return;
+    focusUntilRef.current = Date.now() + restored.focusRemainingMs;
+    overclockTimerRef.current = window.setTimeout(() => {
+      audioEngine.focusEnd(); setIsOverclockActive(false);
+    }, restored.focusRemainingMs);
+    return () => { if (overclockTimerRef.current) clearTimeout(overclockTimerRef.current); };
+  }, []);
+
+  useEffect(() => {
+    onCheckpoint?.({ segment: activeSegment, history, round, health, credits, combo,
+      charge: overclockCharge, trace: tracePercent, firewall: firewallGraceRef.current,
+      focusRemainingMs: isOverclockActive ? Math.max(0, focusUntilRef.current - Date.now()) : 0,
+      ...(isDecisionActive && nextDecision ? { decision: nextDecision } : {}) }, missionRef.current);
+    // Save at a line boundary or at a choice, never on every typed character.
+  }, [activeSegment, isDecisionActive]);
+
+  const pause = () => {
+    if (pausedAtRef.current !== null) return;
+    pausedAtRef.current = Date.now();
+    meterRef.current.pause(Date.now());
+    if (overclockTimerRef.current) clearTimeout(overclockTimerRef.current);
+    setPaused(true);
+  };
+  const resume = () => {
+    const now = Date.now();
+    const elapsed = now - (pausedAtRef.current ?? now);
+    meterRef.current.resume(now);
+    if (segmentFirstKeyAtRef.current !== null) segmentFirstKeyAtRef.current += elapsed;
+    if (tracerCaughtAtRef.current !== null) tracerCaughtAtRef.current += elapsed;
+    if (isOverclockActive) {
+      focusUntilRef.current += elapsed;
+      overclockTimerRef.current = window.setTimeout(() => {
+        audioEngine.focusEnd(); setIsOverclockActive(false);
+      }, Math.max(0, focusUntilRef.current - now));
+    }
+    pausedAtRef.current = null;
+    lastKeystrokeAtRef.current = null;
+    setPaused(false);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+  useEffect(() => {
+    const onHidden = () => { if (document.hidden) pause(); };
+    window.addEventListener('blur', pause);
+    document.addEventListener('visibilitychange', onHidden);
+    return () => {
+      window.removeEventListener('blur', pause);
+      document.removeEventListener('visibilitychange', onHidden);
+    };
+  }, []);
+
+  useEffect(() => {
     inputRef.current?.focus();
     const handleKeydown = (e: KeyboardEvent) => {
+        if (document.querySelector('dialog[open]')) return;
+        if (e.key === 'Escape') { e.preventDefault(); paused ? resume() : pause(); return; }
+        if (paused) return;
         if (showSkillBriefing) {
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
@@ -529,23 +600,23 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
             }
             return;
         }
-        if (e.key === 'Tab') {
+        if (!isDecisionActive && e.key === preferences.keys.focus) {
             e.preventDefault(); 
             if (!isOverclockActive && overclockCharge >= modifiers.maxOverclock) {
-                flashKey('tab');
+                flashKey(preferences.keys.focus.toLowerCase());
                 activateOverclock();
             }
             return;
         }
-        if (!isDecisionActive && e.key === 'ArrowUp') {
+        if (!isDecisionActive && e.key === preferences.keys.firewall) {
             e.preventDefault();
-            flashKey('arrowup');
+            flashKey(preferences.keys.firewall.toLowerCase());
             useFirewall();
             return;
         }
-        if (!isDecisionActive && e.key === 'ArrowDown') {
+        if (!isDecisionActive && e.key === preferences.keys.purge) {
             e.preventDefault();
-            flashKey('arrowdown');
+            flashKey(preferences.keys.purge.toLowerCase());
             usePurgeTrace();
             return;
         }
@@ -555,6 +626,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
             if (!e.repeat && e.key === '2') pressThen('2', () => handleDecisionSelect(1));
             return;
         }
+        if ((e.target as HTMLElement)?.closest('button, select, a, dialog')) return;
         if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
         if (isWaitingForAi || transitionLockRef.current) return;
 
@@ -572,6 +644,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     window.addEventListener('keydown', handleKeydown);
     return () => window.removeEventListener('keydown', handleKeydown);
   }, [
+    preferences,
+    paused,
     overclockCharge,
     isOverclockActive,
     isDecisionActive,
@@ -592,6 +666,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       setIsOverclockActive(true);
       setOverclockCharge(0);
       if (overclockTimerRef.current) clearTimeout(overclockTimerRef.current);
+      focusUntilRef.current = Date.now() + modifiers.focusDurationMs;
       overclockTimerRef.current = window.setTimeout(() => {
           audioEngine.focusEnd();
           setIsOverclockActive(false);
@@ -709,7 +784,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     const fetchImage = async () => {
         setIsImageLoading(true);
         const isStoryBeat = round === 1 || round === DECISION_ROUND + 1 || round === SECTOR_ROUNDS;
-        const base64 = await generateSceneImage(activeSegment.text, characterDescription, genre, isStoryBeat);
+        const base64 = isLastRelay(missionRef.current) || deterministicStory
+          ? generateLocalSceneImage(activeSegment.text, characterDescription, genre)
+          : await generateSceneImage(activeSegment.text, characterDescription, genre, isStoryBeat);
         if (isMounted && base64) {
             setPreviousImage(currentImageRef.current);
             setCurrentImage(base64);
@@ -722,11 +799,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   }, [activeSegment, characterDescription, genre, round]);
 
   useEffect(() => {
-    if (isWaitingForAi || isDecisionActive || typeCueActive) return;
+    if (paused || isWaitingForAi || isDecisionActive || typeCueActive || showSkillBriefing) return;
     if (isOverclockActive) return;
 
     const BASE_INCREMENT = 0.065;
-    const stealthDivisor = 1 + (stealthLevel * 0.1);
     // Heat absorbed corruption, so its divisor widened to keep total pressure
     // roughly where it was before the two meters merged.
     const missionPressure = 1 + (missionRef.current.heat / 160) - (missionRef.current.trust / 320);
@@ -737,9 +813,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     // would tear down and rebuild this clock on every keystroke, which stalls
     // the trace whenever the player types faster than the tick rate.
     timerRef.current = window.setInterval(() => {
+        if (pausedAtRef.current !== null || segmentFirstKeyAtRef.current === null) return;
         if (!transitionLockRef.current && Date.now() >= hitStopUntilRef.current) {
             setTracePercent(prev => {
-                const increment = (BASE_INCREMENT * perkMultiplier) / stealthDivisor;
+                const increment = BASE_INCREMENT * perkMultiplier;
                 const newVal = prev + increment;
                 audioEngine.setIntensity(newVal);
                 if (newVal >= 100) {
@@ -750,16 +827,13 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
             });
         }
         const chars = inputLengthRef.current;
-        const timeMin = (Date.now() - startTime) / 1000 / 60;
-        if (timeMin > 0 && chars > 0) {
-            setCurrentWPM(Math.round((chars / 5) / timeMin));
-        }
+        setCurrentWPM(Math.round(measuredWpm(chars, meterRef.current.read(chars, Date.now()).durationMs)));
     }, 100);
 
     return () => {
         if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isWaitingForAi, stealthLevel, modifiers.traceSpeedMultiplier, startTime, isOverclockActive, isDecisionActive, activeSegment.pressure, typeCueActive]);
+  }, [paused, showSkillBriefing, isWaitingForAi, stealthLevel, modifiers.traceSpeedMultiplier, startTime, isOverclockActive, isDecisionActive, activeSegment.pressure, typeCueActive]);
 
   // Refs the animation frame reads. Reading state inside the loop would pin it to
   // whatever the closure captured on the frame it was created.
@@ -801,7 +875,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   // The chase itself. Paused by exactly the things that pause the trace bar, plus
   // Focus Mode — the two are one threat read two ways and must never disagree.
   useEffect(() => {
-      const frozen = isWaitingForAi
+      const frozen = paused || isWaitingForAi
           || transitionLockRef.current
           || isDecisionActive
           || typeCueActive
@@ -822,6 +896,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       let frame = 0;
       let last = performance.now();
       const step = (now: number) => {
+          if (pausedAtRef.current !== null) { frame = requestAnimationFrame(step); last = now; return; }
           const delta = now - last;
           last = now;
           const firstKeyAt = segmentFirstKeyAtRef.current;
@@ -854,6 +929,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       frame = requestAnimationFrame(step);
       return () => cancelAnimationFrame(frame);
   }, [
+      paused,
       activeSegment,
       baselineWpm,
       isDecisionActive,
@@ -868,6 +944,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   useEffect(() => {
     let isMounted = true;
     const bufferNext = async () => {
+      if (isDecisionActive) return;
       setNextBranch(null); 
       setNextDecision(null);
       setIsWaitingForAi(false);
@@ -1098,7 +1175,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
 
 
   const applyInputValue = (val: string) => {
-    if (isDecisionActive) return;
+    if (pausedAtRef.current !== null || isWaitingForAi || transitionLockRef.current || isDecisionActive) return;
     if (typeCueActive) {
       setTypeCueActive(false);
       setStartTime(Date.now());
@@ -1119,6 +1196,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
        const expectedChar = activeSegment.text[charIndex];
        const typedChar = val[charIndex];
        const keyTime = Date.now();
+       meterRef.current.key(charsMatch(typedChar, expectedChar, strictCase), keyTime);
+       if (canTransmit(activeSegment.text, val, campaignGoal, (a, b) => charsMatch(a, b, strictCase))) meterRef.current.finish(keyTime);
        onTypingObservation?.({
          expected: expectedChar,
          previousExpected: charIndex > 0 ? activeSegment.text[charIndex - 1] : undefined,
@@ -1212,21 +1291,15 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     applyInputValue(e.target.value);
   };
 
-  const settleRelayDecisionLeadIn = () => {
-      if (!isLastRelay(missionRef.current)) return;
-      const wpm = Math.round((activeSegment.text.length / 5) / (Math.max(1, Date.now() - startTime) / 60000));
+  const settleDecisionLeadIn = () => {
+      const measurement = meterRef.current.read(activeSegment.text.length, Date.now());
       const { totalErrors } = getErrorReport();
-      const performance = getBranchPerformance(totalErrors, activeSegment.text.length, branchThresholds);
-      const reward = { errors: totalErrors, type: activeSegment.type, wpm,
-          overclock: isOverclockActive, breachMultiplier: modifiers.breachRewardMultiplier,
-          comboMultiplier, creditMultiplier: modifiers.creditMultiplier };
+      const result = getSegmentResult(measurement, totalErrors, activeSegment, modifiers, branchThresholds, isOverclockActive, comboMultiplier);
+      const { wpm, performance, healing } = result;
       const outcome = applySegmentOutcome(performance, totalErrors, wpm, activeSegment);
-      setCredits(c => c + calculateSegmentCredits(reward));
-      const healing = (totalErrors === 0 ? 1 + modifiers.perfectLineHealth : 0)
-          + (modifiers.healthRegenWpmThreshold > 0 && wpm > modifiers.healthRegenWpmThreshold ? modifiers.healthRegenAmount : 0);
+      setCredits(c => c + result.credits);
       if (healing > 0) setHealth(h => Math.min(modifiers.maxHealth, h + healing));
-      setTotalWPM(w => w + wpm);
-      addToLog(activeSegment.text, performance, calculateSegmentScore(reward), wpm, totalErrors, outcome.meta, activeSegment.type);
+      addToLog(activeSegment.text, performance, result.score, wpm, measurement.mistakes, outcome.meta, activeSegment.type, measurement);
       onCaptureFrame?.({ image: currentImageRef.current, caption: activeSegment.text, performance, level: currentLevel });
       setHistory(h => [...h, { ...activeSegment, performance }]);
   };
@@ -1234,7 +1307,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   const handleDecisionSelect = (index: number) => {
       // One answer per decision: a key press that lands its beat after the
       // window has already fired must not apply a second outcome.
-      if (!nextDecision || !decisionOpenRef.current) return;
+      if (pausedAtRef.current !== null || !nextDecision || !decisionOpenRef.current) return;
       decisionOpenRef.current = false;
       audioEngine.decisionAccent(index === 0 ? 'aggressive' : 'stealth');
       const choice = nextDecision.options[index];
@@ -1243,7 +1316,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       addToLog(`> ${choice.text}`, 'neutral', 0, 0, 0, meta, choice.outcome.type);
       setIsDecisionActive(false);
       setRound(r => r + 1);
-      setActiveSegment(choice.outcome);
+      setActiveSegment(prepareSegment(choice.outcome, round + 1));
       setInputValue('');
       setMistakesInSegment(0);
       forgivenMistakesRef.current = 0;
@@ -1255,34 +1328,15 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       }, 50);
   };
 
-  // The intervention window ticks down in view; at zero the aggressive option
-  // fires on its own — hesitation is itself a choice.
   useEffect(() => {
       if (!isDecisionActive) return;
       decisionOpenRef.current = true;
-      setDecisionRemaining(DECISION_WINDOW_MS);
       audioEngine.duckMusic(true);
-      // The pause is long enough to warm both outcomes' art; whichever the
-      // player picks, its scene is already in cache when the next round asks.
-      nextDecision?.options.forEach(option => {
-          generateSceneImage(option.outcome.text, characterDescription, genre, true);
-      });
-      const startedAt = Date.now();
-      const tick = window.setInterval(() => {
-          const left = DECISION_WINDOW_MS - (Date.now() - startedAt);
-          setDecisionRemaining(Math.max(0, left));
-          if (left <= 0) {
-              window.clearInterval(tick);
-              handleDecisionSelect(0);
-          }
-      }, 100);
-      return () => {
-          window.clearInterval(tick);
-          audioEngine.duckMusic(false);
-      };
+      return () => { audioEngine.duckMusic(false); };
   }, [isDecisionActive]);
 
   const spawnOverclockSparkBurst = (charIndex: number) => {
+      if (preferences.reducedMotion) return;
       const charEl = document.querySelector(`span[data-index="${charIndex}"]`);
       if (!charEl) return;
       const rect = charEl.getBoundingClientRect();
@@ -1330,18 +1384,18 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     if (overclockTimerRef.current) clearTimeout(overclockTimerRef.current);
     if (forkRevealTimerRef.current) clearTimeout(forkRevealTimerRef.current);
     if (introduceTimerRef.current) clearTimeout(introduceTimerRef.current);
-    const { totalErrors: recordedErrors } = getErrorReport();
-    const totalErrors = totalErrorsOverride ?? recordedErrors;
     const typedCharacters = inputValue.length + (totalErrorsOverride === undefined ? 0 : 1);
+    const measurement = meterRef.current.read(typedCharacters, Date.now());
     onGameOver({
-        wpm: Math.round((totalWPM + currentWPM) / Math.max(1, round)),
-        accuracy: getTypingAccuracy(totalErrors, typedCharacters),
+        ...measurement,
+        wpm: Math.round(measuredWpm(typedCharacters, measurement.durationMs)),
+        accuracy: measuredAccuracy(measurement.mistakes, measurement.attempts),
         health: finalHealth,
         level: currentLevel,
         round,
         score: 0,
         credits: Math.floor(credits),
-        mistakes: totalErrors,
+        mistakes: measurement.mistakes,
         characters: typedCharacters,
         mission: missionRef.current
     });
@@ -1353,6 +1407,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   }, [tracePercent]);
 
   const triggerImpact = (currentMistakes: number) => {
+    if (preferences.reducedMotion) return;
     let intensity = 'shake-mild';
     if (currentMistakes >= 4) intensity = 'shake-medium';
     if (currentMistakes >= 7) intensity = 'shake-heavy';
@@ -1390,12 +1445,12 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   };
 
   useEffect(() => {
-    const isTypingComplete = inputValue.length === activeSegment.text.length;
+    const isTypingComplete = canTransmit(activeSegment.text, inputValue, campaignGoal, (a, b) => charsMatch(a, b, strictCase));
     if (isTypingComplete && !transitionLockRef.current && !isDecisionActive) {
         if (nextDecision && round + 1 === DECISION_ROUND) {
              transitionLockRef.current = true;
              setTimeout(() => {
-                 settleRelayDecisionLeadIn();
+                 settleDecisionLeadIn();
                  setIsDecisionActive(true);
              }, 200);
         } else if (nextBranch || round >= SECTOR_ROUNDS) {
@@ -1414,35 +1469,12 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   }, [inputValue, activeSegment, nextBranch, nextDecision, round, isDecisionActive]); 
 
   const advanceStory = (branch: BranchingStory) => {
-    const durationSec = (Date.now() - startTime) / 1000;
-    const wpm = Math.round((activeSegment.text.length / 5) / (durationSec / 60 || 0.01));
-    setTotalWPM(prev => prev + wpm);
+    const measurement = meterRef.current.read(activeSegment.text.length, Date.now());
     const { totalErrors } = getErrorReport();
-    const segmentScore = calculateSegmentScore({
-      errors: totalErrors,
-      type: activeSegment.type,
-      wpm,
-      overclock: isOverclockActive,
-      breachMultiplier: modifiers.breachRewardMultiplier,
-      comboMultiplier
-    });
-    const segmentCredits = calculateSegmentCredits({
-      errors: totalErrors,
-      type: activeSegment.type,
-      overclock: isOverclockActive,
-      breachMultiplier: modifiers.breachRewardMultiplier,
-      creditMultiplier: modifiers.creditMultiplier
-    });
-    setCredits(current => current + segmentCredits);
-
-    let healthChange = 0;
-    if (totalErrors === 0) healthChange += 1 + modifiers.perfectLineHealth;
-    if (modifiers.healthRegenWpmThreshold > 0 && wpm > modifiers.healthRegenWpmThreshold) {
-      healthChange += modifiers.healthRegenAmount;
-    }
-    if (healthChange > 0) setHealth(h => Math.min(modifiers.maxHealth, h + healthChange));
-
-    const performanceType = getBranchPerformance(totalErrors, activeSegment.text.length, branchThresholds);
+    const result = getSegmentResult(measurement, totalErrors, activeSegment, modifiers, branchThresholds, isOverclockActive, comboMultiplier);
+    const { wpm, score: segmentScore, performance: performanceType } = result;
+    setCredits(current => current + result.credits);
+    if (result.healing > 0) setHealth(h => Math.min(modifiers.maxHealth, h + result.healing));
     const outcome = applySegmentOutcome(performanceType, totalErrors, wpm, activeSegment);
     const resolvedBranch = isLastRelay(missionRef.current)
       ? getRelayBranch(currentLevel, round + 1, language, missionRef.current)
@@ -1456,11 +1488,11 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     setForkReveal(isLastRelay(missionRef.current) ? null : buildForkReveal(branch, performanceType, totalErrors));
     if (forkRevealTimerRef.current) clearTimeout(forkRevealTimerRef.current);
     forkRevealTimerRef.current = window.setTimeout(() => setForkReveal(null), FORK_REVEAL_MS);
-    addToLog(activeSegment.text, performanceType, segmentScore, wpm, totalErrors, outcome.meta, activeSegment.type);
+    addToLog(activeSegment.text, performanceType, segmentScore, wpm, measurement.mistakes, outcome.meta, activeSegment.type, measurement);
     onCaptureFrame?.({ image: currentImageRef.current, caption: activeSegment.text, performance: performanceType, level: currentLevel });
     setHistory(prev => [...prev, { ...activeSegment, performance: performanceType }]);
     setRound(r => r + 1);
-    setActiveSegment(nextSeg);
+    setActiveSegment(prepareSegment(nextSeg, round + 1));
     setInputValue('');
     setMistakesInSegment(0); 
     forgivenMistakesRef.current = 0; 
@@ -1473,39 +1505,23 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   };
 
   const finalizeLevel = (branch: BranchingStory | null) => {
-      const durationSec = (Date.now() - startTime) / 1000;
-      const wpm = Math.round((activeSegment.text.length / 5) / (durationSec / 60 || 0.01));
+      const measurement = meterRef.current.read(activeSegment.text.length, Date.now());
       const { totalErrors } = getErrorReport();
-      // The closing line is judged by the same rule as every other line; it used
-      // to run its own thresholds and could disagree with the rest of the sector.
-      const performanceType = getBranchPerformance(totalErrors, activeSegment.text.length, branchThresholds);
-      const score = calculateSegmentScore({
-        errors: totalErrors,
-        type: activeSegment.type,
-        wpm,
-        overclock: isOverclockActive,
-        breachMultiplier: modifiers.breachRewardMultiplier,
-        comboMultiplier
-      });
-      const segmentCredits = calculateSegmentCredits({
-        errors: totalErrors,
-        type: activeSegment.type,
-        overclock: isOverclockActive,
-        breachMultiplier: modifiers.breachRewardMultiplier,
-        creditMultiplier: modifiers.creditMultiplier
-      });
+      const result = getSegmentResult(measurement, totalErrors, activeSegment, modifiers, branchThresholds, isOverclockActive, comboMultiplier);
+      const { wpm, score, credits: segmentCredits, performance: performanceType } = result;
       const outcome = applySegmentOutcome(performanceType, totalErrors, wpm, activeSegment);
       audioEngine.segmentClear(performanceType);
-      addToLog(activeSegment.text, performanceType, score, wpm, totalErrors, outcome.meta, activeSegment.type);
+      addToLog(activeSegment.text, performanceType, score, wpm, measurement.mistakes, outcome.meta, activeSegment.type, measurement);
       onCaptureFrame?.({ image: currentImageRef.current, caption: activeSegment.text, performance: performanceType, level: currentLevel });
       const stats: GameStats = {
              wpm,
-             accuracy: Math.max(0, 100 - (totalErrors * 8)),
-             health,
+             ...measurement,
+             accuracy: measuredAccuracy(measurement.mistakes, measurement.attempts),
+             health: Math.min(modifiers.maxHealth, health + result.healing),
              level: currentLevel,
              round,
              score,
-             credits: segmentCredits,
+             credits: credits + segmentCredits,
         };
         onLevelComplete(stats, clamp(tracePercent + outcome.traceDelta), missionRef.current);
   };
@@ -1548,7 +1564,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       }
 
       // Prose rhythm: speech leans italic, pauses carry a breath of space.
-      if (quoteDepth[index]) className += " italic";
+      if (quoteDepth[index] && !preferences.clearText) className += " italic";
       if (char === '—' || char === '…') className += " tracking-[0.35em]";
       return (
         <span key={index} ref={isCursor ? cursorRef : undefined} data-index={index} className={`${className} relative`}>
@@ -1623,6 +1639,20 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   // back into a page. A HUD fills the frame; the line keeps its own measure.
   return (
     <div ref={containerRef} className="w-full max-w-[1600px] mx-auto flex flex-col gap-0 h-full min-h-0 relative">
+      <input ref={inputRef} type="text" value={inputValue} onChange={handleInput} onPaste={(event) => event.preventDefault()} onDrop={(event) => event.preventDefault()} aria-label={language === 'ru' ? 'Поле тренировки печати' : 'Typing practice input'} className="fixed opacity-0 top-0 left-0 w-px h-px overflow-hidden -z-10 pointer-events-none" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} autoFocus disabled={paused || isWaitingForAi || isDecisionActive || showSkillBriefing} />
+      {!deterministicStory && <div className="engine-training-goal">{GOAL_COPY[campaignGoal][language]}
+        {trainingFocus.length > 0 && <span> · {language === 'ru' ? 'Сочетания в строке' : 'Patterns in this line'}: {trainingFocus.map(token => `${token} ×${activeSegment.text.toLowerCase().split(token).length - 1}`).join(' · ')} · {language === 'ru' ? 'Не встретились? Отработай в 5-минутной практике.' : 'Missing a target? Use the 5-minute practice.'}</span>}
+        {campaignGoal === 'repair' && inputValue.length === activeSegment.text.length && !canTransmit(activeSegment.text, inputValue, campaignGoal, (a,b) => charsMatch(a,b,strictCase)) && <strong role="status">{language === 'ru' ? 'Исправь красные символы с помощью Backspace.' : 'Use Backspace to correct the red characters.'}</strong>}
+      </div>}
+      <button type="button" className="engine-pause-button" onClick={pause}>{language === 'ru' ? 'Пауза · Esc' : 'Pause · Esc'}</button>
+      {paused && <div onKeyDown={keepDialogFocus} className="practice-pause" role="dialog" aria-modal="true" aria-label={language === 'ru' ? 'Пауза' : 'Paused'}>
+        <h2>{language === 'ru' ? 'Канал на паузе' : 'Link paused'}</h2>
+        <p>{language === 'ru' ? 'Время и погоня остановлены.' : 'The clock and chase are stopped.'}</p>
+        <button type="button" autoFocus className="btn-cyber" onClick={resume}>{language === 'ru' ? 'Продолжить · Esc' : 'Resume · Esc'}</button>
+        <button type="button" onClick={onSettings}>{language === 'ru' ? 'Чтение и управление' : 'Reading & controls'}</button>
+        <button type="button" onClick={onExit}>{language === 'ru' ? 'В меню' : 'Back to menu'}</button>
+        <p>{deterministicStory ? (language === 'ru' ? 'Попытка Daily уже использована.' : 'This Daily attempt has been used.') : (language === 'ru' ? 'Продолжение — с начала текущей строки.' : 'Resume from the start of this line.')}</p>
+      </div>}
       {showFlash && <div className="absolute inset-0 z-[60] pointer-events-none flash-overlay"></div>}
       
       {isOverclockActive && (
@@ -1637,55 +1667,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
            </>
       )}
 
-      {isDecisionActive && nextDecision && (
-           <div className="engine-decision-overlay absolute inset-0 z-[80] bg-[#0e0d10]/90 backdrop-blur-md flex flex-col items-center justify-center p-5 md:p-8 animate-fade-in-up">
-               {/* The window is finite: the bar drains, and at zero hesitation
-                   itself picks the aggressive option. */}
-               <div className="absolute top-0 inset-x-0 h-1 bg-white/[0.06]">
-                   <div
-                       className="engine-decision-fuse h-full transition-[width] duration-100 ease-linear"
-                       style={{ width: `${(decisionRemaining / DECISION_WINDOW_MS) * 100}%` }}
-                   />
-               </div>
-               <div className="w-full max-w-4xl">
-                   <div className="engine-decision-head">
-                        <div className="engine-decision-eyebrow">{UI.tactical_intervention}</div>
-                        <h2 className="engine-decision-question">“{nextDecision.introText}”</h2>
-                   </div>
-                   <div className="engine-decision-keys">
-                       {/* Each option is a key you press. The window drains into
-                           them: aggression gathers heat while the quiet option
-                           fades — hesitation chooses. */}
-                       {([0, 1] as const).map((optionIndex) => {
-                           const option = nextDecision.options[optionIndex];
-                           const drained = 1 - decisionRemaining / DECISION_WINDOW_MS;
-                           const aggressive = optionIndex === 0;
-                           return (
-                               <button
-                                   key={optionIndex}
-                                   type="button"
-                                   data-hotkey={String(optionIndex + 1)}
-                                   className={`engine-decision-card engine-decision-card--${aggressive ? 'aggressive' : 'stealth'}`}
-                                   style={aggressive
-                                       ? { ['--decision-heat' as string]: drained.toFixed(3) }
-                                       : { opacity: 1 - 0.55 * drained }}
-                                   onClick={() => handleDecisionSelect(optionIndex)}
-                               >
-                                   <span className="engine-decision-card-top">
-                                       <span className="engine-decision-cap" aria-hidden="true">{optionIndex + 1}</span>
-                                       <span className="engine-decision-stance">{aggressive ? UI.aggressive : UI.stealth}</span>
-                                   </span>
-                                   <span className="engine-decision-option">“{option.text}”</span>
-                                   <span className="engine-decision-preview">{option.preview || describeImpact(option.impact)}</span>
-                                   {renderImpactChips(option.impact)}
-                                   <span className="sr-only">{(aggressive ? UI.press_1 : UI.press_2).replace(/\[([12])\]/, '$1')}</span>
-                               </button>
-                           );
-                       })}
-                   </div>
-               </div>
-           </div>
-      )}
+      {isDecisionActive && nextDecision && !paused && <StoryDecision decision={nextDecision} language={language}
+        onSelect={handleDecisionSelect} describe={describeImpact} chips={renderImpactChips} />}
       {showSkillBriefing && (
           <div className="engine-skill-briefing absolute inset-0 z-[85] flex items-center justify-center p-5 md:p-8">
               <div className="engine-skill-briefing-panel w-full max-w-3xl">
@@ -1706,7 +1689,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                   </div>
                   <div className="engine-skill-briefing-grid mt-6">
                       {[
-                        { key: 'TAB', name: 'FOCUS', cost: '100%', effect: UI.skill_focus_short }
+                        { key: keyLabel(preferences.keys.focus), name: 'FOCUS', cost: '100%', effect: UI.skill_focus_short }
                       ].map((skill) => (
                         <div key={skill.name} className="engine-skill-briefing-card">
                             <div className="flex items-center justify-between gap-3">
@@ -1725,8 +1708,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
               </div>
           </div>
       )}
-      <DebrisLayer debris={debris} />
-      <SparkLayer sparks={sparks} />
+      {!preferences.reducedMotion && <DebrisLayer debris={debris} />}
+      {!preferences.reducedMotion && <SparkLayer sparks={sparks} />}
       {hasContextualSkill && (skillStackAnchor === 'corner' || skillAnchor) && (
           <div
               className={skillStackAnchor === 'corner'
@@ -1741,10 +1724,10 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
               )}
               {cursorSkillStack.map((skill) => {
                   const details = skill === 'focus'
-                    ? { key: 'TAB', label: 'FOCUS', effect: UI.skill_focus_short, use: activateOverclock }
+                    ? { key: keyLabel(preferences.keys.focus), label: 'FOCUS', effect: UI.skill_focus_short, use: activateOverclock }
                     : skill === 'firewall'
-                      ? { key: '↑', label: 'FIREWALL', effect: UI.skill_firewall_short, use: useFirewall }
-                      : { key: '↓', label: language === 'ru' ? 'СБРОС' : 'PURGE', effect: UI.skill_purge_short, use: usePurgeTrace };
+                      ? { key: keyLabel(preferences.keys.firewall), label: 'FIREWALL', effect: UI.skill_firewall_short, use: useFirewall }
+                      : { key: keyLabel(preferences.keys.purge), label: language === 'ru' ? 'СБРОС' : 'PURGE', effect: UI.skill_purge_short, use: usePurgeTrace };
                   // Everything in the stack is castable by construction, so there is
                   // no disabled state left to render here.
                   const isFocus = skill === 'focus';
@@ -1752,7 +1735,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                     <button
                         key={skill}
                         type="button"
-                        data-hotkey={skill === 'focus' ? 'tab' : skill === 'firewall' ? 'arrowup' : 'arrowdown'}
+                        data-hotkey={preferences.keys[skill].toLowerCase()}
                         onClick={details.use}
                         aria-label={`${details.label}: ${details.effect}`}
                         className={`engine-cursor-skill engine-cursor-skill--ready ${isFocus ? 'engine-cursor-skill--focus' : ''} ${introducingSkill === skill ? 'engine-cursor-skill--introducing' : ''}`}
@@ -2023,7 +2006,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         </div>
       </div>
 
-      <input ref={inputRef} type="text" value={inputValue} onChange={handleInput} onPaste={(event) => event.preventDefault()} onDrop={(event) => event.preventDefault()} aria-label={language === 'ru' ? 'Поле тренировки печати' : 'Typing practice input'} className="fixed opacity-0 top-0 left-0 w-px h-px overflow-hidden -z-10 pointer-events-none" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} autoFocus disabled={isWaitingForAi || isDecisionActive || showSkillBriefing} />
+
     </div>
   );
 };

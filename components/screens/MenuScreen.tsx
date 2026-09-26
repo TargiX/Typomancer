@@ -1,3 +1,5 @@
+import TrainingPlan from '../TrainingPlan';
+import type { TypingTrainingProfile } from '../../services/typingTraining';
 import React, { useState } from 'react';
 import type { Language } from '../../types';
 import { PACT_CLAUSE_TEXT_KEYS, type UITranslations } from '../../services/i18n';
@@ -25,6 +27,7 @@ interface MenuScreenProps {
     dailyAttemptsExhausted: boolean;
     runCheckpoint: RunCheckpoint | null;
     skillHeadline: SkillHeadline;
+    training: TypingTrainingProfile;
     pactRewardMultiplier: number;
     activePact: PactClauseId[];
     relaxed: boolean;
@@ -39,6 +42,7 @@ interface MenuScreenProps {
     onDaily: () => void;
     onResume: () => void;
     onBlackMarket: () => void;
+    onPractice: () => void;
     onOperatorRecord: () => void;
 }
 
@@ -53,7 +57,7 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
     dailyAttemptsLeft,
     dailyAttemptsExhausted,
     runCheckpoint,
-    skillHeadline,
+    skillHeadline, training,
     pactRewardMultiplier,
     activePact,
     relaxed,
@@ -69,6 +73,7 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
     onDaily,
     onResume,
     onBlackMarket,
+    onPractice,
     onOperatorRecord
 }) => {
     // Collapsed by default. Five clauses expanded is a wall of text on the first
@@ -155,16 +160,18 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                         <span className="keycap">R</span>
                         <span className="menu-key-text">
                             <span className="menu-key-title">{ui.resume_run} · {ui.resume_sector} {runCheckpoint.nextLevel}</span>
+                            <span className="menu-key-hint">{language === 'ru' ? 'Продолжить с сохранённой строки' : 'Continue from the saved line'}</span>
                         </span>
                     </button>
                 )}
                 {leadWithPrologue ? relayKey(true) : campaignKey(true)}
+                <TrainingPlan training={training} language={language} onPractice={onPractice} />
                 {incomingChallenge && (
                     <div className={`menu-key--wide screens-cut-card border p-4 text-left ${isCurrentChallenge ? 'border-amber-400/35 bg-amber-400/[0.06]' : 'border-white/10 bg-white/[0.02]'}`}>
                         <div className="fs-micro font-bold uppercase tracking-[0.2em] text-amber-300">{ui.challenge_title}</div>
                         {isCurrentChallenge ? (
                             <div className="mt-2 flex items-center justify-between gap-4">
-                                <div><span className="fs-micro text-slate-500">{ui.challenge_target}</span><strong className="block text-2xl text-white tabular-nums">{incomingChallenge.targetScore}</strong></div>
+                                <div><span className="fs-micro text-slate-500">{ui.challenge_target}</span>{(!incomingChallenge.ruleset || incomingChallenge.language !== language) && <p>{language === 'ru' ? 'Неформальный вызов: язык или правила отличаются.' : 'Informal challenge: language or rules differ.'}</p>}<strong className="block text-2xl text-white tabular-nums">{incomingChallenge.targetScore}</strong></div>
                                 <button type="button" onClick={onDaily} disabled={dailyAttemptsExhausted} className="btn-cyber btn-cyber-primary px-4 py-2.5 fs-micro font-bold">{ui.challenge_accept}</button>
                             </div>
                         ) : <p className="mt-2 fs-label leading-relaxed text-slate-400">{ui.challenge_expired}</p>}
@@ -186,7 +193,7 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                                 className="border bg-black/20 shrink-0"
                                 style={{ borderColor: `${dailyGenrePack.accent}44` }}
                             />
-                            {ui.daily_sector}
+                            {ui.daily_sector} · UTC · {language.toUpperCase()} · v2
                         </span>
                         {dailyAttemptsExhausted ? (
                             <span className="screens-btn-sub tabular-nums">
@@ -219,7 +226,13 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                             <span className="screens-btn-sub">{ui.market_subtitle}</span>
                         </span>
                     </button>
-                    <button
+                    <button type="button" onClick={onPractice} className="menu-key btn-cyber btn-cyber-ghost" data-hotkey="6">
+                    <span className="keycap">6</span><span className="menu-key-text">
+                      <span className="menu-key-title">{language === 'ru' ? 'Тренировка · 5 мин' : 'Practice · 5 min'}</span>
+                      <span className="menu-key-hint">{language === 'ru' ? 'Замер → отработка → результат' : 'Check → practice → result'}</span>
+                    </span>
+                </button>
+                <button
                         onClick={onOperatorRecord}
                         data-hotkey="5"
                         className="menu-key menu-key--small btn-cyber btn-cyber-ghost"

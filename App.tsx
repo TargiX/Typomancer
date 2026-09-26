@@ -1,14 +1,20 @@
+import type { PracticeResult } from './components/PracticeSession';
+import { freezeSessionRules } from './services/sessionRules';
+import { readPlayPreferences, writePlayPreferences } from './services/playPreferences';
+import { selectPracticeFocus, PRACTICE_PROMPT_ID } from './services/practiceSession';
+import { measuredWpm, measuredAccuracy, type TypingMeasurement } from './services/typingMetrics';
+import { settleRunReward } from './services/runRewards';
 import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { LAST_RELAY, RELAY_CHARACTER, RELAY_SECTORS, isLastRelay, getRelayStart, getRelaySummary, getRelayEnding } from './services/lastRelay';
-import { GameState, StorySegment, GameStats, StoryLogItem, UserProfile, Perk, GameModifiers, LevelReport, UserUpgrades, StoryMood, SegmentType, Language, MissionState, ComicFrame, StoryGenreId } from './types';
-import { generateStoryStart, generateCharacterProfile, generateLevelSummary, generateNextLevelStart } from './services/geminiService';
+import { GameState, StorySegment, GameStats, StoryLogItem, UserProfile, Perk, LevelReport, UserUpgrades, StoryMood, SegmentType, Language, MissionState, ComicFrame, StoryGenreId } from './types';
+import { generateStoryStart, generateCharacterProfile, generateLevelSummary, generateNextLevelStart } from './services/storyProvider';
 import { GENRE_ORDER, getGenrePack } from './services/genreConfig';
 import { getGenreSkin } from './services/genreSkin';
 import { pressThen } from './services/keyPress';
 import { colorwayForGenre } from './services/colorway';
 import { TRANSLATIONS } from './services/i18n';
-import { DAILY_MAX_ATTEMPTS, DailyBrief, getDailyBrief, getDailyState, pickDailyItems, recordDailyAttempt } from './services/dailyMode';
-import { CAMPAIGN_SECTORS, DEFAULT_BRANCH_THRESHOLDS, getStealthLevel, getTypingAccuracy, getTypingFocus, summarizeSector } from './services/gameRules';
+import { DAILY_MAX_ATTEMPTS, DailyBrief, getDailyBrief, getDailyState, pickDailyItems, reserveDailyAttempt, recordDailyAttempt } from './services/dailyMode';
+import { CAMPAIGN_SECTORS, DEFAULT_BRANCH_THRESHOLDS, getTypingAccuracy, getTypingFocus, summarizeSector } from './services/gameRules';
 import { clampTraceSpeed, getComfortCreditMultiplier } from './services/riskReward';
 import { getSkillHeadline } from './services/progressAnalytics';
 import {
@@ -22,7 +28,7 @@ import {
   togglePactClause,
   type PactClauseId
 } from './services/pact';
-import { RunCheckpoint, clearRunCheckpoint, loadRunCheckpoint, saveRunCheckpoint } from './services/runCheckpoint';
+import { type EngineCheckpoint, type RunContext, RunCheckpoint, clearRunCheckpoint, loadRunCheckpoint, saveRunCheckpoint } from './services/runCheckpoint';
 import {
   createBalancedCalibration,
   getAdaptiveDifficulty,
@@ -45,7 +51,6 @@ import {
 } from './services/perks';
 import { audioEngine } from './services/audioEngine';
 import { readSkillStackAnchor, toggleSkillStackAnchor, writeSkillStackAnchor, type SkillStackAnchor } from './services/skillStackAnchor';
-import TypingEngine from './components/TypingEngine';
 import HudStrip from './components/HudStrip';
 import DeathSequence from './components/DeathSequence';
 import MenuScreen from './components/screens/MenuScreen';
@@ -59,7 +64,7 @@ import {
 } from './services/productAnalytics';
 import {
   buildTargetedDrill,
-  getTrainingFocusTokens,
+  getTrainingFocusTokens, recordPatternReview,
   getWeakPatterns,
   loadTypingTraining,
   recordTypingSession,
@@ -80,6 +85,9 @@ import GameOverScreen from './components/screens/GameOverScreen';
 // End-of-run screens (SectorComplete/Victory/GameOver) stay eager: the typing
 // engine unmounts in the same commit that mounts them, so a cold chunk would
 // leave a blank frame exactly where the debrief should be.
+const TypingEngine = lazy(() => import('./components/TypingEngine'));
+const PracticeSession = lazy(() => import('./components/PracticeSession'));
+const PlaySettings = lazy(() => import('./components/PlaySettings'));
 const loadRunComic = () => import('./components/RunComic');
 const loadCalibrationPanel = () => import('./components/CalibrationPanel');
 const loadOperatorRecord = () => import('./components/OperatorRecord');
@@ -108,6 +116,9 @@ const prefetchSecondaryScreens = () => {
 };
 
 interface RoundData {
+    cadence?: TypingMeasurement['cadence'];
+    attempts?: number;
+    durationMs?: number;
     wpm: number;
     mistakes: number;
     score: number;
@@ -140,16 +151,14 @@ const App: React.FC = () => {
   const [totalScore, setTotalScore] = useState(0);
   const [currentLevel, setCurrentLevel] = useState(1);
   const [currentHealth, setCurrentHealth] = useState(20);
-  const [musicActive, setMusicActive] = useState(() => audioEngine.isEnabled());
   const [skillStackAnchor, setSkillStackAnchor] = useState<SkillStackAnchor>(() => (
     readSkillStackAnchor(typeof window === 'undefined' ? null : window.localStorage)
   ));
   const [storedBoot] = useState(loadStoredProfile);
-  const [language, setLanguage] = useState<Language>(storedBoot.language ?? 'en'); // Global Language State
+  const [language, setLanguage] = useState<Language>(() => parseChallenge(typeof location !== 'undefined' ? location.search : '')?.language ?? storedBoot.language ?? 'en'); // Global Language State
   
   const [userProfile, setUserProfile] = useState<UserProfile>(storedBoot.profile);
   const [activePerks, setActivePerks] = useState<Perk[]>([]);
-  const [currentModifiers, setCurrentModifiers] = useState<GameModifiers>(DEFAULT_MODIFIERS);
   const [offeredPerks, setOfferedPerks] = useState<Perk[]>([]);
   
   const [levelBuffer, setLevelBuffer] = useState<RoundData[]>([]); 
@@ -162,13 +171,19 @@ const App: React.FC = () => {
   const [showComic, setShowComic] = useState(false);
   const [deathSequenceActive, setDeathSequenceActive] = useState(false);
   const [selectedGenre, setSelectedGenre] = useState<StoryGenreId>(storedBoot.lastGenre ?? 'cyberpunk');
-  const [dailyState, setDailyState] = useState(() => getDailyState(dailyBrief.dailyId));
+  const [preferences, setPreferences] = useState(readPlayPreferences);
+  const [showSettings, setShowSettings] = useState(false);
+  const [dailyState, setDailyState] = useState(() => getDailyState(dailyBrief.dailyId, language));
   const [isDailyRun, setIsDailyRun] = useState(false);
   const [currentDailyId, setCurrentDailyId] = useState<string | null>(null);
   const [currentDailyDateLabel, setCurrentDailyDateLabel] = useState<string | null>(null);
+  const [restoredEngine, setRestoredEngine] = useState<EngineCheckpoint | undefined>();
+  const [runRules, setRunRules] = useState<Pick<RunContext, 'campaignGoal' | 'language' | 'pact' | 'strictCase' | 'relaxed' | 'baselineWpm' | 'stealthLevel' | 'modifiers'> | null>(null);
+  const levelStartIndexRef = useRef(0);
   const [runCheckpoint, setRunCheckpoint] = useState<RunCheckpoint | null>(() => loadRunCheckpoint());
   const [playerProgress, setPlayerProgressState] = useState(() => loadPlayerProgress());
   const [typingTraining, setTypingTraining] = useState(() => loadTypingTraining());
+  const practiceOriginRef = useRef(GameState.MENU);
   const [drillFocus, setDrillFocus] = useState<string[] | undefined>();
   const [incomingChallenge] = useState(() => parseChallenge(typeof location !== 'undefined' ? location.search : ''));
   const [challengeShareStatus, setChallengeShareStatus] = useState(false);
@@ -176,6 +191,8 @@ const App: React.FC = () => {
   const sessionRef = useRef(createSessionFlow(storedBoot.lastGenre ?? 'cyberpunk', dailyBrief));
   const dailyAttemptRecordedRef = useRef(false);
   const runRecordedRef = useRef(false);
+  const runIdRef = useRef(crypto.randomUUID());
+  const storyLogRef = useRef<StoryLogItem[]>([]);
   const runStartedAtRef = useRef(Date.now());
 
   const runTrainingObservationsRef = useRef<TypingObservation[]>([]);
@@ -195,7 +212,7 @@ const App: React.FC = () => {
     ? Math.max(totalScore, finalStats?.score || 0)
     : totalScore;
   const challengeVerdict = (gameState === GameState.VICTORY || gameState === GameState.GAME_OVER)
-    ? getChallengeVerdict(incomingChallenge, currentDailyId, completedChallengeScore)
+    ? getChallengeVerdict(incomingChallenge, currentDailyId, completedChallengeScore, language)
     : null;
   /** Operator deck chrome — always cyberpunk, Animus-style. */
   const hubSkin = getGenreSkin('cyberpunk');
@@ -252,11 +269,11 @@ const App: React.FC = () => {
   // The player's weak letter pairs, handed to the story generator so the campaign
   // doubles as their drill.
   const trainingFocusTokens = useMemo(
-    () => getTrainingFocusTokens(typingTraining),
-    [typingTraining]
+    () => getTrainingFocusTokens(typingTraining, 4, 6, language),
+    [typingTraining, language]
   );
 
-  const skillHeadline = useMemo(() => getSkillHeadline(playerProgress), [playerProgress]);
+  const skillHeadline = useMemo(() => getSkillHeadline(playerProgress, language), [playerProgress, language]);
 
 
   const activePact = useMemo(() => normalizePact(userProfile.pact), [userProfile.pact]);
@@ -271,12 +288,12 @@ const App: React.FC = () => {
           ? { ...DEFAULT_MISSION_STATE, heat: HOT_START_HEAT }
           : DEFAULT_MISSION_STATE
   ), [activePact]);
-  const pactRewardMultiplier = useMemo(() => getPactRewardMultiplier(activePact), [activePact]);
+  const pactRewardMultiplier = getPactRewardMultiplier(inSimulation && runRules ? runRules.pact : activePact);
   const branchThresholds = useMemo(() => (
-      isPactClauseActive(activePact, 'exacting')
+      isPactClauseActive(runRules?.pact ?? activePact, 'exacting')
           ? { good: EXACTING_GOOD_ACCURACY, average: EXACTING_AVERAGE_ACCURACY, forgiven: 0 }
           : DEFAULT_BRANCH_THRESHOLDS
-  ), [activePact]);
+  ), [activePact, runRules]);
 
   const handleTogglePactClause = (id: PactClauseId) => {
       const pact = togglePactClause(activePact, id);
@@ -290,11 +307,11 @@ const App: React.FC = () => {
 
   // The pace the game measures the player at, tracking real runs rather than the
   // one calibration prompt they typed on their first day.
-  const effectiveBaseline = useMemo(() => getEffectiveBaseline(playerProgress), [playerProgress]);
+  const effectiveBaseline = useMemo(() => getEffectiveBaseline(playerProgress, language), [playerProgress, language]);
 
   const adaptiveDifficulty = useMemo(
-    () => getAdaptiveDifficulty(playerProgress.calibration, playerProgress),
-    [playerProgress.calibration]
+    () => getAdaptiveDifficulty(playerProgress.calibration, playerProgress, language),
+    [playerProgress, language]
   );
 
   const getAnalyticsContext = () => ({
@@ -374,17 +391,19 @@ const App: React.FC = () => {
       const nextBrief = getDailyBrief();
       if (nextBrief.dailyId === dailyBrief.dailyId) return;
       setDailyBrief(nextBrief);
-      setDailyState(getDailyState(nextBrief.dailyId));
+      setDailyState(getDailyState(nextBrief.dailyId, language));
     };
     const nextMidnight = new Date();
-    nextMidnight.setHours(24, 0, 0, 100);
+    nextMidnight.setUTCHours(24, 0, 0, 100);
     const midnightTimer = window.setTimeout(refreshDailyBrief, nextMidnight.getTime() - Date.now());
     window.addEventListener('focus', refreshDailyBrief);
     return () => {
       window.clearTimeout(midnightTimer);
       window.removeEventListener('focus', refreshDailyBrief);
     };
-  }, [dailyBrief.dailyId]);
+  }, [dailyBrief.dailyId, language]);
+
+  useEffect(() => { setDailyState(getDailyState(dailyBrief.dailyId, language)); }, [dailyBrief.dailyId, language]);
 
   useEffect(() => {
     if (!isDailyRun || !currentDailyId || dailyAttemptRecordedRef.current) return;
@@ -401,28 +420,16 @@ const App: React.FC = () => {
 
     if (finalScore === null || endingTitle === null) return;
     dailyAttemptRecordedRef.current = true;
-    const recorded = recordDailyAttempt(currentDailyId, finalScore, endingTitle);
+    const recorded = recordDailyAttempt(currentDailyId, finalScore, endingTitle, language, true);
     if (currentDailyId === dailyBrief.dailyId) setDailyState(recorded);
   }, [currentDailyId, dailyBrief.dailyId, finalStats, gameState, genrePack, isDailyRun, language, totalScore, victoryReport]);
-
-  // The comic is the record of the run, not an opt-in panel: on either ending it
-  // opens itself once the debrief has had a beat to land. Once per run.
-  const comicAutoShownRef = useRef(false);
-  useEffect(() => {
-    const isEnding = gameState === GameState.VICTORY || gameState === GameState.GAME_OVER;
-    if (!isEnding || comicFrames.length === 0 || comicAutoShownRef.current) return;
-    comicAutoShownRef.current = true;
-    const timer = window.setTimeout(() => setShowComic(true), 1600);
-    return () => window.clearTimeout(timer);
-  }, [gameState, comicFrames.length]);
-  useEffect(() => {
-    if (gameState === GameState.MENU) comicAutoShownRef.current = false;
-  }, [gameState]);
 
   useEffect(() => {
     if (runRecordedRef.current) return;
 
     let stats: {
+      attempts: number;
+      activeDurationMs: number;
       outcome: 'victory' | 'defeat';
       level: number;
       score: number;
@@ -436,6 +443,7 @@ const App: React.FC = () => {
 
     if (gameState === GameState.GAME_OVER && finalStats) {
       stats = {
+        attempts: finalStats.attempts || 0, activeDurationMs: finalStats.durationMs || 0,
         outcome: 'defeat',
         level: finalStats.level,
         score: finalStats.score,
@@ -448,15 +456,18 @@ const App: React.FC = () => {
       };
     } else if (gameState === GameState.VICTORY && victoryReport) {
       const metrics = storyLog
-        .filter((item) => item.wpm > 0 && (item.characters || 0) > 0)
+        .filter((item) => item.performance !== 'neutral' && (item.characters || 0) > 0)
         .map((item) => ({
           wpm: item.wpm,
           mistakes: item.mistakes || 0,
           score: item.score,
+          durationMs: item.durationMs, attempts: item.attempts,
           characters: item.characters || item.text.length
         }));
       const summary = summarizeSector(metrics);
       stats = {
+        attempts: metrics.reduce((sum, metric) => sum + (metric.attempts ?? metric.characters), 0),
+        activeDurationMs: metrics.reduce((sum, metric) => sum + (metric.durationMs ?? (metric.wpm > 0 ? metric.characters * 12000 / metric.wpm : 0)), 0),
         outcome: 'victory',
         level: victoryReport.level,
         score: totalScore,
@@ -486,9 +497,12 @@ const App: React.FC = () => {
     );
     setPlayerProgressState((current) => savePlayerProgress(recordRun(current, {
       ...(relayRun ? { mission: 'last_relay' as const } : {}),
-      id: `${endedAt.toISOString()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: runIdRef.current,
+      campaignGoal: runRules?.campaignGoal ?? 'flow',
+      language: runRules?.language ?? language, measurementVersion: 2, relaxed: runRules?.relaxed ?? !!userProfile.relaxed, strictCase: runRules?.strictCase ?? !!userProfile.strictCase,
       endedAt: endedAt.toISOString(),
       dateKey: getLocalDateKey(endedAt),
+      attempts: stats.attempts, activeDurationMs: stats.activeDurationMs,
       outcome: stats.outcome,
       daily: sessionRef.current.isDaily,
       genre: sessionRef.current.genre,
@@ -510,6 +524,7 @@ const App: React.FC = () => {
       current,
       completedObservations,
       {
+        language, measurementVersion: 2,
         kind: 'run',
         wpm: stats.wpm,
         accuracy: stats.accuracy,
@@ -539,7 +554,7 @@ const App: React.FC = () => {
     });
   }, [finalStats, gameState, playerProgress.runs.length, storyLog, totalScore, victoryReport]);
 
-  useEffect(() => {
+  const baseModifiers = useMemo(() => {
       let mods = { ...DEFAULT_MODIFIERS };
       const u = userProfile.upgrades;
       mods.maxHealth += (u.synapticWeave * META_UPGRADES.synapticWeave.effectPerLevel);
@@ -562,6 +577,11 @@ const App: React.FC = () => {
           mods.traceSpeedMultiplier *= 0.5;
           mods.creditMultiplier *= 0.8;
       }
+      return mods;
+  }, [activePact, adaptiveDifficulty, userProfile.strictCase, userProfile.relaxed, userProfile.upgrades]);
+
+  const currentModifiers = useMemo(() => {
+      let mods = { ...(runRules?.modifiers ?? baseModifiers) };
       activePerks.forEach(perk => {
           mods = perk.apply(mods);
       });
@@ -569,8 +589,8 @@ const App: React.FC = () => {
       // Protocol tier multiplied straight through it and the floor bounded
       // nothing: a maxed player faced a tracer at a fifth of its intended pace.
       mods.traceSpeedMultiplier = clampTraceSpeed(mods.traceSpeedMultiplier);
-      setCurrentModifiers(mods);
-  }, [activePerks, activePact, adaptiveDifficulty, userProfile.strictCase, userProfile.relaxed, userProfile.upgrades]);
+      return mods;
+  }, [activePerks, baseModifiers, runRules]);
 
   useEffect(() => {
     return () => {
@@ -580,8 +600,10 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (document.querySelector('dialog[open]')) return;
         if (e.defaultPrevented || (e.target instanceof Element && e.target.closest('input,textarea,select,[contenteditable="true"],[data-account-panel]'))) return;
         if (deathSequenceActive) return;
+        if (['Enter', ' '].includes(e.key) && e.target instanceof Element && e.target.closest('button')) return;
         // Consuming a shortcut must also swallow the key. Otherwise the same
         // keypress that opens a screen is delivered again to whatever input that
         // screen focuses — pressing [1] on the menu used to type "1" as the first
@@ -614,6 +636,7 @@ const App: React.FC = () => {
             if (e.key === '2' || (e.key === 'Enter' && !leadWithPrologue)) { pressThen('2', initializeSession); consume(); }
             if (e.key === '3' && !dailyAttemptsExhausted) { pressThen('3', initializeDailySession); consume(); }
             if (e.key === '4') { pressThen('4', () => setGameState(GameState.BLACK_MARKET)); consume(); }
+            if (e.key === '6') { pressThen('6', () => startTargetedDrill()); consume(); }
             if (e.key === '5') { pressThen('5', () => setGameState(GameState.OPERATOR_RECORD)); consume(); }
             if (e.key.toLowerCase() === 'a') { setGameState(GameState.ACCOUNT); consume(); }
             if (e.key.toLowerCase() === 'r' && runCheckpoint) { pressThen('r', resumeSession); consume(); }
@@ -700,10 +723,6 @@ const App: React.FC = () => {
       void installPromptEvent.prompt().finally(() => setInstallPromptEvent(null));
   };
 
-  const handleToggleMusic = () => {
-      const active = audioEngine.toggle();
-      setMusicActive(active);
-  };
 
   const handleToggleSkillStack = () => {
       const next = toggleSkillStackAnchor(skillStackAnchor);
@@ -712,13 +731,21 @@ const App: React.FC = () => {
   };
 
   const handleToggleLanguage = () => {
+      if (inSimulation || gameState === GameState.PRACTICE || gameState === GameState.CALIBRATION) return;
       setLanguage(prev => prev === 'en' ? 'ru' : 'en');
   };
 
   const prepareSession = (dailySeed?: string) => {
+      setRestoredEngine(undefined);
+      levelStartIndexRef.current = 0;
+      const frozenRules = freezeSessionRules({ campaignGoal: preferences.campaignGoal, language, pact: activePact, strictCase: !!userProfile.strictCase, relaxed: !!userProfile.relaxed,
+        baselineWpm: effectiveBaseline.wpm, stealthLevel: userProfile.stealthLevel, modifiers: baseModifiers }, !!dailySeed);
+      setRunRules(frozenRules);
       runRecordedRef.current = false;
       runStartedAtRef.current = Date.now();
-      activePactRef.current = activePact;
+      runIdRef.current = crypto.randomUUID();
+      activePactRef.current = frozenRules.pact;
+      storyLogRef.current = [];
       setStoryLog([]);
       setTotalScore(0);
       totalScoreRef.current = 0;
@@ -731,7 +758,7 @@ const App: React.FC = () => {
           window.clearTimeout(deathSequenceTimerRef.current);
           deathSequenceTimerRef.current = null;
       }
-      setCampaignState(openingMission);
+      setCampaignState(dailySeed ? { ...DEFAULT_MISSION_STATE } : openingMission);
       setNarrativeContext("");
       setCharacterDesc("");
       setActivePerks([]); 
@@ -806,20 +833,27 @@ const App: React.FC = () => {
           return;
       }
 
+      const resumeLanguage = checkpoint.context?.language ?? language;
+      setLanguage(resumeLanguage);
       const restoredPerks = checkpoint.perks.flatMap((savedPerk) => {
           const definition = PERK_DEFINITIONS.find((candidate) => candidate.groupId === savedPerk.groupId);
-          return definition ? [createPerk(definition, savedPerk.tier - 1, hubSkin, language)] : [];
+          return definition ? [createPerk(definition, savedPerk.tier - 1, hubSkin, resumeLanguage)] : [];
       });
-      setStoryLog([]);
+      setRestoredEngine(checkpoint.engine);
+      setRunRules(checkpoint.context ?? null);
+      storyLogRef.current = checkpoint.context?.storyLog ?? [];
+      setStoryLog(storyLogRef.current);
+      levelStartIndexRef.current = checkpoint.context?.levelStartIndex ?? 0;
       runRecordedRef.current = false;
-      runStartedAtRef.current = Date.now();
-      activePactRef.current = activePact;
+      runIdRef.current = checkpoint.context?.id ?? crypto.randomUUID();
+      runStartedAtRef.current = Date.now() - (checkpoint.context?.elapsedMs ?? 0);
+      activePactRef.current = checkpoint.context?.pact ?? activePact;
       runTrainingObservationsRef.current = [];
       setFinalStats(null);
       setVictoryReport(null);
       setComicFrames([]);
       setShowComic(false);
-      setLevelBuffer([]);
+      setLevelBuffer(storyLogRef.current.slice(levelStartIndexRef.current).filter(item => item.performance !== 'neutral').map(item => ({ ...item, mistakes: item.mistakes || 0, characters: item.characters || 0 })));
       setActivePerks(restoredPerks);
       setCampaignState(checkpoint.mission);
       setNarrativeContext(checkpoint.narrativeContext);
@@ -847,21 +881,26 @@ const App: React.FC = () => {
           resumed: true
       });
 
-      if (isLastRelay(checkpoint.mission)) setCharacterDesc(RELAY_CHARACTER);
+      setCharacterDesc(checkpoint.context?.characterDescription || (isLastRelay(checkpoint.mission) ? RELAY_CHARACTER : ''));
+      if (checkpoint.engine) {
+          setInitialSegment(checkpoint.engine.segment);
+          setGameState(GameState.PLAYING);
+          return;
+      }
 
       try {
           const nextStart = isLastRelay(checkpoint.mission)
-            ? getRelayStart(checkpoint.nextLevel, language, checkpoint.mission)
+            ? getRelayStart(checkpoint.nextLevel, resumeLanguage, checkpoint.mission)
             : await generateNextLevelStart(
               checkpoint.nextLevel,
               checkpoint.narrativeContext,
-              language,
+              resumeLanguage,
               checkpoint.mission,
               checkpoint.genre
           );
           setInitialSegment(nextStart);
       } catch {
-          const fallback = getGenrePack(checkpoint.genre).local[language].levelStart[checkpoint.nextLevel - 1]
+          const fallback = getGenrePack(checkpoint.genre).local[resumeLanguage].levelStart[checkpoint.nextLevel - 1]
               || (language === 'ru' ? "Связь восстановлена. Операция продолжается." : "The link is restored. The operation continues.");
           setInitialSegment({ text: fallback, mood: StoryMood.TENSE, type: SegmentType.NARRATIVE, skill: 'flow' });
       }
@@ -871,11 +910,14 @@ const App: React.FC = () => {
   const initializeDailySession = () => {
       sessionRef.current.calibrationMode = 'calibration';
       const brief = getDailyBrief();
-      const latestState = getDailyState(brief.dailyId);
+      const latestState = getDailyState(brief.dailyId, language);
       setDailyBrief(brief);
       setDailyState(latestState);
       if (latestState.attemptsUsed >= DAILY_MAX_ATTEMPTS) return;
 
+      const admitted = reserveDailyAttempt(brief.dailyId, language);
+      if (!admitted) return;
+      setDailyState(admitted);
       prepareSession(brief.dailyId);
       sessionRef.current.dailyBrief = brief;
       setIsDailyRun(true);
@@ -895,6 +937,7 @@ const App: React.FC = () => {
           current,
           observations,
           skipped ? undefined : {
+              language, promptId: `calibration-v1-${language}`, measurementVersion: 2,
               kind: mode === 'drill' ? 'drill' : 'calibration',
               wpm: result.wpm,
               accuracy: result.accuracy,
@@ -946,6 +989,7 @@ const App: React.FC = () => {
   };
 
   const startTargetedDrill = (focus?: string[]) => {
+      practiceOriginRef.current = gameState;
       setDrillFocus(focus);
       sessionRef.current.calibrationMode = 'drill';
       sessionRef.current.calibrationNext = 'record';
@@ -954,7 +998,22 @@ const App: React.FC = () => {
           samples_bucket: getMetricBucket(typingTraining.samples, 100, 2000),
           weak_pattern_count: getWeakPatterns(typingTraining, 5).length
       });
-      setGameState(GameState.CALIBRATION);
+      setGameState(GameState.PRACTICE);
+  };
+
+  const finishPractice = (result: PracticeResult) => {
+      setTypingTraining(current => saveTypingTraining(recordPatternReview(recordTypingSession(current, result.observations, {
+          kind: 'drill', language, promptId: PRACTICE_PROMPT_ID, measurementVersion: 2,
+          wpm: measuredWpm(result.after.characters, result.after.durationMs),
+          accuracy: measuredAccuracy(result.after.mistakes, result.after.attempts), completedAt: result.completedAt
+      }), language, result.focus, result.observations, result.completedAt)));
+      captureProductEvent('typomancer_drill_completed', { ...getAnalyticsContext(),
+        wpm_bucket: getMetricBucket(measuredWpm(result.after.characters, result.after.durationMs), 20, 160),
+        accuracy_bucket: getAccuracyBucket(measuredAccuracy(result.after.mistakes, result.after.attempts)),
+        samples_bucket: getMetricBucket(result.observations.length, 100, 2000) });
+      setPlayerProgressState(current => savePlayerProgress({ ...current,
+          practiceDates: [getLocalDateKey(new Date(result.completedAt)), ...(current.practiceDates || [])]
+      }));
   };
 
   const shareDailyChallenge = async (outcome: 'victory' | 'defeat', score: number) => {
@@ -1012,7 +1071,7 @@ const App: React.FC = () => {
     try {
         const [start, charProfile] = await Promise.all([
             startRequest,
-            generateCharacterProfile(language, genre)
+            sessionRef.current.isDaily ? Promise.resolve(getGenrePack(genre).local[language].protagonist) : generateCharacterProfile(language, genre)
         ]);
         setInitialSegment(start);
         setCharacterDesc(charProfile);
@@ -1041,13 +1100,29 @@ const App: React.FC = () => {
       return worldSkin.endings.survivor[language];
   };
 
+  const checkpointContext = (levelStartIndex = levelStartIndexRef.current): RunContext => ({
+      ...(runRules ?? { language, pact: activePactRef.current, strictCase: !!userProfile.strictCase,
+        relaxed: !!userProfile.relaxed, baselineWpm: effectiveBaseline.wpm, stealthLevel: userProfile.stealthLevel, modifiers: baseModifiers }),
+      id: runIdRef.current, elapsedMs: Math.max(0, Date.now() - runStartedAtRef.current),
+      storyLog: storyLogRef.current, levelStartIndex, characterDescription: characterDesc
+  });
+  const checkpointLine = (engine: EngineCheckpoint, mission: MissionState) => {
+      if (sessionRef.current.isDaily) return; // Daily remains a single attempt.
+      setRunCheckpoint(saveRunCheckpoint({ nextLevel: currentLevel, health: engine.health,
+        genre: sessionRef.current.genre, narrativeContext, totalScore: totalScoreRef.current,
+        perks: activePerks.map(perk => ({ groupId: perk.groupId, tier: perk.tier })), mission,
+        context: checkpointContext(), engine }));
+  };
+
   const handleLevelComplete = async (finalRoundStats: GameStats, finalTrace: number, finalMission?: MissionState) => {
+      const completedRunId = runIdRef.current;
       const allRounds = [
           ...levelBuffer,
           {
               wpm: finalRoundStats.wpm,
               mistakes: finalRoundStats.mistakes || 0,
               score: finalRoundStats.score,
+              cadence: finalRoundStats.cadence, durationMs: finalRoundStats.durationMs, attempts: finalRoundStats.attempts,
               characters: finalRoundStats.characters || 0
           }
       ];
@@ -1060,15 +1135,7 @@ const App: React.FC = () => {
       const creditsEarned = Math.floor((finalRoundStats.credits || 0) * pactRewardMultiplier);
       const mission = finalMission || finalRoundStats.mission || campaignState;
       setCampaignState(mission);
-      setUserProfile(prev => {
-          const totalXp = prev.totalXp + xp;
-          return {
-              ...prev,
-              totalXp,
-              stealthLevel: getStealthLevel(totalXp),
-              credits: Math.floor((prev.credits || 0) + creditsEarned)
-          };
-      });
+      setUserProfile(prev => settleRunReward(prev, `${completedRunId}:sector:${finalRoundStats.level}`, xp, creditsEarned));
       setCurrentHealth(finalRoundStats.health);
       let performanceRating: 'bad' | 'average' | 'good' | 'legendary' = 'average';
       if (finalTrace >= 90 || finalRoundStats.health <= 5 || mission.heat > 80) performanceRating = 'bad';
@@ -1102,9 +1169,25 @@ const App: React.FC = () => {
           setGameState(GameState.LEVEL_COMPLETE);
       }
 
+      // Persist the boundary before waiting for the optional prose summary.
+      // A reload during generation must never replay an already rewarded line.
+      if (isFinal) {
+          clearRunCheckpoint();
+          setRunCheckpoint(null);
+      } else {
+          setRunCheckpoint(saveRunCheckpoint({
+              context: checkpointContext(storyLogRef.current.length), nextLevel: finalRoundStats.level + 1,
+              health: finalRoundStats.health, genre: sessionRef.current.genre,
+              narrativeContext: storyLogRef.current.slice(-3).map(item => item.text).join(' '),
+              totalScore: totalScoreRef.current,
+              perks: activePerks.map(perk => ({ groupId: perk.groupId, tier: perk.tier })), mission
+          }));
+      }
+
       const summary = isLastRelay(mission)
         ? getRelaySummary(finalRoundStats.level, mission, language)
         : await generateLevelSummary(finalRoundStats.level, report, storyLog.map(l => l.text).join(" "), language, sessionRef.current.genre);
+      if (runIdRef.current !== completedRunId) return;
       const completedReport = { ...report, narrativeSummary: summary, endingTitle: getEndingTitle({ ...report, narrativeSummary: summary }) };
       setNarrativeContext(summary);
       addToLog(`[${UI.level.toUpperCase()} ${finalRoundStats.level} ${UI.seq_complete}]: ${summary}`, 'neutral', 0, 0, 0, `${UI.evidence}: ${mission.evidence} · ${UI.heat}: ${mission.heat}%`);
@@ -1116,6 +1199,7 @@ const App: React.FC = () => {
       } else {
           setLastLevelReport(completedReport);
           const checkpoint = saveRunCheckpoint({
+              context: checkpointContext(storyLogRef.current.length),
               nextLevel: finalRoundStats.level + 1,
               health: finalRoundStats.health,
               genre: sessionRef.current.genre,
@@ -1130,6 +1214,8 @@ const App: React.FC = () => {
   };
 
   const handleSelectPerk = async (perk: Perk) => {
+      setRestoredEngine(undefined);
+      levelStartIndexRef.current = storyLogRef.current.length;
       const nextActivePerks = [
           ...activePerks.filter(existing => existing.groupId !== perk.groupId),
           perk
@@ -1137,6 +1223,7 @@ const App: React.FC = () => {
       setActivePerks(nextActivePerks);
       if (runCheckpoint) {
           const updatedCheckpoint = saveRunCheckpoint({
+              ...runCheckpoint,
               nextLevel: runCheckpoint.nextLevel,
               health: runCheckpoint.health,
               genre: runCheckpoint.genre,
@@ -1180,13 +1267,13 @@ const App: React.FC = () => {
       runRecordedRef.current = true;
       const endedAt = new Date();
       const durationSeconds = Math.max(1, Math.round((endedAt.getTime() - runStartedAtRef.current) / 1000));
-      const wpm = Math.round(lastLevelReport.avgWpm);
-      const accuracy = lastLevelReport.accuracy ?? 100;
-      const consistency = lastLevelReport.consistency ?? 100;
-      const mistakes = lastLevelReport.totalMistakes;
-      const characters = levelBuffer.reduce((sum, metric) => sum + metric.characters, 0);
-      const score = levelBuffer.reduce((sum, metric) => sum + metric.score, 0);
-      const bestWpm = levelBuffer.reduce((best, metric) => Math.max(best, metric.wpm), wpm);
+      const metrics = storyLogRef.current.filter(item => item.performance !== 'neutral').map(item => ({ ...item, mistakes: item.mistakes || 0, characters: item.characters || 0 }));
+      const summary = summarizeSector(metrics);
+      const wpm = Math.round(summary.avgWpm);
+      const { accuracy, consistency, totalMistakes: mistakes } = summary;
+      const characters = metrics.reduce((sum, metric) => sum + metric.characters, 0);
+      const score = totalScoreRef.current;
+      const bestWpm = metrics.reduce((best, metric) => Math.max(best, metric.wpm), wpm);
       const focus = getTypingFocus({
           avgWpm: wpm,
           accuracy,
@@ -1198,9 +1285,13 @@ const App: React.FC = () => {
 
       setPlayerProgressState((current) => savePlayerProgress(recordRun(current, {
           ...(isLastRelay(campaignState) ? { mission: 'last_relay' as const } : {}),
-          id: `${endedAt.toISOString()}-${Math.random().toString(36).slice(2, 8)}`,
+          id: runIdRef.current,
+      campaignGoal: runRules?.campaignGoal ?? 'flow',
+      language: runRules?.language ?? language, measurementVersion: 2, relaxed: runRules?.relaxed ?? !!userProfile.relaxed, strictCase: runRules?.strictCase ?? !!userProfile.strictCase,
           endedAt: endedAt.toISOString(),
           dateKey: getLocalDateKey(endedAt),
+          attempts: metrics.reduce((sum, metric) => sum + (metric.attempts ?? metric.characters), 0),
+          activeDurationMs: metrics.reduce((sum, metric) => sum + (metric.durationMs ?? (metric.wpm > 0 ? metric.characters * 12000 / metric.wpm : 0)), 0),
           outcome: 'banked',
           daily: false,
           genre: sessionRef.current.genre,
@@ -1222,7 +1313,7 @@ const App: React.FC = () => {
       setTypingTraining((current) => saveTypingTraining(recordTypingSession(
           current,
           completedObservations,
-          { kind: 'run', wpm, accuracy, completedAt: endedAt.toISOString() }
+          { kind: 'run', language, measurementVersion: 2, wpm, accuracy, completedAt: endedAt.toISOString() }
       )));
 
       const eventContext = getAnalyticsContext();
@@ -1253,20 +1344,21 @@ const App: React.FC = () => {
     const finalScore = totalScoreRef.current;
     const mission = stats.mission || campaignState;
     const completedMetrics = storyLog
-      .filter((item) => item.wpm > 0 && (item.characters || 0) > 0)
+      .filter((item) => item.performance !== 'neutral' && (item.characters || 0) > 0)
       .map((item) => ({
         wpm: item.wpm,
         mistakes: item.mistakes || 0,
         score: item.score,
+        durationMs: item.durationMs, attempts: item.attempts,
         characters: item.characters || item.text.length
       }));
-    const activeMetric = (stats.characters || 0) > 0
-      ? [{ wpm: stats.wpm, mistakes: stats.mistakes || 0, score: 0, characters: stats.characters || 0 }]
+    const activeMetric = (stats.attempts || stats.characters || stats.mistakes || 0) > 0
+      ? [{ wpm: stats.wpm, mistakes: stats.mistakes || 0, score: 0, characters: stats.characters || 0, durationMs: stats.durationMs, attempts: stats.attempts }]
       : [];
     const runMetrics = [...completedMetrics, ...activeMetric];
     const typingSummary = summarizeSector(runMetrics);
     const bestWpm = runMetrics.reduce((best, metric) => Math.max(best, metric.wpm), 0);
-    const bonusXp = Math.floor(finalScore * (1 + (stats.level * 0.1))); 
+    const bonusXp = Math.floor(levelBuffer.reduce((sum, item) => sum + item.score, 0) * (1 + (stats.level * 0.1)) * pactRewardMultiplier);
     setFinalStats({
         ...stats,
         score: finalScore,
@@ -1275,19 +1367,13 @@ const App: React.FC = () => {
         mistakes: typingSummary.totalMistakes,
         characters: runMetrics.reduce((sum, metric) => sum + metric.characters, 0),
         consistency: typingSummary.consistency,
+        attempts: runMetrics.reduce((sum, metric) => sum + (metric.attempts ?? metric.characters), 0),
+        durationMs: runMetrics.reduce((sum, metric) => sum + (metric.durationMs ?? (metric.wpm > 0 ? metric.characters * 12000 / metric.wpm : 0)), 0),
         bestWpm,
         segments: runMetrics.length
     });
     if (stats.mission) setCampaignState(stats.mission);
-    setUserProfile(prev => {
-        const totalXp = prev.totalXp + bonusXp;
-        return {
-            ...prev,
-            totalXp,
-            stealthLevel: getStealthLevel(totalXp),
-            credits: Math.floor((prev.credits || 0) + (stats.credits || 0))
-        };
-    });
+    setUserProfile(prev => settleRunReward(prev, `${runIdRef.current}:sector:${stats.level}`, bonusXp, (stats.credits || 0) * pactRewardMultiplier));
     clearRunCheckpoint();
     setRunCheckpoint(null);
     setDeathSequenceActive(true);
@@ -1313,10 +1399,11 @@ const App: React.FC = () => {
       }
   };
 
-  const addToLog = (text: string, performance: 'good' | 'average' | 'bad' | 'neutral', score: number, wpm: number, mistakes: number, meta?: string, type?: SegmentType) => {
+  const addToLog = (text: string, performance: 'good' | 'average' | 'bad' | 'neutral', score: number, wpm: number, mistakes: number, meta?: string, type?: SegmentType, measurement?: TypingMeasurement) => {
     totalScoreRef.current += score;
     setTotalScore(totalScoreRef.current);
-    setStoryLog(prev => [...prev, { text, performance, score, wpm, mistakes, characters: performance === 'neutral' ? 0 : text.length, meta, type }]);
+    storyLogRef.current = [...storyLogRef.current, { text, performance, score, wpm, mistakes, characters: performance === 'neutral' ? 0 : text.length, meta, type, ...measurement }];
+    setStoryLog(storyLogRef.current);
     if (performance !== 'neutral') {
       if (!firstSegmentTrackedRef.current) {
         firstSegmentTrackedRef.current = true;
@@ -1329,7 +1416,10 @@ const App: React.FC = () => {
           accuracy_bucket: getAccuracyBucket(getTypingAccuracy(mistakes, text.length))
         });
       }
-        setLevelBuffer(prev => [...prev, { wpm, mistakes, score, characters: text.length }]);
+        setLevelBuffer(prev => [...prev, { wpm, mistakes, score, characters: text.length, ...measurement }]);
+        const observations = snapshotTypingObservations(runTrainingObservationsRef.current);
+        runTrainingObservationsRef.current = [];
+        setTypingTraining(current => saveTypingTraining(recordTypingSession(current, observations)));
     }
   };
 
@@ -1388,7 +1478,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div data-colorway={inWorldColorway ? colorwayForGenre(selectedGenre) : 'ember'} className="screens-app-shell min-h-screen bg-[#0e0d10] text-slate-200 flex flex-col md:flex-row font-mono overflow-hidden">
+    <div data-text-preset={preferences.clearText ? 'clear' : 'atmospheric'} data-motion={preferences.reducedMotion ? 'reduced' : 'full'} style={{ '--typing-size': `${preferences.textSize}px` } as React.CSSProperties} data-colorway={inWorldColorway ? colorwayForGenre(selectedGenre) : 'ember'} className="screens-app-shell min-h-screen bg-[#0e0d10] text-slate-200 flex flex-col md:flex-row font-mono overflow-hidden">
       {/* The desk the game sits on: matte grain and a warm pool of light, no
           frame brackets. The deck frame drew a second set of corners around
           every panel that already had its own. */}
@@ -1398,6 +1488,7 @@ const App: React.FC = () => {
         <span className="screens-vignette" />
       </div>
 
+      {showSettings && <Suspense fallback={null}><PlaySettings value={preferences} language={language} onClose={() => setShowSettings(false)} onChange={p => setPreferences(writePlayPreferences(p))} /></Suspense>}
       {deathSequenceActive && <DeathSequence label={UI.signal_lost} />}
 
       {/* Status strip — what the shell column was actually for, minus the parts
@@ -1410,18 +1501,18 @@ const App: React.FC = () => {
           ui={UI}
           credits={userProfile.credits}
           perks={activePerks}
-          musicActive={musicActive}
           skillStackAnchor={skillStackAnchor}
           language={language}
-          onToggleMusic={handleToggleMusic}
           onAccount={gameState === GameState.MENU ? () => setGameState(GameState.ACCOUNT) : undefined}
           onToggleSkillStack={handleToggleSkillStack}
           onToggleLanguage={handleToggleLanguage}
+          languageLocked={inSimulation || gameState === GameState.PRACTICE || gameState === GameState.CALIBRATION}
+          onSettings={() => setShowSettings(true)}
         />
       )}
 
 
-      <div className={`relative z-10 flex w-full flex-col md:h-screen overflow-hidden ${isTyping ? '' : 'pt-10'} ${inSimulation ? 'h-[100dvh]' : ''}`}>
+      <div className={`relative z-10 flex w-full flex-col md:h-screen overflow-hidden ${isTyping ? '' : 'pt-14'} ${inSimulation ? 'h-[100dvh]' : ''}`}>
         <div className={`flex-1 min-h-0 flex justify-center p-2 sm:p-6 relative z-10 ${gameState === GameState.MENU ? 'items-start overflow-y-auto' : 'items-center'}`}>
             {gameState === GameState.MENU && (
                 <MenuScreen
@@ -1442,6 +1533,7 @@ const App: React.FC = () => {
                     dailyAttemptsExhausted={dailyAttemptsExhausted}
                     runCheckpoint={runCheckpoint}
                     skillHeadline={skillHeadline}
+                    training={typingTraining}
 
                     onPactOpened={() => captureProductEvent('typomancer_pact_opened', getAnalyticsContext())}
                     onRelay={initializeRelay}
@@ -1450,6 +1542,7 @@ const App: React.FC = () => {
                     onResume={resumeSession}
                     onInstall={handleInstallApp}
                     onBlackMarket={() => setGameState(GameState.BLACK_MARKET)}
+                    onPractice={() => startTargetedDrill()}
                     onOperatorRecord={() => setGameState(GameState.OPERATOR_RECORD)}
                 />
             )}
@@ -1462,6 +1555,14 @@ const App: React.FC = () => {
                 />
                 </Suspense>
             )}
+
+            {gameState === GameState.PRACTICE && <Suspense fallback={<LoadingScreen ui={UI} nextSector={false} />}><PracticeSession language={language}
+                focus={selectPracticeFocus(language, typingTraining, drillFocus)} onComplete={finishPractice}
+                onExit={() => setGameState(GameState.MENU)} onPlay={() => {
+                  if (practiceOriginRef.current === GameState.LEVEL_COMPLETE && lastLevelReport) setGameState(GameState.LEVEL_COMPLETE);
+                  else if (runCheckpoint) void resumeSession();
+                  else initializeRelay();
+                }} /></Suspense>}
 
             {gameState === GameState.CALIBRATION && (
                 <Suspense fallback={null}>
@@ -1528,6 +1629,9 @@ const App: React.FC = () => {
             {gameState === GameState.LEVEL_COMPLETE && lastLevelReport && (
                 <SectorCompleteScreen
                     ui={UI}
+                    language={language}
+                    training={typingTraining}
+                    onPractice={() => startTargetedDrill()}
                     report={lastLevelReport}
                     xpGained={levelXpGained}
                     storyLog={storyLog}
@@ -1545,8 +1649,15 @@ const App: React.FC = () => {
             )}
 
             {gameState === GameState.PLAYING && initialSegment && (
-                <TypingEngine 
+                <Suspense fallback={<LoadingScreen ui={UI} nextSector={false} />}><TypingEngine
                     key={currentLevel}
+                    preferences={preferences}
+                    campaignGoal={runRules?.campaignGoal ?? 'flow'}
+                    runSeed={runIdRef.current}
+                    onSettings={() => setShowSettings(true)}
+                    onExit={() => setGameState(GameState.MENU)}
+                    restored={restoredEngine}
+                    onCheckpoint={checkpointLine}
                     initialSegment={initialSegment}
                     currentLevel={currentLevel}
                     modifiers={currentModifiers}
@@ -1554,7 +1665,7 @@ const App: React.FC = () => {
                     addToLog={addToLog}
                     fullHistory={storyLog.map(l => l.text)}
                     characterDescription={characterDesc}
-                    stealthLevel={userProfile.stealthLevel}
+                    stealthLevel={runRules?.stealthLevel ?? userProfile.stealthLevel}
                     onLevelComplete={handleLevelComplete}
                     prevLevelSummary={narrativeContext}
                     currentRoundHealth={currentLevel === 1 ? currentModifiers.maxHealth : currentHealth}
@@ -1563,14 +1674,14 @@ const App: React.FC = () => {
                     onMissionUpdate={setCampaignState}
                     onCaptureFrame={captureComicFrame}
                     genre={selectedGenre}
-                    strictCase={!!userProfile.strictCase}
+                    strictCase={runRules?.strictCase ?? !!userProfile.strictCase}
                     deterministicStory={isDailyRun}
-                    baselineWpm={effectiveBaseline.wpm}
+                    baselineWpm={runRules?.baselineWpm ?? effectiveBaseline.wpm}
                     trainingFocus={trainingFocusTokens}
                     branchThresholds={branchThresholds}
                     skillStackAnchor={skillStackAnchor}
                     onTypingObservation={(observation) => runTrainingObservationsRef.current.push(observation)}
-                />
+                /></Suspense>
             )}
 
             {gameState === GameState.VICTORY && victoryReport && (
@@ -1578,6 +1689,7 @@ const App: React.FC = () => {
                     ui={UI}
                     language={language}
                     report={victoryReport}
+                    typingSummary={summarizeSector(storyLog.filter(item => item.performance !== 'neutral').map(item => ({ ...item, mistakes: item.mistakes || 0, characters: item.characters || 0 })))}
                     fallbackMission={campaignState}
                     genrePack={genrePack}
                     challengeVerdict={challengeVerdict}
@@ -1589,6 +1701,7 @@ const App: React.FC = () => {
                     onShareChallenge={() => shareDailyChallenge('victory', totalScore)}
                     onShareScore={handleShareScore}
                     onShowComic={() => setShowComic(true)}
+                    onPractice={() => startTargetedDrill()}
                     onMenu={() => setGameState(GameState.MENU)}
                 />
             )}
@@ -1609,6 +1722,7 @@ const App: React.FC = () => {
                     onShareChallenge={() => shareDailyChallenge('defeat', Math.max(totalScore, finalStats?.score || 0))}
                     onShareScore={handleShareScore}
                     onShowComic={() => setShowComic(true)}
+                    onPractice={() => startTargetedDrill()}
                     onMenu={() => setGameState(GameState.MENU)}
                 />
             )}

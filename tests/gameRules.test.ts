@@ -28,11 +28,11 @@ test('sector summary includes every round, including the final one', () => {
     { wpm: 60, mistakes: 2, score: 8, characters: 100 }
   ]);
 
-  assert.equal(summary.avgWpm, 50);
+  assert.equal(summary.avgWpm, 48);
   assert.equal(summary.totalMistakes, 2);
   assert.equal(summary.score, 20);
   assert.equal(summary.accuracy, 99);
-  assert.equal(summary.consistency, 80);
+  assert.ok(Math.abs(summary.consistency - 79.58758547680685) < 1e-9);
 });
 
 test('typing debrief prioritizes accuracy before speed', () => {

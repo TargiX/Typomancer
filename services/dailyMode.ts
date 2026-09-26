@@ -1,3 +1,4 @@
+import { DAILY_RULESET } from './sessionRules.ts';
 import { GENRE_ORDER } from './genreConfig.ts';
 import type { Language, StoryGenreId } from '../types.ts';
 
@@ -140,9 +141,9 @@ const DAILY_OPENINGS: Record<StoryGenreId, Array<Record<Language, string>>> = {
 const padDatePart = (value: number): string => String(value).padStart(2, '0');
 
 const getDateParts = (date: Date): { compact: string; label: string } => {
-  const year = date.getFullYear();
-  const month = padDatePart(date.getMonth() + 1);
-  const day = padDatePart(date.getDate());
+  const year = date.getUTCFullYear();
+  const month = padDatePart(date.getUTCMonth() + 1);
+  const day = padDatePart(date.getUTCDate());
   return {
     compact: `${year}${month}${day}`,
     label: `${year}-${month}-${day}`
@@ -204,17 +205,19 @@ const normalizeDailyState = (value: unknown): DailyState => {
 const cleanupOldDailyKeys = (activeKey: string): void => {
   const storage = playerStorage();
   if (!storage) return;
-  for (let index = storage.length - 1; index >= 0; index -= 1) {
+  const keys: string[] = [];
+  for (let index = 0; index < storage.length; index++) {
     const key = storage.key(index);
-    if (key?.startsWith(DAILY_STORAGE_PREFIX) && key !== activeKey) {
-      storage.removeItem(key);
-    }
+    if (key?.startsWith(DAILY_STORAGE_PREFIX) && key !== activeKey) keys.push(key);
   }
+  keys.sort().slice(0, Math.max(0, keys.length - 30)).forEach(key => storage.removeItem(key));
 };
 
-export const getDailyState = (dailyId: string): DailyState => {
+const dailyKey = (dailyId: string, language?: Language) => `${DAILY_STORAGE_PREFIX}${dailyId}${language ? `_${language}_${DAILY_RULESET}` : ''}`;
+
+export const getDailyState = (dailyId: string, language?: Language): DailyState => {
   if (typeof localStorage === 'undefined') return { ...EMPTY_DAILY_STATE };
-  const key = `${DAILY_STORAGE_PREFIX}${dailyId}`;
+  const key = dailyKey(dailyId, language);
   try {
     cleanupOldDailyKeys(key);
     const stored = playerStorage()?.getItem(key);
@@ -224,22 +227,31 @@ export const getDailyState = (dailyId: string): DailyState => {
   }
 };
 
-export const recordDailyAttempt = (dailyId: string, score: number, endingTitle: string): DailyState => {
-  const previous = getDailyState(dailyId);
+export const recordDailyAttempt = (dailyId: string, score: number, endingTitle: string, language?: Language, reserved = false): DailyState => {
+  const previous = getDailyState(dailyId, language);
   const normalizedScore = Number.isFinite(score) ? Math.max(0, Math.floor(score)) : 0;
   const isNewBest = normalizedScore > previous.bestScore || previous.bestEnding === null;
   const next: DailyState = {
-    attemptsUsed: Math.min(DAILY_MAX_ATTEMPTS, previous.attemptsUsed + 1),
+    attemptsUsed: Math.min(DAILY_MAX_ATTEMPTS, previous.attemptsUsed + (reserved ? 0 : 1)),
     bestScore: isNewBest ? normalizedScore : previous.bestScore,
     bestEnding: isNewBest ? endingTitle : previous.bestEnding
   };
 
   if (typeof localStorage !== 'undefined') {
     try {
-      playerStorage()?.setItem(`${DAILY_STORAGE_PREFIX}${dailyId}`, JSON.stringify(next));
+      playerStorage()?.setItem(dailyKey(dailyId, language), JSON.stringify(next));
     } catch {
       // Storage can be unavailable in privacy modes; the run should still finish.
     }
   }
+  return next;
+};
+
+/** Charge admission, including abandoned attempts; completion only updates the score. */
+export const reserveDailyAttempt = (dailyId: string, language: Language): DailyState | null => {
+  const previous = getDailyState(dailyId, language);
+  if (previous.attemptsUsed >= DAILY_MAX_ATTEMPTS) return null;
+  const next = { ...previous, attemptsUsed: previous.attemptsUsed + 1 };
+  try { playerStorage()?.setItem(dailyKey(dailyId, language), JSON.stringify(next)); } catch { /* memory state still limits this session */ }
   return next;
 };

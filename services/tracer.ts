@@ -65,7 +65,7 @@ export const TRACER_CATCH_TRACE_PENALTY = 12;
 export const DEFAULT_BASELINE_WPM = 40;
 
 const MIN_BASELINE_WPM = 18;
-const MAX_BASELINE_WPM = 110;
+const MAX_BASELINE_WPM = 300;
 
 export interface TracerPressureInput {
   /** The player's calibrated words per minute. */
@@ -87,7 +87,6 @@ export interface TracerPressureInput {
 export const getTracerCharsPerSecond = ({
   baselineWpm,
   traceSpeedMultiplier,
-  stealthLevel,
   heat,
   trust,
   segmentPressure
@@ -97,14 +96,12 @@ export const getTracerCharsPerSecond = ({
 
   const missionPressure = Math.max(0.45, 1 + (heat / 160) - (trust / 320));
   const linePressure = 1 + (Math.max(0, segmentPressure) * 0.06);
-  const stealthDivisor = 1 + (Math.max(0, stealthLevel) * 0.1);
 
   const speed = playerCharsPerSecond
     * TRACER_CHASE_FACTOR
     * Math.max(0.1, traceSpeedMultiplier)
     * missionPressure
-    * linePressure
-    / stealthDivisor;
+    * linePressure;
 
   return Math.max(0.2, speed);
 };
