@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
+import { TypingMeter, measuredAccuracy } from '../services/typingMetrics';
 import type { Language } from '../types';
 import { audioEngine, type ComboTier } from '../services/audioEngine';
 import { createCalibrationResult, type CalibrationResult } from '../services/playerProgress';
@@ -63,6 +64,9 @@ const CalibrationPanel: React.FC<CalibrationPanelProps> = ({ language, mode = 'c
   const prompt = mode === 'drill' && drillPrompt ? drillPrompt : PROMPTS[language];
   const ui = COPY[language];
   const [value, setValue] = useState('');
+  const meterRef = useRef(new TypingMeter());
+  const [paused, setPaused] = useState(false);
+  const pausedRef = useRef(false);
   const [mistakes, setMistakes] = useState(0);
   const [now, setNow] = useState(Date.now());
   const startedAtRef = useRef<number | null>(null);
@@ -77,8 +81,14 @@ const CalibrationPanel: React.FC<CalibrationPanelProps> = ({ language, mode = 'c
     value >= 50 ? 3 : value >= 25 ? 2 : value >= 10 ? 1 : 0
   );
 
+  const pause = () => { meterRef.current.pause(Date.now()); pausedRef.current = true; setPaused(true); };
+  const resume = () => { meterRef.current.resume(Date.now()); pausedRef.current = false; lastKeystrokeAtRef.current = null; setPaused(false); requestAnimationFrame(() => inputRef.current?.focus()); };
   useEffect(() => {
     inputRef.current?.focus();
+    const hidden = () => { if (document.hidden) pause(); };
+    window.addEventListener('blur', pause);
+    document.addEventListener('visibilitychange', hidden);
+    return () => { window.removeEventListener('blur', pause); document.removeEventListener('visibilitychange', hidden); };
   }, []);
 
   useEffect(() => {
@@ -87,9 +97,9 @@ const CalibrationPanel: React.FC<CalibrationPanelProps> = ({ language, mode = 'c
     return () => window.clearInterval(timer);
   }, [value.length]);
 
-  const durationMs = startedAtRef.current ? Math.max(1_000, now - startedAtRef.current) : 0;
+  const durationMs = meterRef.current.read(value.length, now).durationMs;
   const liveWpm = durationMs > 0 ? Math.round(((value.length / 5) / (durationMs / 60_000))) : 0;
-  const accuracy = value.length > 0 ? Math.max(0, 100 - ((mistakes / value.length) * 100)) : 100;
+  const accuracy = measuredAccuracy(mistakes, observationsRef.current.length);
   const progress = (value.length / prompt.length) * 100;
 
   const renderedCharacters = useMemo(() => prompt.split('').map((character, index) => {
@@ -101,13 +111,16 @@ const CalibrationPanel: React.FC<CalibrationPanelProps> = ({ language, mode = 'c
   }), [prompt, value]);
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (pausedRef.current || completedRef.current) return;
     const next = event.target.value.slice(0, prompt.length);
     const keyTime = Date.now();
     if (startedAtRef.current === null && next.length > 0) startedAtRef.current = keyTime;
+    if (next.length > value.length + 1 || (next.length > value.length && !next.startsWith(value))) return;
     if (next.length > value.length) {
       let newMistakes = 0;
       for (let index = value.length; index < next.length; index += 1) {
         const correct = normalizeChar(next[index]) === normalizeChar(prompt[index]);
+        meterRef.current.key(correct, keyTime);
         if (correct) {
           audioEngine.keyHit(comboTier(streakRef.current));
           streakRef.current += 1;
@@ -133,18 +146,16 @@ const CalibrationPanel: React.FC<CalibrationPanelProps> = ({ language, mode = 'c
     if (next.length === prompt.length && !completedRef.current) {
       completedRef.current = true;
       const finishedAt = Date.now();
-      const elapsed = Math.max(1_000, finishedAt - (startedAtRef.current || finishedAt));
-      const finalAccuracy = Math.max(0, 100 - (((mistakes + (next.length > value.length
-        ? Array.from({ length: next.length - value.length }, (_, offset) => value.length + offset)
-            .filter((index) => normalizeChar(next[index]) !== normalizeChar(prompt[index])).length
-        : 0)) / prompt.length) * 100));
+      const elapsed = meterRef.current.read(next.length, finishedAt).durationMs;
+      const finalAccuracy = measuredAccuracy(observationsRef.current.filter(item => !item.correct).length, observationsRef.current.length);
       const finalWpm = Math.round(((prompt.length / 5) / (elapsed / 60_000)));
-      onComplete(createCalibrationResult(finalWpm, finalAccuracy, elapsed), observationsRef.current);
+      onComplete({ ...createCalibrationResult(finalWpm, finalAccuracy, elapsed), language, measurementVersion: 2 }, observationsRef.current);
     }
   };
 
   return (
     <section className="calibration-panel screens-cut-panel" aria-labelledby="calibration-title" onClick={() => inputRef.current?.focus()}>
+      {paused && <div className="practice-pause" role="dialog" aria-modal="true" aria-label={language === 'ru' ? 'Пауза' : 'Paused'}><h2>{language === 'ru' ? 'Время остановлено' : 'Clock paused'}</h2><button type="button" className="btn-cyber" onClick={resume}>{language === 'ru' ? 'Продолжить' : 'Resume'}</button></div>}
       <div className="calibration-scanline" aria-hidden="true" />
       <header className="calibration-header">
         <span>{mode === 'drill' ? ui.drillEyebrow : ui.eyebrow}</span>
@@ -170,6 +181,7 @@ const CalibrationPanel: React.FC<CalibrationPanelProps> = ({ language, mode = 'c
         ref={inputRef}
         className="fixed left-0 top-0 -z-10 h-px w-px opacity-0"
         value={value}
+        disabled={paused}
         onChange={handleChange}
         onPaste={(event) => event.preventDefault()}
         onKeyDown={(event) => {
@@ -184,6 +196,7 @@ const CalibrationPanel: React.FC<CalibrationPanelProps> = ({ language, mode = 'c
 
       <footer className="calibration-footer">
         <p>{mode === 'drill' ? ui.drillNote : ui.note}</p>
+        <button type="button" className="btn-cyber btn-cyber-ghost" onClick={pause}>{language === 'ru' ? 'Пауза' : 'Pause'}</button>
         <button type="button" onClick={(event) => { event.stopPropagation(); onSkip(); }} className="btn-cyber btn-cyber-ghost">
           {mode === 'drill' ? ui.cancel : ui.skip}
         </button>

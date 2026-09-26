@@ -1,12 +1,16 @@
+import type { CadenceMeasurement } from './typingMetrics.ts';
 export const SECTOR_ROUNDS = 7;
 export const DECISION_ROUND = 4;
 export const CAMPAIGN_SECTORS = 4;
 
 export interface RoundMetric {
+  cadence?: CadenceMeasurement;
   wpm: number;
   mistakes: number;
   score: number;
   characters: number;
+  attempts?: number;
+  durationMs?: number;
 }
 
 export interface SectorSummary {
@@ -27,19 +31,29 @@ export const summarizeSector = (rounds: RoundMetric[]): SectorSummary => {
     return { avgWpm: 0, totalMistakes: 0, score: 0, accuracy: 100, consistency: 100 };
   }
 
-  const avgWpm = rounds.reduce((sum, round) => sum + round.wpm, 0) / rounds.length;
+  // Old saves have no duration. Reconstruct it from characters and speed rather
+  // than giving a two-second line the same weight as a two-minute passage.
+  const durations = rounds.map((round) => round.durationMs
+    ?? (round.wpm > 0 ? round.characters * 12_000 / round.wpm : 0));
+  const durationMs = durations.reduce((sum, duration) => sum + duration, 0);
+  const characters = rounds.reduce((sum, round) => sum + round.characters, 0);
+  const avgWpm = durationMs > 0 ? characters * 12_000 / durationMs : 0;
   const totalMistakes = rounds.reduce((sum, round) => sum + round.mistakes, 0);
   const score = rounds.reduce((sum, round) => sum + round.score, 0);
-  const characters = rounds.reduce((sum, round) => sum + round.characters, 0);
-  const variance = rounds.reduce((sum, round) => sum + ((round.wpm - avgWpm) ** 2), 0) / rounds.length;
+  const attempts = rounds.reduce((sum, round) => sum + (round.attempts ?? round.characters), 0);
+  const variance = durationMs > 0 ? rounds.reduce((sum, round, index) =>
+    sum + ((round.wpm - avgWpm) ** 2) * durations[index], 0) / durationMs : 0;
   const deviation = Math.sqrt(variance);
+  const cadence = rounds.reduce((sum, r) => ({ count: sum.count + (r.cadence?.count || 0), sumMs: sum.sumMs + (r.cadence?.sumMs || 0), sumSquaresMs: sum.sumSquaresMs + (r.cadence?.sumSquaresMs || 0) }), { count: 0, sumMs: 0, sumSquaresMs: 0 });
+  const meanInterval = cadence.count ? cadence.sumMs / cadence.count : 0;
+  const keyConsistency = meanInterval > 0 ? clamp(100 - Math.sqrt(Math.max(0, cadence.sumSquaresMs / cadence.count - meanInterval ** 2)) / meanInterval * 100) : null;
 
   return {
     avgWpm,
     totalMistakes,
     score,
-    accuracy: characters > 0 ? clamp(100 - ((totalMistakes / characters) * 100)) : 100,
-    consistency: avgWpm > 0 ? clamp(100 - ((deviation / avgWpm) * 100)) : 100
+    accuracy: attempts > 0 ? clamp(100 - ((totalMistakes / attempts) * 100)) : 100,
+    consistency: cadence.count >= 6 && keyConsistency !== null ? keyConsistency : avgWpm > 0 ? clamp(100 - ((deviation / avgWpm) * 100)) : 100
   };
 };
 

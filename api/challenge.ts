@@ -1,3 +1,4 @@
+import { DAILY_RULESET } from '../services/sessionRules.ts';
 const DAILY_ID_PATTERN = /^SECTOR-(\d{8})$/;
 const clampScore = (value: number): number => Math.max(0, Math.min(9_999_999, Math.floor(value)));
 
@@ -44,8 +45,9 @@ export default function handler(req: any, res: any) {
     return res.end();
   }
 
+  const rules = url.searchParams.get('r') === DAILY_RULESET ? `&rules=${DAILY_RULESET}&lang=${lang}` : '';
   const T = COPY[lang];
-  const appUrl = `${origin}/?challenge=${dailyId}&target=${score}&utm_source=player-challenge&utm_medium=share&utm_campaign=daily-challenge`;
+  const appUrl = `${origin}/?challenge=${dailyId}&target=${score}${rules}&utm_source=player-challenge&utm_medium=share&utm_campaign=daily-challenge`;
   const ogImage = `${origin}/api/og?d=${dailyId}&s=${score}${lang === 'ru' ? '&l=ru' : ''}`;
   const title = escapeHtml(T.title(score));
   const description = escapeHtml(T.description);

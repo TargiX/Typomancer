@@ -12,6 +12,7 @@ import type { DailyBrief } from './dailyMode.ts';
  */
 export const GAME_FLOW_TRANSITIONS: Readonly<Record<GameState, readonly GameState[]>> = {
     [GameState.MENU]: [
+        GameState.PRACTICE, GameState.CALIBRATION, GameState.PLAYING,
         GameState.GENRE_SELECTION,      // new campaign
         GameState.STARTER_PERK_SELECTION, // daily sector skips genre pick
         GameState.BLACK_MARKET,
@@ -22,18 +23,19 @@ export const GAME_FLOW_TRANSITIONS: Readonly<Record<GameState, readonly GameStat
     [GameState.GENRE_SELECTION]: [GameState.MENU, GameState.STARTER_PERK_SELECTION],
     [GameState.STARTER_PERK_SELECTION]: [GameState.LOADING],
     [GameState.LOADING]: [GameState.PLAYING],
-    [GameState.PLAYING]: [GameState.LEVEL_COMPLETE, GameState.VICTORY, GameState.GAME_OVER],
-    [GameState.LEVEL_COMPLETE]: [GameState.LOADING, GameState.MENU],
+    [GameState.PLAYING]: [GameState.MENU, GameState.LEVEL_COMPLETE, GameState.VICTORY, GameState.GAME_OVER],
+    [GameState.LEVEL_COMPLETE]: [GameState.PRACTICE, GameState.LOADING, GameState.MENU],
     [GameState.CALIBRATION]: [
         GameState.OPERATOR_RECORD,      // drill / recalibration returns to record
         GameState.STARTER_PERK_SELECTION, // pre-daily calibration continues the run
         GameState.GENRE_SELECTION       // pre-campaign calibration continues the run
     ],
-    [GameState.OPERATOR_RECORD]: [GameState.MENU, GameState.CALIBRATION],
+    [GameState.PRACTICE]: [GameState.LEVEL_COMPLETE, GameState.MENU, GameState.PLAYING, GameState.LOADING],
+    [GameState.OPERATOR_RECORD]: [GameState.MENU, GameState.CALIBRATION, GameState.PRACTICE],
     [GameState.BLACK_MARKET]: [GameState.MENU],
     [GameState.ACCOUNT]: [GameState.MENU],
-    [GameState.VICTORY]: [GameState.MENU],
-    [GameState.GAME_OVER]: [GameState.MENU],
+    [GameState.VICTORY]: [GameState.MENU, GameState.PRACTICE],
+    [GameState.GAME_OVER]: [GameState.MENU, GameState.PRACTICE],
     [GameState.UPGRADES]: [GameState.MENU]
 };
 
