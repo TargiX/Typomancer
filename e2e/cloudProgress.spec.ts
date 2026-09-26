@@ -50,6 +50,7 @@ test('guest import, independent device login, conflicting save and guest restora
     // A real in-app preference write on the stale first device, not a storage
     // mock. The account screen is a full-viewport portal, so leave it first.
     await page.getByRole('button', { name: 'BACK TO DECK', exact: true }).click();
+    await page.getByRole('button', { name: /Run difficulty/i }).click();
     await page.getByRole('button', { name: /THE PACT/i }).click();
     await page.getByRole('button', { name: /case/i }).click();
     await page.getByRole('button', { name: 'Account', exact: true }).click();

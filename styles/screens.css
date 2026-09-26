@@ -2445,3 +2445,140 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid
 [data-text-preset="clear"] .engine-decision-question, [data-text-preset="clear"] .engine-decision-option { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-style: normal; }
 .engine-decision-option { font-size: var(--typing-size, 24px); }
 .engine-decision-question { font-size: calc(var(--typing-size, 24px) * 1.15); }
+
+/* MENU TIERS — one session key, two alphas, then links, then a folded panel.
+   Each tier is visibly quieter than the one above it. */
+.menu-progress {
+  font-style: italic;
+  color: var(--legend);
+}
+
+.menu-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 22px;
+  margin-top: 26px;
+}
+
+.menu-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px;
+  font-size: var(--fs-label);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #a39d95;
+  transition: color 140ms ease;
+}
+
+.menu-link .keycap {
+  font-size: 11px;
+}
+
+.menu-link:hover,
+.menu-link:focus-visible {
+  color: var(--legend);
+  outline: none;
+}
+
+.menu-link:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.menu-difficulty {
+  margin-top: 22px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hairline);
+}
+
+.menu-difficulty-toggle {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #78736d;
+}
+
+.menu-difficulty-toggle:hover,
+.menu-difficulty-toggle:focus-visible {
+  color: var(--legend);
+  outline: none;
+}
+
+.menu-difficulty-summary {
+  letter-spacing: 0.08em;
+  text-transform: none;
+  color: #a39d95;
+}
+
+.play-settings-section {
+  margin: 1.4rem 0 0.2rem;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--signal);
+}
+
+/* SESSION GOAL — the one number the session was built to move. */
+.session-goal {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px 12px;
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: rgba(239, 231, 214, 0.02);
+  font-size: var(--fs-body);
+  color: #a39d95;
+}
+
+.session-goal-label {
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--signal);
+}
+
+.session-goal-value strong {
+  font-family: var(--font-display);
+  color: var(--legend);
+}
+
+.session-goal.is-better .session-goal-verdict { color: #86d6a6; }
+.session-goal.is-worse .session-goal-verdict { color: #ffb347; }
+
+.menu-link { text-transform: uppercase; letter-spacing: 0.12em; font-size: var(--fs-micro); }
+
+/* Checkbox rows read left to right: box, then what it does. */
+.play-settings label:has(> input[type='checkbox']) { justify-content: flex-start; }
+
+/* The trainer's next-practice card, in the debrief's own language. */
+.training-plan {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: rgba(239, 231, 214, 0.02);
+  font-family: var(--font-ui);
+}
+.training-plan h3 {
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--signal);
+}
+.training-plan p { font-size: var(--fs-body); }
+.training-plan .btn-cyber { padding: 8px 16px; font-size: var(--fs-label); font-weight: 700; }

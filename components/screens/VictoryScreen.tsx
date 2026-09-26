@@ -1,3 +1,5 @@
+import SessionGoalLine from '../SessionGoalLine';
+import type { SessionGoal } from '../../services/sessionPlan';
 import type { SectorSummary } from '../../services/gameRules';
 import React from 'react';
 import type { Language, LevelReport, MissionState } from '../../types';
@@ -9,6 +11,7 @@ import { isLastRelay } from '../../services/lastRelay';
 import ChallengeVerdictCard from '../ChallengeVerdictCard';
 
 interface VictoryScreenProps {
+    sessionGoal?: SessionGoal | null;
     ui: UITranslations;
     language: Language;
     report: LevelReport;
@@ -45,7 +48,8 @@ const VictoryScreen: React.FC<VictoryScreenProps> = ({
     onShareScore,
     onShowComic,
     onPractice,
-    onMenu
+    onMenu,
+    sessionGoal = null
 }) => (
     <div className="screens-cut-panel w-full max-w-3xl bg-[#151418]/95 p-10 screens-case-panel animate-fade-in-up max-h-[85dvh] overflow-y-auto">
         <div className="text-center border-b border-white/[0.07] pb-6 mb-6">
@@ -64,6 +68,7 @@ const VictoryScreen: React.FC<VictoryScreenProps> = ({
                     : ui.victory_subtitle}
             </p>
         </div>
+        <SessionGoalLine goal={sessionGoal} ui={ui} stats={{ wpm: typingSummary.avgWpm, accuracy: typingSummary.accuracy, consistency: typingSummary.consistency }} />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6">
             <div className="screens-stat-tile p-4 text-center border border-emerald-400/15 bg-emerald-400/[0.025]"><div className="font-display text-3xl font-bold text-emerald-300 tabular-nums leading-none">{report.mission?.evidence ?? fallbackMission.evidence}</div><div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{ui.evidence}</div></div>
             <div className="screens-stat-tile p-4 text-center border border-amber-400/15 bg-amber-400/[0.025]"><div className="font-display text-3xl font-bold text-amber-300 tabular-nums leading-none">{report.mission?.heat ?? fallbackMission.heat}%</div><div className="mt-2 fs-micro text-slate-500 uppercase tracking-[0.18em]">{ui.heat}</div></div>

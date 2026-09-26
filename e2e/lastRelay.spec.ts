@@ -40,7 +40,7 @@ for (const path of [
       }
     });
     await page.goto('/');
-    await page.getByRole('button', { name: /^1 THE LAST RELAY/ }).click();
+    await page.getByRole('button', { name: /^1 PLAY/ }).click();
     await expect(active(page)).toContainText('Mira whispers');
     await typeLine(page);
     await typeLine(page, path.spotted ? 6 : 0);
@@ -77,7 +77,7 @@ for (const path of [
     if (path.redact) {
       await page.screenshot({ path: '.context/last-relay-ending.png', fullPage: true });
       await page.keyboard.press('Space');
-      await page.getByRole('button', { name: /INITIALIZE LINK/ }).click();
+      await page.getByRole('button', { name: /Other world/ }).click();
       await page.getByRole('button', { name: /Cyberpunk Espionage Operation Black Ledger/ }).click();
       await page.locator('.screens-perk-card').first().click();
       // The ordinary campaign keeps its introductory protocol briefing.
@@ -92,7 +92,7 @@ for (const path of [
 test('Russian quick start', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'RU', exact: true }).first().click();
-  await page.getByRole('button', { name: /ПОСЛЕДНИЙ КАНАЛ/ }).click();
+  await page.getByRole('button', { name: /^1 ИГРАТЬ/ }).click();
   await expect(active(page)).toContainText('Мира шепчет');
   await typeLine(page);
   await expect(active(page)).toContainText('запись камеры');
@@ -103,8 +103,9 @@ test('Russian quick start', async ({ page }) => {
   await page.goto('/');
   const heading = page.getByRole('heading', { name: 'Operation Black Ledger', exact: true });
   await expect(heading).toBeInViewport({ ratio: 1 });
-  const quickStart = page.getByRole('button', { name: /^1 THE LAST RELAY/ });
+  const quickStart = page.getByRole('button', { name: /^1 PLAY/ });
   await expect(quickStart).toBeInViewport({ ratio: 1 });
+  await page.getByRole('button', { name: /Run difficulty/ }).click();
   await page.getByRole('button', { name: /THE PACT/ }).click();
   await quickStart.scrollIntoViewIfNeeded();
   await expect(quickStart).toBeInViewport({ ratio: 1 });
