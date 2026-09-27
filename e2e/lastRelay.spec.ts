@@ -65,6 +65,8 @@ for (const path of [
     for (let round = 4; round <= 6; round++) await typeLine(page);
     await typeLine(page, path.fragment ? 6 : 0);
     await expect(page.getByRole('heading', { name: path.ending, exact: true })).toBeVisible();
+    // A won prologue opens its comic page by itself.
+    await expect(page.locator('canvas.comic-page')).toBeVisible();
     await expect(page.getByText(path.fragment ? /only an unverified fragment/ : /publishes the evidence/).first()).toBeVisible();
     const persisted = await page.evaluate(() => ({
       checkpoint: localStorage.getItem('typomancerRunCheckpoint'),
@@ -76,6 +78,9 @@ for (const path of [
     expect(imageRequests).toBeGreaterThan(0);
     if (path.redact) {
       await page.screenshot({ path: '.context/last-relay-ending.png', fullPage: true });
+      // The comic opened by itself; Escape closes it, then Space returns to the menu.
+      await page.keyboard.press('Escape');
+      await expect(page.locator('canvas.comic-page')).toHaveCount(0);
       await page.keyboard.press('Space');
       await page.getByRole('button', { name: /Other world/ }).click();
       await page.getByRole('button', { name: /Cyberpunk Espionage Operation Black Ledger/ }).click();
@@ -111,3 +116,4 @@ test('Russian quick start', async ({ page }) => {
   await expect(quickStart).toBeInViewport({ ratio: 1 });
   await page.screenshot({ path: '.context/last-relay-menu.png', fullPage: true });
 });
+

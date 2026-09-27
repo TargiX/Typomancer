@@ -172,6 +172,20 @@ const App: React.FC = () => {
   const [campaignState, setCampaignState] = useState<MissionState>(DEFAULT_MISSION_STATE);
   const [comicFrames, setComicFrames] = useState<ComicFrame[]>([]);
   const [showComic, setShowComic] = useState(false);
+  // A won story opens its comic by itself once the debrief has had a beat to
+  // land: the comic is the payoff. A defeat keeps its debrief in front, where
+  // the next practice step lives; its comic stays one click away.
+  const comicAutoShownRef = useRef(false);
+  useEffect(() => {
+    if (gameState === GameState.MENU) {
+      comicAutoShownRef.current = false;
+      setShowComic(false);
+    }
+    if (gameState !== GameState.VICTORY || comicFrames.length === 0 || comicAutoShownRef.current) return;
+    comicAutoShownRef.current = true;
+    const timer = window.setTimeout(() => setShowComic(true), 1600);
+    return () => window.clearTimeout(timer);
+  }, [gameState, comicFrames.length]);
   const [deathSequenceActive, setDeathSequenceActive] = useState(false);
   const [selectedGenre, setSelectedGenre] = useState<StoryGenreId>(storedBoot.lastGenre ?? 'cyberpunk');
   const [preferences, setPreferences] = useState(readPlayPreferences);
@@ -616,6 +630,12 @@ const App: React.FC = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (document.querySelector('dialog[open]')) return;
+        // The comic replay is modal: Escape closes it, and no game shortcut
+        // acts on the screen underneath while it is open.
+        if (showComic) {
+            if (e.key === 'Escape') { e.preventDefault(); setShowComic(false); }
+            return;
+        }
         if (e.defaultPrevented || (e.target instanceof Element && e.target.closest('input,textarea,select,[contenteditable="true"],[data-account-panel]'))) return;
         if (deathSequenceActive) return;
         if (['Enter', ' '].includes(e.key) && e.target instanceof Element && e.target.closest('button')) return;
@@ -675,7 +695,7 @@ const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [dailyAttemptsExhausted, deathSequenceActive, gameState, isSectorSummaryReady, leadWithPrologue, sessionPlan, offeredPerks, playerProgress.calibration, runCheckpoint, userProfile]);
+  }, [dailyAttemptsExhausted, deathSequenceActive, showComic, gameState, isSectorSummaryReady, leadWithPrologue, sessionPlan, offeredPerks, playerProgress.calibration, runCheckpoint, userProfile]);
 
   // Browsers refuse to open an AudioContext outside a user gesture, so the very
   // first click or keypress is what actually brings audio up — including on the
