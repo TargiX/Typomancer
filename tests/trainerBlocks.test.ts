@@ -192,6 +192,15 @@ test('Daily admission fails closed when storage cannot keep the count, and seria
     assert.equal(getDailyState('SECTOR-20260930', 'en').attemptsUsed, 0);
   } finally { restoreStorage(); }
 
+  // An unreadable stored count is refused, not overwritten with a fresh 1.
+  const corrupt = memoryStorage();
+  Object.defineProperty(globalThis, 'localStorage', { value: corrupt, configurable: true });
+  try {
+    corrupt.setItem('nfDaily:SECTOR-20260929_en_daily-v2', '{not json');
+    assert.deepEqual(reserveDailyAttempt('SECTOR-20260929', 'en'), { ok: false, reason: 'storage' });
+    assert.equal(corrupt.getItem('nfDaily:SECTOR-20260929_en_daily-v2'), '{not json');
+  } finally { restoreStorage(); }
+
   Object.defineProperty(globalThis, 'localStorage', { value: memoryStorage(), configurable: true });
   const nav = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
   let queue = Promise.resolve();

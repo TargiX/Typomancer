@@ -949,9 +949,8 @@ const App: React.FC = () => {
   // Read inside the admission lock: leaving the menu or switching language while
   // waiting for another tab cancels the admission before anything is charged.
   const gameStateRef = useRef(gameState);
-  gameStateRef.current = gameState;
   const languageRef = useRef(language);
-  languageRef.current = language;
+  useEffect(() => { gameStateRef.current = gameState; languageRef.current = language; }, [gameState, language]);
   const [dailyStorageBlocked, setDailyStorageBlocked] = useState(false);
   const initializeDailySession = async () => {
       // One admission at a time: a second click while the lock is held must
@@ -968,7 +967,8 @@ const App: React.FC = () => {
       dailyAdmissionPendingRef.current = true;
       const admissionLanguage = language;
       const admission = await reserveDailyAttemptExclusive(brief.dailyId, admissionLanguage,
-          () => gameStateRef.current === GameState.MENU && languageRef.current === admissionLanguage)
+          () => gameStateRef.current === GameState.MENU && languageRef.current === admissionLanguage
+            && getDailyBrief().dailyId === brief.dailyId)
         .finally(() => { dailyAdmissionPendingRef.current = false; });
       if ('reason' in admission) {
           // Without a stored count the limit cannot be kept, so Daily says so instead of starting.

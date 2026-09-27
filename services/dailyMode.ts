@@ -258,6 +258,13 @@ export type DailyAdmission =
  * every tab and the active account share).
  */
 export const reserveDailyAttempt = (dailyId: string, language: Language): DailyAdmission => {
+  // An unreadable record is not an empty one: refuse rather than overwrite a count we cannot see.
+  try {
+    const raw = playerStorage()?.getItem(dailyKey(dailyId, language));
+    if (raw != null) JSON.parse(raw);
+  } catch {
+    return { ok: false, reason: 'storage' };
+  }
   const previous = getDailyState(dailyId, language);
   if (previous.attemptsUsed >= DAILY_MAX_ATTEMPTS) return { ok: false, reason: 'exhausted' };
   const next = { ...previous, attemptsUsed: previous.attemptsUsed + 1 };
