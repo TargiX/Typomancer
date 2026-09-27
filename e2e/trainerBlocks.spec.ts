@@ -8,6 +8,8 @@ const line = (page: Page) => page.locator('.engine-type-scroll span.relative.inl
 const typeLine = async (page: Page) => {
   const text = await line(page).innerText();
   await expect(input(page)).toBeEnabled();
+  // The engine locks input for 50 ms while it hands one line to the next.
+  await page.waitForTimeout(75);
   // 8 ms per key: fast enough for a sector, slow enough not to outrun the line under parallel load.
   await input(page).pressSequentially(text, { delay: 8 });
   return text;
