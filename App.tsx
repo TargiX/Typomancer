@@ -208,7 +208,7 @@ const App: React.FC = () => {
   const sessionRef = useRef(createSessionFlow(storedBoot.lastGenre ?? 'cyberpunk', dailyBrief));
   const dailyAttemptRecordedRef = useRef(false);
   const runRecordedRef = useRef(false);
-  const runIdRef = useRef(crypto.randomUUID());
+  const runIdRef = useRef<string>(crypto.randomUUID());
   const storyLogRef = useRef<StoryLogItem[]>([]);
   const runStartedAtRef = useRef(Date.now());
 
