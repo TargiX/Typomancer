@@ -3,7 +3,6 @@ import test from 'node:test';
 
 import {
   ANALYTICS_STORAGE_KEY,
-  buildPostHogPayload,
   captureProductEvent,
   getAccuracyBucket,
   getAnalyticsIdentity,
@@ -117,23 +116,6 @@ test('ai fallback telemetry keeps only generator and reason', () => {
   });
 });
 
-test('PostHog payload is anonymous and does not create a person profile', () => {
-  const identity = getAnalyticsIdentity({
-    storage: new MemoryStorage(),
-    randomId: () => 'anonymous-1',
-    now: () => new Date('2026-08-23T00:00:00.000Z')
-  });
-  const payload = buildPostHogPayload('phc_public', 'typomancer_landing_viewed', identity, {
-    language: 'en',
-    device_class: 'desktop'
-  });
-
-  assert.equal(payload.api_key, 'phc_public');
-  assert.equal(payload.distinct_id, 'anonymous-1');
-  assert.equal(payload.properties.$process_person_profile, false);
-  assert.equal('raw_text' in payload.properties, false);
-});
-
 test('measurement buckets are stable and bounded', () => {
   assert.equal(getDeviceClass(390), 'mobile');
   assert.equal(getDeviceClass(800), 'tablet');
@@ -145,34 +127,20 @@ test('measurement buckets are stable and bounded', () => {
   assert.equal(getDurationBucket(301), '3-7m');
 });
 
-test('capture is provider-gated and posts only the anonymous allowlisted payload', async () => {
-  const requests: Array<{ url: string; body: string }> = [];
-  const send = (async (input: string | URL | Request, init?: RequestInit) => {
-    requests.push({ url: String(input), body: String(init?.body) });
-    return new Response(null, { status: 200 });
-  }) as typeof fetch;
-
-  captureProductEvent('typomancer_run_completed', { raw_text: 'private' }, { fetch: send });
-  assert.equal(requests.length, 0);
-
-  captureProductEvent('typomancer_run_completed', {
-    outcome: 'victory',
-    raw_text: 'private'
-  }, {
-    fetch: send,
-    projectToken: 'phc_public',
-    host: 'https://eu.i.posthog.com/',
-    storage: new MemoryStorage(),
-    randomId: () => 'anonymous-2'
-  });
-  await Promise.resolve();
-
-  assert.equal(requests[0].url, 'https://eu.i.posthog.com/i/v0/e/');
-  assert.equal(requests[0].body.includes('private'), false);
-  assert.equal(requests[0].body.includes('anonymous-2'), true);
+test('capture makes no network request of its own', () => {
+  const globals = globalThis as { fetch?: unknown };
+  const original = globals.fetch;
+  let calls = 0;
+  globals.fetch = () => { calls += 1; return Promise.resolve(new Response(null)); };
+  try {
+    captureProductEvent('typomancer_run_completed', { outcome: 'victory' }, { storage: new MemoryStorage() });
+  } finally {
+    globals.fetch = original;
+  }
+  assert.equal(calls, 0);
 });
 
- test('authored mission attribution survives start and completion sanitization without story text', () => {
+test('authored mission attribution survives start and completion sanitization without story text', () => {
   for (const event of ['typomancer_run_started', 'typomancer_run_completed'] as const) {
     const payload = sanitizeEventProperties(event, { mission: 'last_relay', story: 'Mira is trapped', typed_text: 'secret' });
     assert.equal(payload.mission, 'last_relay');
