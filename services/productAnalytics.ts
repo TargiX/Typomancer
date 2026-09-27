@@ -49,9 +49,6 @@ export interface UmamiTracker {
 interface AnalyticsRuntime {
   storage?: Storage;
   search?: string;
-  fetch?: typeof fetch;
-  projectToken?: string;
-  host?: string;
   now?: () => Date;
   randomId?: () => string;
   umami?: UmamiTracker | null;
@@ -257,26 +254,7 @@ export const sanitizeEventProperties = (
   return safe;
 };
 
-export const buildPostHogPayload = (
-  projectToken: string,
-  event: ProductEventName,
-  identity: AnalyticsIdentity,
-  properties: SafeEventProperties
-) => ({
-  api_key: projectToken,
-  event,
-  distinct_id: identity.anonymousId,
-  properties: {
-    $process_person_profile: false,
-    ...sanitizeEventProperties(event, properties, identity.firstTouch)
-  }
-});
-
-const getEnv = (): Record<string, string | undefined> => (
-  (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env || {}
-);
-
-// Self-hosted Umami receives the same allowlisted events. public/traffic.js
+// Product events go to self-hosted Umami only. public/traffic.js
 // decides whether the tracker loads at all (production host, DNT/GPC, no
 // auth URLs), so an event only leaves the browser where pageviews already do.
 const UMAMI_QUEUE_LIMIT = 50;
@@ -338,23 +316,4 @@ export const captureProductEvent = (
 ): void => {
   const identity = getAnalyticsIdentity(runtime);
   sendUmamiEvent(event, sanitizeEventProperties(event, properties, identity.firstTouch), runtime);
-
-  const env = getEnv();
-  const projectToken = runtime.projectToken ?? env.VITE_POSTHOG_KEY;
-  if (!projectToken) return;
-  const host = (runtime.host ?? env.VITE_POSTHOG_HOST ?? 'https://us.i.posthog.com').replace(/\/+$/, '');
-  if (!/^https:\/\//.test(host)) return;
-  const send = runtime.fetch ?? (typeof fetch !== 'undefined' ? fetch : undefined);
-  if (!send) return;
-
-  const payload = buildPostHogPayload(projectToken, event, identity, properties);
-  void send(`${host}/i/v0/e/`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-    keepalive: true,
-    credentials: 'omit'
-  }).catch(() => {
-    // Product analytics is best-effort and must never interrupt play.
-  });
 };

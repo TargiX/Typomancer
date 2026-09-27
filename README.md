@@ -95,14 +95,7 @@ Do not use a `VITE_` prefix for secrets. Vite exposes `VITE_*` values to browser
 
 ## Optional anonymous product analytics
 
-To measure the landing-to-second-run funnel, set a public PostHog project token:
-
-```bash
-VITE_POSTHOG_KEY=your_public_project_token
-VITE_POSTHOG_HOST=https://us.i.posthog.com
-```
-
-Analytics is disabled when the token is absent. Events use a random local anonymous ID, do not create person profiles, and accept only allowlisted aggregate properties. Prompts, generated story text, and typed text are never included.
+Pageviews and allowlisted product events go to self-hosted Umami (stats.phosphene.cc); see [UMAMI.md](UMAMI.md). The tracker loads only on the production host and respects Do Not Track and Global Privacy Control. Events carry allowlisted aggregate properties and no identity. Prompts, generated story text and typed text are never included.
 
 ## Optional crash reporting
 
