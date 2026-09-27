@@ -215,15 +215,25 @@ const cleanupOldDailyKeys = (activeKey: string): void => {
 
 const dailyKey = (dailyId: string, language?: Language) => `${DAILY_STORAGE_PREFIX}${dailyId}${language ? `_${language}_${DAILY_RULESET}` : ''}`;
 
+// Attempts charged in this tab. Storage can refuse the write (privacy modes,
+// full quota); the tab still remembers what it charged, so a failed write never
+// hands back an attempt.
+const chargedAttempts = new Map<string, number>();
+
+const withCharged = (key: string, state: DailyState): DailyState => ({
+  ...state,
+  attemptsUsed: Math.max(state.attemptsUsed, chargedAttempts.get(key) ?? 0)
+});
+
 export const getDailyState = (dailyId: string, language?: Language): DailyState => {
-  if (typeof localStorage === 'undefined') return { ...EMPTY_DAILY_STATE };
   const key = dailyKey(dailyId, language);
+  if (typeof localStorage === 'undefined') return withCharged(key, { ...EMPTY_DAILY_STATE });
   try {
     cleanupOldDailyKeys(key);
     const stored = playerStorage()?.getItem(key);
-    return stored ? normalizeDailyState(JSON.parse(stored)) : { ...EMPTY_DAILY_STATE };
+    return withCharged(key, stored ? normalizeDailyState(JSON.parse(stored)) : { ...EMPTY_DAILY_STATE });
   } catch {
-    return { ...EMPTY_DAILY_STATE };
+    return withCharged(key, { ...EMPTY_DAILY_STATE });
   }
 };
 
@@ -252,6 +262,20 @@ export const reserveDailyAttempt = (dailyId: string, language: Language): DailyS
   const previous = getDailyState(dailyId, language);
   if (previous.attemptsUsed >= DAILY_MAX_ATTEMPTS) return null;
   const next = { ...previous, attemptsUsed: previous.attemptsUsed + 1 };
-  try { playerStorage()?.setItem(dailyKey(dailyId, language), JSON.stringify(next)); } catch { /* memory state still limits this session */ }
+  chargedAttempts.set(dailyKey(dailyId, language), next.attemptsUsed);
+  try { playerStorage()?.setItem(dailyKey(dailyId, language), JSON.stringify(next)); } catch { /* chargedAttempts still limits this tab */ }
   return next;
+};
+
+type LockManagerLike = { request: <T>(name: string, callback: () => T | Promise<T>) => Promise<T> };
+
+/**
+ * Admission across tabs: the Web Locks API serialises the read-modify-write
+ * for every tab of this origin, so two tabs cannot both take the last attempt.
+ * Browsers without it fall back to the single-tab path.
+ */
+export const reserveDailyAttemptExclusive = (dailyId: string, language: Language): Promise<DailyState | null> => {
+  const locks = typeof navigator !== 'undefined' ? (navigator as Navigator & { locks?: LockManagerLike }).locks : undefined;
+  if (!locks?.request) return Promise.resolve(reserveDailyAttempt(dailyId, language));
+  return locks.request(`typomancer-daily:${dailyKey(dailyId, language)}`, () => reserveDailyAttempt(dailyId, language));
 };
