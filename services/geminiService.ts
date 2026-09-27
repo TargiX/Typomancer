@@ -361,7 +361,7 @@ const seededRandom = (seed: number) => {
   };
 };
 
-const generateLocalSceneImage = (sceneDescription: string, _characterDescription: string, genre: StoryGenreId): string => {
+export const generateLocalSceneImage = (sceneDescription: string, _characterDescription: string, genre: StoryGenreId): string => {
   const pack = getGenrePack(genre);
   const seed = [...sceneDescription].reduce((sum, ch, i) => (sum * 31 + ch.charCodeAt(0) + i) >>> 0, 7);
   const rand = seededRandom(seed);

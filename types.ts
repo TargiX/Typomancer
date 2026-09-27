@@ -1,3 +1,4 @@
+import type { CadenceMeasurement } from './services/typingMetrics';
 import type { PactClauseId } from './services/pact.ts';
 
 export type Language = 'en' | 'ru';
@@ -6,6 +7,7 @@ export enum GameState {
   MENU = 'MENU',
   ACCOUNT = 'ACCOUNT',
   CALIBRATION = 'CALIBRATION',
+  PRACTICE = 'PRACTICE',
   OPERATOR_RECORD = 'OPERATOR_RECORD',
   GENRE_SELECTION = 'GENRE_SELECTION',
   PLAYING = 'PLAYING',
@@ -102,6 +104,9 @@ export interface DecisionPoint {
 }
 
 export interface StoryLogItem {
+  cadence?: CadenceMeasurement;
+  attempts?: number;
+  durationMs?: number;
   text: string;
   performance: 'good' | 'average' | 'bad' | 'neutral';
   score: number;
@@ -120,6 +125,9 @@ export interface ComicFrame {
 }
 
 export interface GameStats {
+  cadence?: CadenceMeasurement;
+  attempts?: number;
+  durationMs?: number;
   wpm: number;
   accuracy: number;
   health: number;
@@ -206,6 +214,7 @@ export interface UserUpgrades {
 }
 
 export interface UserProfile {
+  settledRewards?: string[];
   totalXp: number;
   stealthLevel: number;
   unlockedPerks: string[];

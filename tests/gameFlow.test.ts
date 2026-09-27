@@ -37,8 +37,9 @@ test('daily run bypasses genre selection; checkpoint resume skips it too', () =>
 });
 
 test('impossible jumps are rejected', () => {
-    assert.equal(isLegalGameTransition(GameState.MENU, GameState.PLAYING), false);
-    assert.equal(isLegalGameTransition(GameState.PLAYING, GameState.MENU), false);
+    // The authored prologue starts directly from the menu.
+    assert.equal(isLegalGameTransition(GameState.MENU, GameState.PLAYING), true);
+    assert.equal(isLegalGameTransition(GameState.PLAYING, GameState.MENU), true);
     assert.equal(isLegalGameTransition(GameState.LOADING, GameState.MENU), false);
     assert.equal(isLegalGameTransition(GameState.VICTORY, GameState.PLAYING), false);
     assert.equal(isLegalGameTransition(GameState.BLACK_MARKET, GameState.PLAYING), false);

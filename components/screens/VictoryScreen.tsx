@@ -1,3 +1,4 @@
+import type { SectorSummary } from '../../services/gameRules';
 import React from 'react';
 import type { Language, LevelReport, MissionState } from '../../types';
 import type { UITranslations } from '../../services/i18n';
@@ -11,6 +12,7 @@ interface VictoryScreenProps {
     ui: UITranslations;
     language: Language;
     report: LevelReport;
+    typingSummary: SectorSummary;
     fallbackMission: MissionState;
     genrePack: GenrePack;
     challengeVerdict: ChallengeVerdict | null;
@@ -22,6 +24,7 @@ interface VictoryScreenProps {
     onShareChallenge: () => void;
     onShareScore: () => void;
     onShowComic: () => void;
+    onPractice: () => void;
     onMenu: () => void;
 }
 
@@ -29,6 +32,7 @@ const VictoryScreen: React.FC<VictoryScreenProps> = ({
     ui,
     language,
     report,
+    typingSummary,
     fallbackMission,
     genrePack,
     challengeVerdict,
@@ -40,9 +44,10 @@ const VictoryScreen: React.FC<VictoryScreenProps> = ({
     onShareChallenge,
     onShareScore,
     onShowComic,
+    onPractice,
     onMenu
 }) => (
-    <div className="screens-cut-panel w-full max-w-3xl bg-[#151418]/95 p-10 screens-case-panel animate-fade-in-up">
+    <div className="screens-cut-panel w-full max-w-3xl bg-[#151418]/95 p-10 screens-case-panel animate-fade-in-up max-h-[85dvh] overflow-y-auto">
         <div className="text-center border-b border-white/[0.07] pb-6 mb-6">
             <div className="screens-stamp mb-4">
                 {isLastRelay(report.mission)
@@ -83,6 +88,12 @@ const VictoryScreen: React.FC<VictoryScreenProps> = ({
                 className="mb-6"
             />
         )}
+        <div className="practice-readout" aria-label={language === 'ru' ? 'Результат всего забега' : 'Whole run typing result'}>
+            <span>{Math.round(typingSummary.avgWpm)} WPM</span>
+            <span>{typingSummary.accuracy.toFixed(1)}% {language === 'ru' ? 'точность' : 'accuracy'}</span>
+            <span>{typingSummary.totalMistakes} {language === 'ru' ? 'ошибок' : 'errors'}</span>
+        </div>
+        <button onClick={onPractice} className="btn-cyber btn-cyber-primary w-full mb-4 py-3">{language === 'ru' ? 'Отработать слабые места · 5 мин' : 'Train weak patterns · 5 min'}</button>
         <div className="flex flex-col sm:flex-row gap-3">
             {canShareChallenge && (
                 <button

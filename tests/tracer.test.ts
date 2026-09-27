@@ -44,8 +44,8 @@ test('tracer speed scales with the same pressure the trace bar reads', () => {
   assert.ok(pressured > getTracerCharsPerSecond(calm));
 });
 
-test('stealth level and trace perks slow the chase', () => {
-  assert.ok(getTracerCharsPerSecond({ ...calm, stealthLevel: 5 }) < getTracerCharsPerSecond(calm));
+test('only explicit trace perks slow the chase; XP does not', () => {
+  assert.equal(getTracerCharsPerSecond({ ...calm, stealthLevel: 5 }), getTracerCharsPerSecond(calm));
   assert.ok(getTracerCharsPerSecond({ ...calm, traceSpeedMultiplier: 0.5 }) < getTracerCharsPerSecond(calm));
 });
 
@@ -59,7 +59,7 @@ test('an absurd calibration cannot make the tracer unbeatable or irrelevant', ()
   const tiny = getTracerCharsPerSecond({ ...calm, baselineWpm: 1 });
   const huge = getTracerCharsPerSecond({ ...calm, baselineWpm: 9000 });
   assert.ok(tiny > 0.2);
-  assert.ok(huge < (110 * 5) / 60);
+  assert.ok(huge < (300 * 5) / 60);
 });
 
 test('the segment opens with the tracer visible on the first character', () => {

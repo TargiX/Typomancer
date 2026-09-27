@@ -1,3 +1,5 @@
+import type { Language } from '../types.ts';
+import { getComparableRuns, runCondition } from './playerProgress.ts';
 /**
  * PROGRESS ANALYTICS — the one thing this game is really selling.
  *
@@ -12,7 +14,7 @@
  */
 
 import type { PlayerProgress, RunRecord } from './playerProgress.ts';
-import type { PatternStat, TypingTrainingProfile } from './typingTraining.ts';
+import { recentPattern, type PatternStat, type TypingTrainingProfile } from './typingTraining.ts';
 
 /** Runs at each end of history used to compare "then" against "now". */
 export const COMPARISON_WINDOW = 5;
@@ -24,8 +26,8 @@ export interface SkillPoint {
 }
 
 /** Oldest to newest, which is the direction a progress line is read in. */
-export const getSkillSeries = (progress: PlayerProgress): SkillPoint[] => (
-  [...progress.runs]
+export const getSkillSeries = (progress: PlayerProgress, language?: Language): SkillPoint[] => (
+  [...getComparableRuns(progress, language)]
     .filter((run) => run.wpm > 0)
     .reverse()
     .map((run) => ({ wpm: run.wpm, accuracy: run.accuracy, dateKey: run.dateKey }))
@@ -60,13 +62,14 @@ const daysBetween = (fromIso: string, toIso: string): number => {
  * window at each end rather than comparing single runs, because one good day
  * is not progress and one bad day is not decline.
  */
-export const getSkillHeadline = (progress: PlayerProgress): SkillHeadline => {
-  const runs = progress.runs.filter((run) => run.wpm > 0);
+export const getSkillHeadline = (progress: PlayerProgress, language?: Language): SkillHeadline => {
+  const runs = getComparableRuns(progress, language);
   const newestFirst = [...runs];
   const oldestFirst = [...runs].reverse();
 
   const recent = newestFirst.slice(0, COMPARISON_WINDOW);
-  const earliest = oldestFirst.slice(0, COMPARISON_WINDOW);
+  const saved = language && runs[0] ? progress.baselines?.find(b => b.condition === runCondition(runs[0]))?.runs : undefined;
+  const earliest = saved?.length ? saved : oldestFirst.slice(0, COMPARISON_WINDOW);
 
   const currentWpm = Math.round(average(recent.map((run) => run.wpm)));
   const baselineWpm = Math.round(average(earliest.map((run) => run.wpm)));
@@ -81,7 +84,7 @@ export const getSkillHeadline = (progress: PlayerProgress): SkillHeadline => {
     baselineAccuracy,
     deltaAccuracy: currentAccuracy - baselineAccuracy,
     sessions: runs.length,
-    spanDays: runs.length > 1 ? daysBetween(oldestFirst[0].endedAt, newestFirst[0].endedAt) : 0,
+    spanDays: runs.length > 1 ? daysBetween(earliest[0].endedAt, newestFirst[0].endedAt) : 0,
     // Two windows that overlap heavily would compare a player against themselves.
     hasEnoughHistory: runs.length >= COMPARISON_WINDOW * 2
   };
@@ -92,7 +95,7 @@ export interface PatternDiagnostic {
   attempts: number;
   errorRate: number;
   /** Average milliseconds before this key or pair is struck. */
-  avgLatencyMs: number;
+  avgLatencyMs: number | null;
   /** Higher means this pattern costs the player more overall. */
   cost: number;
 }
@@ -101,7 +104,7 @@ const toDiagnostic = (stat: PatternStat): PatternDiagnostic => {
   const attempts = Math.max(1, stat.attempts);
   const timed = Math.max(1, stat.timedAttempts || 0);
   const errorRate = (stat.errors / attempts) * 100;
-  const avgLatencyMs = Math.round(stat.totalLatencyMs / timed);
+  const avgLatencyMs = stat.timedAttempts ? Math.round(stat.totalLatencyMs / timed) : null;
   return {
     token: stat.token,
     attempts: stat.attempts,
@@ -109,7 +112,7 @@ const toDiagnostic = (stat: PatternStat): PatternDiagnostic => {
     avgLatencyMs,
     // Hesitation and misses both cost time; weight misses higher because a typo
     // also costs the branch.
-    cost: (errorRate * 0.75) + (Math.min(600, avgLatencyMs) / 600) * 25
+    cost: (errorRate * 0.75) + (Math.min(600, avgLatencyMs ?? 0) / 600) * 25
   };
 };
 
@@ -121,10 +124,11 @@ const toDiagnostic = (stat: PatternStat): PatternDiagnostic => {
 export const getPatternDiagnostics = (
   training: TypingTrainingProfile,
   limit = 8,
-  minAttempts = 4
+  minAttempts = 4, language?: Language
 ): PatternDiagnostic[] => (
   [...training.keys, ...training.bigrams]
-    .filter((stat) => stat.attempts >= minAttempts)
+    .map(stat => recentPattern(stat))
+    .filter((stat) => stat.attempts >= minAttempts && (!language || (language === 'ru' ? /^[^a-z]*$/i : /^[^а-яё]*$/i).test(stat.token)))
     .map(toDiagnostic)
     .sort((a, b) => b.cost - a.cost || b.attempts - a.attempts)
     .slice(0, limit)
@@ -137,22 +141,24 @@ export const getPatternDiagnostics = (
 export const getSteadiestPatterns = (
   training: TypingTrainingProfile,
   limit = 5,
-  minAttempts = 6
+  minAttempts = 6, language?: Language
 ): PatternDiagnostic[] => (
   [...training.keys, ...training.bigrams]
-    .filter((stat) => stat.attempts >= minAttempts)
+    .map(stat => recentPattern(stat))
+    .filter((stat) => stat.attempts >= minAttempts && (!language || (language === 'ru' ? /^[^a-z]*$/i : /^[^а-яё]*$/i).test(stat.token)))
     .map(toDiagnostic)
     .sort((a, b) => a.cost - b.cost || b.attempts - a.attempts)
     .slice(0, limit)
 );
 
 /** Fastest and slowest average reaction across measured patterns, in ms. */
-export const getLatencySpread = (training: TypingTrainingProfile, minAttempts = 4) => {
+export const getLatencySpread = (training: TypingTrainingProfile, minAttempts = 4, language?: Language) => {
   const measured = [...training.keys, ...training.bigrams]
-    .filter((stat) => stat.attempts >= minAttempts && (stat.timedAttempts || 0) > 0)
+    .map(stat => recentPattern(stat))
+    .filter((stat) => stat.attempts >= minAttempts && (stat.timedAttempts || 0) > 0 && (!language || (language === 'ru' ? /^[^a-z]*$/i : /^[^а-яё]*$/i).test(stat.token)))
     .map(toDiagnostic);
   if (!measured.length) return null;
-  const latencies = measured.map((stat) => stat.avgLatencyMs);
+  const latencies = measured.map((stat) => stat.avgLatencyMs!);
   return {
     fastestMs: Math.min(...latencies),
     slowestMs: Math.max(...latencies),

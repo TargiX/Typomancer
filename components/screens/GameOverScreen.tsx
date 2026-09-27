@@ -22,6 +22,7 @@ interface GameOverScreenProps {
     onShareChallenge: () => void;
     onShareScore: () => void;
     onShowComic: () => void;
+    onPractice: () => void;
     onMenu: () => void;
 }
 
@@ -41,6 +42,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     onShareChallenge,
     onShareScore,
     onShowComic,
+    onPractice,
     onMenu
 }) => (
     <div className="screens-cut-panel screens-death-report bg-[#151418]/95 p-6 sm:p-8 screens-case-panel screens-case-panel--danger max-w-3xl w-full animate-fade-in-up">
@@ -94,6 +96,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             <span>{ui.evidence}: <b className="text-emerald-300">{stats?.mission?.evidence ?? fallbackMission.evidence}</b></span>
             <span>{ui.heat}: <b className="text-amber-300">{stats?.mission?.heat ?? fallbackMission.heat}%</b></span>
         </div>
+        <button onClick={onPractice} className="btn-cyber btn-cyber-primary w-full mb-4 py-3">{language === 'ru' ? 'Отработать слабые места · 5 мин' : 'Train weak patterns · 5 min'}</button>
         <div className="flex flex-col sm:flex-row gap-3">
             {canShareChallenge && (
                 <button

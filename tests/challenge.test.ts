@@ -21,7 +21,7 @@ test('challenge parser rejects malformed or missing targets', () => {
 
 test('share urls route through the og wrapper and keep the validated params', () => {
   const url = buildChallengeShareUrl('https://typomancer.xyz', 'SECTOR-20260823', 4123.9, 'ru');
-  assert.equal(url, 'https://typomancer.xyz/api/challenge?d=SECTOR-20260823&s=4123&l=ru');
+  assert.equal(url, 'https://typomancer.xyz/api/challenge?d=SECTOR-20260823&s=4123&l=ru&r=daily-v2');
   assert.equal(buildChallengeShareUrl('javascript:alert(1)', 'SECTOR-20260823', 10), null);
   assert.equal(buildChallengeShareUrl('https://typomancer.xyz', 'nope', 10), null);
 });

@@ -154,6 +154,6 @@ test('a profile with no timing data cannot divide by zero', () => {
     keys: [{ token: 'a', attempts: 10, errors: 1, totalLatencyMs: 0, timedAttempts: 0 }],
     bigrams: []
   };
-  assert.equal(getPatternDiagnostics(training)[0].avgLatencyMs, 0);
+  assert.equal(getPatternDiagnostics(training)[0].avgLatencyMs, null);
   assert.equal(getLatencySpread(training), null);
 });

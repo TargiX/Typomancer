@@ -1,3 +1,6 @@
+import TrainingPlan from '../TrainingPlan';
+import type { TypingTrainingProfile } from '../../services/typingTraining';
+import type { Language } from '../../types';
 import React, { useState } from 'react';
 import type { LevelReport, MissionState, Perk, StoryLogItem } from '../../types';
 import type { UITranslations } from '../../services/i18n';
@@ -6,6 +9,9 @@ import { getPactRewardMultiplier, type PactClauseId } from '../../services/pact'
 import PerkCard from '../PerkCard';
 
 interface SectorCompleteScreenProps {
+    language: Language;
+    training: TypingTrainingProfile;
+    onPractice: () => void;
     ui: UITranslations;
     report: LevelReport;
     xpGained: number;
@@ -19,7 +25,7 @@ interface SectorCompleteScreenProps {
 }
 
 const SectorCompleteScreen: React.FC<SectorCompleteScreenProps> = ({
-    ui,
+    ui, language, training, onPractice,
     report,
     xpGained,
     storyLog,
@@ -58,6 +64,7 @@ const SectorCompleteScreen: React.FC<SectorCompleteScreenProps> = ({
                     "{report.narrativeSummary}"
                 </p>
             </div>
+            <TrainingPlan language={language} training={training} onPractice={onPractice} />
             <div className={`screens-accuracy-hero screens-accuracy-hero--${focus} mb-3`}>
                 <div className="flex items-end justify-between gap-4">
                     <div>

@@ -215,9 +215,11 @@ test('ready skills can sit in the corner when that layout is chosen', async ({ p
 
 test('a newcomer reaches the story without sitting a typing test first', async ({ page }) => {
   await page.addInitScript(() => {
-    const audio = localStorage.getItem('typomancerAudioEnabled');
+    const audio = ['typomancerAudioEnabled', 'typomancerMusicEnabled', 'typomancerSfxVolume', 'typomancerMusicVolume']
+      .map(key => [key, localStorage.getItem(key)] as const)
+      .filter((entry): entry is readonly [string, string] => entry[1] !== null);
     localStorage.clear();
-    if (audio !== null) localStorage.setItem('typomancerAudioEnabled', audio);
+    for (const [key, value] of audio) localStorage.setItem(key, value);
   });
   await page.goto('/');
 
@@ -354,17 +356,20 @@ test('mobile mistakes show the impact sequence, debrief, and recorded defeat', a
   const input = page.getByRole('textbox', { name: 'Typing practice input' });
   const activeText = await page.locator('.engine-type-scroll span.relative.inline-block').innerText();
   const failureHeading = page.getByRole('heading', { name: 'CRITICAL FAILURE' });
+  let attemptedErrors = 0;
 
   for (let index = 0; index < Math.min(16, activeText.length); index += 1) {
     const wrongCharacter = activeText[index].toLowerCase() === 'x' ? 'z' : 'x';
     await input.press(wrongCharacter);
+    attemptedErrors += 1;
     if (await failureHeading.isVisible()) break;
     await page.waitForTimeout(20);
   }
 
   await expect(page.getByRole('alert')).toContainText('SIGNAL LOST');
   await expect(failureHeading).toBeVisible();
-  await expect(page.getByText('Mistakes').locator('..')).toContainText('10');
+  // The report includes the grace/shield error as well as the ten damaging ones.
+  await expect(page.getByText('Mistakes').locator('..')).toContainText(String(attemptedErrors));
   const viewportMetrics = await page.locator('body').evaluate((body) => ({
     clientWidth: body.clientWidth,
     scrollWidth: body.scrollWidth

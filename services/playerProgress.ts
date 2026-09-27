@@ -1,4 +1,5 @@
-import type { StoryGenreId } from '../types.ts';
+import type { CampaignGoal } from './campaignTraining.ts';
+import type { Language, StoryGenreId } from '../types.ts';
 import { playerStorage } from './playerStorage.ts';
 import type { TypingFocus } from './gameRules.ts';
 import { normalizePact, type PactClauseId } from './pact.ts';
@@ -15,6 +16,8 @@ export const MAX_RUN_HISTORY = 60;
 export type DifficultyPreset = 'guided' | 'balanced' | 'intense';
 
 export interface CalibrationResult {
+  language?: Language;
+  measurementVersion?: 2;
   wpm: number;
   accuracy: number;
   durationMs: number;
@@ -29,6 +32,13 @@ export interface AdaptiveDifficulty {
 }
 
 export interface RunRecord {
+  campaignGoal?: CampaignGoal;
+  attempts?: number;
+  activeDurationMs?: number;
+  language?: Language;
+  measurementVersion?: 2;
+  relaxed?: boolean;
+  strictCase?: boolean;
   id: string;
   endedAt: string;
   dateKey: string;
@@ -60,6 +70,8 @@ export interface PlayerProgress {
   calibration: CalibrationResult | null;
   hasMovedPastPrologue: boolean;
   runs: RunRecord[];
+  practiceDates?: string[];
+  baselines?: Array<{ condition: string; runs: RunRecord[] }>;
 }
 
 export interface ProgressSummary {
@@ -78,6 +90,7 @@ export const EMPTY_PLAYER_PROGRESS: PlayerProgress = {
   version: PLAYER_PROGRESS_VERSION,
   calibration: null,
   hasMovedPastPrologue: false,
+  practiceDates: [], baselines: [],
   runs: []
 };
 
@@ -143,8 +156,8 @@ const median = (values: number[]): number => {
  * the baseline down would let a rough patch quietly lower the bar. Coming back
  * down is deliberate — recalibrating from Operator Record resets it.
  */
-export const getEffectiveBaseline = (progress: PlayerProgress): { wpm: number; accuracy: number } => {
-  const calibration = progress.calibration;
+export const getEffectiveBaseline = (progress: PlayerProgress, language?: Language): { wpm: number; accuracy: number } => {
+  const calibration = !language || progress.calibration?.language === language ? progress.calibration : null;
   const base = {
     wpm: calibration?.wpm ?? 0,
     // No calibration means no floor to hold. Defaulting to 100 pinned the ratchet
@@ -152,7 +165,10 @@ export const getEffectiveBaseline = (progress: PlayerProgress): { wpm: number; a
     // inaccurate uncalibrated player was graded on speed alone.
     accuracy: calibration?.accuracy ?? 0
   };
-  const recent = progress.runs.slice(0, BASELINE_RUN_WINDOW).filter((run) => run.wpm > 0);
+  const recent = progress.runs.filter(run => run.wpm > 0
+    && (!language || (run.language === language && run.measurementVersion === 2))
+    && (!calibration || Date.parse(run.endedAt) > Date.parse(calibration.completedAt)))
+    .slice(0, BASELINE_RUN_WINDOW);
   if (!recent.length) return base;
 
   return {
@@ -167,12 +183,13 @@ export const getEffectiveBaseline = (progress: PlayerProgress): { wpm: number; a
  */
 export const getAdaptiveDifficulty = (
   calibration: CalibrationResult | null,
-  progress?: PlayerProgress
+  progress?: PlayerProgress,
+  language?: Language
 ): AdaptiveDifficulty => {
-  const live = progress ? getEffectiveBaseline(progress) : null;
+  const live = progress ? getEffectiveBaseline(progress, language) : null;
   const preset = live && live.wpm > 0
     ? getDifficultyPreset(live.wpm, live.accuracy)
-    : calibration?.preset || 'balanced';
+    : (!language || calibration?.language === language ? calibration?.preset : null) || 'balanced';
   if (preset === 'guided') {
     return { preset, traceSpeedMultiplier: 0.72, mistakeGraceCount: 2 };
   }
@@ -191,12 +208,13 @@ const normalizeCalibration = (value: unknown): CalibrationResult | null => {
     || typeof calibration.durationMs !== 'number'
     || typeof calibration.completedAt !== 'string'
   ) return null;
-  return createCalibrationResult(
+  return { ...createCalibrationResult(
     calibration.wpm,
     calibration.accuracy,
     calibration.durationMs,
     calibration.completedAt
-  );
+  ), ...(calibration.language === 'en' || calibration.language === 'ru' ? { language: calibration.language } : {}),
+    ...(calibration.measurementVersion === 2 ? { measurementVersion: 2 as const } : {}) };
 };
 
 const isGenre = (value: unknown): value is StoryGenreId => (
@@ -220,6 +238,13 @@ const normalizeRun = (value: unknown): RunRecord | null => {
     || !isFocus(run.focus)
   ) return null;
   return {
+    ...(run.campaignGoal === 'flow' || run.campaignGoal === 'repair' || run.campaignGoal === 'codes' ? { campaignGoal: run.campaignGoal } : {}),
+    ...(run.language === 'en' || run.language === 'ru' ? { language: run.language } : {}),
+    ...(run.measurementVersion === 2 ? { measurementVersion: 2 as const } : {}),
+    ...(typeof run.relaxed === 'boolean' ? { relaxed: run.relaxed } : {}),
+    ...(typeof run.strictCase === 'boolean' ? { strictCase: run.strictCase } : {}),
+    ...(typeof run.attempts === 'number' ? { attempts: Math.max(0, Math.round(finite(run.attempts))) } : {}),
+    ...(typeof run.activeDurationMs === 'number' ? { activeDurationMs: Math.max(0, Math.round(finite(run.activeDurationMs))) } : {}),
     id: run.id,
     endedAt: run.endedAt,
     dateKey: run.dateKey,
@@ -262,8 +287,10 @@ export const normalizePlayerProgress = (value: unknown): PlayerProgress => {
     : [];
   return {
     version: PLAYER_PROGRESS_VERSION,
+    baselines: Array.isArray(progress.baselines) ? progress.baselines.filter(b => b && typeof b.condition === 'string' && b.condition.length <= 300 && Array.isArray(b.runs)).slice(0, 24).map(b => ({ condition: b.condition, runs: b.runs.flatMap(r => normalizeRun(r) || []).slice(0, 5) })) : [],
     calibration: normalizeCalibration(progress.calibration),
     hasMovedPastPrologue: progress.hasMovedPastPrologue === true || normalizedRuns.some(movesPastPrologue),
+    practiceDates: Array.isArray(progress.practiceDates) ? [...new Set(progress.practiceDates.filter(day => typeof day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(day)))].sort().reverse().slice(0, 90) : [],
     runs: normalizedRuns.slice(0, MAX_RUN_HISTORY)
   };
 };
@@ -299,8 +326,18 @@ export const recordRun = (progress: PlayerProgress, run: RunRecord): PlayerProgr
   const normalized = normalizeRun(run);
   if (!normalized) return normalizePlayerProgress(progress);
   const current = normalizePlayerProgress(progress);
+  const baselines = (current.baselines || []).map(b => ({ ...b, runs: [...b.runs] }));
+  if (normalized.language && normalized.measurementVersion === 2 && normalized.outcome !== 'banked' && normalized.wpm > 0) {
+    const condition = runCondition(normalized);
+    let baseline = baselines.find(b => b.condition === condition);
+    if (!baseline && baselines.length < 24) {
+      baseline = { condition, runs: [...current.runs].reverse().filter(r => r.outcome !== 'banked' && runCondition(r) === condition).slice(0, 5) };
+      baselines.push(baseline);
+    }
+    if (baseline && baseline.runs.length < 5 && !baseline.runs.some(r => r.id === normalized.id)) baseline.runs.push(normalized);
+  }
   return {
-    ...current,
+    ...current, baselines,
     hasMovedPastPrologue: current.hasMovedPastPrologue || movesPastPrologue(normalized),
     runs: [normalized, ...current.runs.filter((existing) => existing.id !== normalized.id)].slice(0, MAX_RUN_HISTORY)
   };
@@ -310,18 +347,30 @@ const average = (values: number[]): number => (
   values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : 0
 );
 
-export const summarizeProgress = (progress: PlayerProgress, now = new Date()): ProgressSummary => {
+export const runCondition = (run: RunRecord) => [run.language, run.measurementVersion, run.campaignGoal || 'flow', run.daily, run.genre, run.mission || '', !!run.strictCase, !!run.relaxed, [...run.pact].sort().join(',')].join('|');
+
+/** Comparisons require the same language and game conditions under the new meter. */
+export const getComparableRuns = (progress: PlayerProgress, language?: Language): RunRecord[] => {
+  const runs = progress.runs.filter(run => run.wpm > 0 && (!language || (run.language === language && run.measurementVersion === 2)));
+  if (!language || !runs.length) return runs;
+  const reference = runs[0];
+  return runs.filter(run => runCondition(run) === runCondition(reference));
+};
+
+export const summarizeProgress = (progress: PlayerProgress, now = new Date(), language?: Language): ProgressSummary => {
   const runs = normalizePlayerProgress(progress).runs;
-  const recentRuns = runs.slice(0, 8);
-  const latestWindow = runs.slice(0, 3);
-  const priorWindow = runs.slice(3, 6);
-  const shortBaseline = runs.slice(1, 4);
+  const comparable = getComparableRuns(progress, language);
+  const recentRuns = comparable.slice(0, 8);
+  const latestWindow = comparable.slice(0, 3);
+  const priorWindow = comparable.slice(3, 6);
+  const shortBaseline = comparable.slice(1, 4);
   const todayKey = getLocalDateKey(now);
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
-  const validLatestKey = runs[0]?.dateKey;
+  const activityDates = [...runs.map(run => run.dateKey), ...(progress.practiceDates || [])];
+  const validLatestKey = [...activityDates].sort().reverse()[0];
   const activeStreak = validLatestKey === todayKey || validLatestKey === getLocalDateKey(yesterday);
-  const uniqueDates = [...new Set(runs.map((run) => run.dateKey))].sort().reverse();
+  const uniqueDates = [...new Set(activityDates)].sort().reverse();
   let currentStreak = 0;
   if (activeStreak && uniqueDates.length > 0) {
     let cursor = new Date(`${uniqueDates[0]}T12:00:00`);
@@ -340,11 +389,11 @@ export const summarizeProgress = (progress: PlayerProgress, now = new Date()): P
     wpmDelta: priorWindow.length > 0
       ? average(latestWindow.map((run) => run.wpm)) - average(priorWindow.map((run) => run.wpm))
       : shortBaseline.length > 0
-        ? runs[0].wpm - average(shortBaseline.map((run) => run.wpm))
+        ? comparable[0].wpm - average(shortBaseline.map((run) => run.wpm))
         : 0,
     currentStreak,
-    hasRunToday: runs.some((run) => run.dateKey === todayKey),
+    hasRunToday: activityDates.includes(todayKey),
     latestFocus: runs[0]?.focus || null,
-    recentRuns
+    recentRuns: runs.slice(0, 8)
   };
 };
