@@ -1,3 +1,5 @@
+import SessionGoalLine from '../SessionGoalLine';
+import type { SessionGoal } from '../../services/sessionPlan';
 import React from 'react';
 import type { GameStats, Language, MissionState } from '../../types';
 import type { UITranslations } from '../../services/i18n';
@@ -7,6 +9,7 @@ import { stripKeyHint } from '../../services/text';
 import ChallengeVerdictCard from '../ChallengeVerdictCard';
 
 interface GameOverScreenProps {
+    sessionGoal?: SessionGoal | null;
     ui: UITranslations;
     language: Language;
     stats: GameStats | null;
@@ -43,7 +46,8 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     onShareScore,
     onShowComic,
     onPractice,
-    onMenu
+    onMenu,
+    sessionGoal = null
 }) => (
     <div className="screens-cut-panel screens-death-report bg-[#151418]/95 p-6 sm:p-8 screens-case-panel screens-case-panel--danger max-w-3xl w-full animate-fade-in-up">
         <div className="text-center">
@@ -52,6 +56,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             <p className="mt-3 fs-body text-slate-400">{genrePack.ui.connectionSevered[language]}</p>
         </div>
 
+        <div className="mt-5"><SessionGoalLine goal={sessionGoal} ui={ui} stats={{ wpm: stats?.wpm, accuracy: stats?.accuracy, consistency: stats?.consistency }} /></div>
         <div className="screens-debrief-grid mt-6" aria-label={ui.typing_debrief}>
             <div className="screens-debrief-primary">
                 <strong>{Math.round(stats?.wpm || 0)}</strong>

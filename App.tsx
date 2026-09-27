@@ -11,6 +11,8 @@ import { generateStoryStart, generateCharacterProfile, generateLevelSummary, gen
 import { GENRE_ORDER, getGenrePack } from './services/genreConfig';
 import { getGenreSkin } from './services/genreSkin';
 import { pressThen } from './services/keyPress';
+import { buildSessionGoal, pickSessionPairs, planSession, type SessionGoal } from './services/sessionPlan';
+import { getDuePatterns } from './services/typingTraining';
 import { colorwayForGenre } from './services/colorway';
 import { TRANSLATIONS } from './services/i18n';
 import { DAILY_MAX_ATTEMPTS, DailyBrief, getDailyBrief, getDailyState, pickDailyItems, reserveDailyAttempt, recordDailyAttempt } from './services/dailyMode';
@@ -33,6 +35,7 @@ import {
   createBalancedCalibration,
   getAdaptiveDifficulty,
   getEffectiveBaseline,
+  getComparableRuns,
   getLocalDateKey,
   loadPlayerProgress,
   recordRun,
@@ -308,6 +311,18 @@ const App: React.FC = () => {
   // The pace the game measures the player at, tracking real runs rather than the
   // one calibration prompt they typed on their first day.
   const effectiveBaseline = useMemo(() => getEffectiveBaseline(playerProgress, language), [playerProgress, language]);
+  const comparableRuns = useMemo(() => getComparableRuns(playerProgress, language), [playerProgress, language]);
+  // "Play" is the session built for this player right now: prologue for a
+  // newcomer, otherwise a rotated world, a focus perk and their weak pairs.
+  const sessionPlan = useMemo(() => planSession({
+    progress: playerProgress,
+    comparableRuns,
+    leadWithPrologue,
+    weakPairs: pickSessionPairs(getDuePatterns(typingTraining, language).map(review => review.token), trainingFocusTokens),
+    paceWpm: effectiveBaseline.wpm
+  }), [playerProgress, comparableRuns, leadWithPrologue, typingTraining, language, trainingFocusTokens, effectiveBaseline.wpm]);
+  // The focus a campaign run was started to train; the debrief measures it again.
+  const [sessionGoal, setSessionGoal] = useState<SessionGoal | null>(null);
 
   const adaptiveDifficulty = useMemo(
     () => getAdaptiveDifficulty(playerProgress.calibration, playerProgress, language),
@@ -631,9 +646,9 @@ const App: React.FC = () => {
         } else if (gameState === GameState.MENU) {
             // Each menu key sinks its cap on screen before the menu leaves.
             if (e.repeat) return;
-            // Enter starts whichever mode leads the menu; the digits never move.
-            if (e.key === '1' || (e.key === 'Enter' && leadWithPrologue)) { pressThen('1', initializeRelay); consume(); }
-            if (e.key === '2' || (e.key === 'Enter' && !leadWithPrologue)) { pressThen('2', initializeSession); consume(); }
+            // 1 and Enter play the planned session; 2 picks a world by hand.
+            if (e.key === '1' || e.key === 'Enter') { pressThen('1', startPlannedSession); consume(); }
+            if (e.key === '2') { pressThen('2', initializeSession); consume(); }
             if (e.key === '3' && !dailyAttemptsExhausted) { pressThen('3', initializeDailySession); consume(); }
             if (e.key === '4') { pressThen('4', () => setGameState(GameState.BLACK_MARKET)); consume(); }
             if (e.key === '6') { pressThen('6', () => startTargetedDrill()); consume(); }
@@ -660,7 +675,7 @@ const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [dailyAttemptsExhausted, deathSequenceActive, gameState, isSectorSummaryReady, leadWithPrologue, offeredPerks, playerProgress.calibration, runCheckpoint, userProfile]);
+  }, [dailyAttemptsExhausted, deathSequenceActive, gameState, isSectorSummaryReady, leadWithPrologue, sessionPlan, offeredPerks, playerProgress.calibration, runCheckpoint, userProfile]);
 
   // Browsers refuse to open an AudioContext outside a user gesture, so the very
   // first click or keypress is what actually brings audio up — including on the
@@ -793,6 +808,7 @@ const App: React.FC = () => {
       setCurrentDailyId(null);
       sessionRef.current.dailyId = null;
       setCurrentDailyDateLabel(null);
+      setSessionGoal(buildSessionGoal(comparableRuns));
       // A newcomer meets the story first. Calibration used to be the very first
       // thing a stranger saw: a 93-character typing test, before the game had
       // shown them what it was for. The baseline now tracks real runs, so an
@@ -802,7 +818,29 @@ const App: React.FC = () => {
       audioEngine.unlock();
   };
 
+  // Straight into typing: world, starter perk and goal come from the plan.
+  const startPlannedSession = () => {
+      if (sessionPlan.kind === 'prologue') { initializeRelay(); return; }
+      sessionRef.current.calibrationMode = 'calibration';
+      clearRunCheckpoint();
+      setRunCheckpoint(null);
+      prepareSession();
+      setIsDailyRun(false);
+      sessionRef.current.isDaily = false;
+      setCurrentDailyId(null);
+      sessionRef.current.dailyId = null;
+      setCurrentDailyDateLabel(null);
+      setSelectedGenre(sessionPlan.genre);
+      sessionRef.current.genre = sessionPlan.genre;
+      const perk = PERK_DEFINITIONS.find(definition => definition.groupId === sessionPlan.perk);
+      setActivePerks(perk ? [createPerk(perk, 0, hubSkin, language)] : []);
+      setSessionGoal(sessionPlan.goal);
+      audioEngine.unlock();
+      beginStoryGeneration(sessionPlan.genre);
+  };
+
   const initializeRelay = () => {
+      setSessionGoal(null);
       clearRunCheckpoint();
       setRunCheckpoint(null);
       prepareSession();
@@ -908,6 +946,7 @@ const App: React.FC = () => {
   };
 
   const initializeDailySession = () => {
+      setSessionGoal(null);
       sessionRef.current.calibrationMode = 'calibration';
       const brief = getDailyBrief();
       const latestState = getDailyState(brief.dailyId, language);
@@ -1488,7 +1527,7 @@ const App: React.FC = () => {
         <span className="screens-vignette" />
       </div>
 
-      {showSettings && <Suspense fallback={null}><PlaySettings value={preferences} language={language} onClose={() => setShowSettings(false)} onChange={p => setPreferences(writePlayPreferences(p))} /></Suspense>}
+      {showSettings && <Suspense fallback={null}><PlaySettings value={preferences} language={language} onClose={() => setShowSettings(false)} onChange={p => setPreferences(writePlayPreferences(p))} skillStackAnchor={skillStackAnchor} onToggleSkillStack={handleToggleSkillStack} /></Suspense>}
       {deathSequenceActive && <DeathSequence label={UI.signal_lost} />}
 
       {/* Status strip — what the shell column was actually for, minus the parts
@@ -1501,10 +1540,8 @@ const App: React.FC = () => {
           ui={UI}
           credits={userProfile.credits}
           perks={activePerks}
-          skillStackAnchor={skillStackAnchor}
           language={language}
           onAccount={gameState === GameState.MENU ? () => setGameState(GameState.ACCOUNT) : undefined}
-          onToggleSkillStack={handleToggleSkillStack}
           onToggleLanguage={handleToggleLanguage}
           languageLocked={inSimulation || gameState === GameState.PRACTICE || gameState === GameState.CALIBRATION}
           onSettings={() => setShowSettings(true)}
@@ -1524,7 +1561,8 @@ const App: React.FC = () => {
                     pactRewardMultiplier={pactRewardMultiplier}
                     activePact={activePact}
                     relaxed={!!userProfile.relaxed}
-                    leadWithPrologue={leadWithPrologue}
+                    sessionPlan={sessionPlan}
+                    onPlay={startPlannedSession}
                     onToggleRelaxed={() => setUserProfile(prev => ({ ...prev, relaxed: !prev.relaxed }))}
                     onTogglePactClause={handleTogglePactClause}
                     dailyGenrePack={dailyGenrePack}
@@ -1628,6 +1666,7 @@ const App: React.FC = () => {
 
             {gameState === GameState.LEVEL_COMPLETE && lastLevelReport && (
                 <SectorCompleteScreen
+                    sessionGoal={sessionGoal}
                     ui={UI}
                     language={language}
                     training={typingTraining}
@@ -1686,6 +1725,7 @@ const App: React.FC = () => {
 
             {gameState === GameState.VICTORY && victoryReport && (
                 <VictoryScreen
+                    sessionGoal={sessionGoal}
                     ui={UI}
                     language={language}
                     report={victoryReport}
@@ -1707,6 +1747,7 @@ const App: React.FC = () => {
             )}
             {gameState === GameState.GAME_OVER && (
                 <GameOverScreen
+                    sessionGoal={sessionGoal}
                     ui={UI}
                     language={language}
                     stats={finalStats}

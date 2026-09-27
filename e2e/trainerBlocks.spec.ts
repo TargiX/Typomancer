@@ -8,7 +8,8 @@ const line = (page: Page) => page.locator('.engine-type-scroll span.relative.inl
 const typeLine = async (page: Page) => {
   const text = await line(page).innerText();
   await expect(input(page)).toBeEnabled();
-  await input(page).pressSequentially(text, { delay: 2 });
+  // 8 ms per key: fast enough for a sector, slow enough not to outrun the line under parallel load.
+  await input(page).pressSequentially(text, { delay: 8 });
   return text;
 };
 test('with timed choices off, a story choice waits beyond the fuse and keeps keyboard focus', async ({ page }) => {
@@ -50,8 +51,8 @@ test('reading settings persist, remap keys, leave Tab available and fit a narrow
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
   await page.getByRole('button', { name: 'RU', exact: true }).click();
-  await page.getByRole('button', { name: 'Чтение и управление', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Чтение и управление' });
+  await page.getByRole('button', { name: 'Настройки', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Настройки' });
   await dialog.getByLabel('Размер текста').selectOption('28');
   await dialog.getByLabel('Уменьшить движение и вспышки').check();
   await dialog.getByLabel('Чёткий текст без курсива').check();
@@ -93,8 +94,8 @@ test('pause can open settings and exit, then resume the saved line with working 
   const text = await typeLine(page); await expect(line(page)).not.toHaveText(text);
   const next = await line(page).innerText();
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Reading & controls', exact: true }).click();
-  await page.getByRole('dialog', { name: 'Reading & controls' }).getByRole('button', { name: 'Done' }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'Done' }).click();
   await expect(page.getByRole('dialog', { name: 'Paused', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back to menu', exact: true }).click();
   await page.locator('[data-hotkey="r"]').click();
@@ -125,7 +126,7 @@ test('Daily admission is persisted immediately, upgrades and pact do not change 
 test('versioned Russian share opens in its language with a comparable challenge', async ({ page }) => {
   const id = 'SECTOR-' + new Date().toISOString().slice(0, 10).replaceAll('-', '');
   await page.goto(`/?challenge=${id}&target=500&rules=daily-v2&lang=ru`);
-  await expect(page.getByRole('button', { name: 'Чтение и управление', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Настройки', exact: true })).toBeVisible();
   await expect(page.getByText('Неформальный вызов: язык или правила отличаются.')).toHaveCount(0);
 });
 
