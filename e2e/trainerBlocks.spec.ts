@@ -8,6 +8,8 @@ const line = (page: Page) => page.locator('.engine-type-scroll span.relative.inl
 const typeLine = async (page: Page) => {
   const text = await line(page).innerText();
   await expect(input(page)).toBeEnabled();
+  // The engine locks input for 50 ms while it hands one line to the next.
+  await page.waitForTimeout(75);
   // 8 ms per key: fast enough for a sector, slow enough not to outrun the line under parallel load.
   await input(page).pressSequentially(text, { delay: 8 });
   return text;
@@ -112,6 +114,8 @@ test('Daily admission is persisted immediately, upgrades and pact do not change 
   });
   await page.reload();
   await page.locator('[data-hotkey="3"]').click();
+  // Admission is taken under a cross-tab lock; the perk screen means it was granted.
+  await expect(page.locator('.screens-perk-card').first()).toBeVisible();
   const daily = await page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('nfDaily:')).map(k => ({ key: k, ...JSON.parse(localStorage.getItem(k)!) })));
   expect(daily).toHaveLength(1);
   expect(daily[0].key).toMatch(/_en_daily-v2$/);

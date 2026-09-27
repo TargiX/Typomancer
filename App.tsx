@@ -15,7 +15,7 @@ import { buildSessionGoal, pickSessionPairs, planSession, type SessionGoal } fro
 import { getDuePatterns } from './services/typingTraining';
 import { colorwayForGenre } from './services/colorway';
 import { TRANSLATIONS } from './services/i18n';
-import { DAILY_MAX_ATTEMPTS, DailyBrief, getDailyBrief, getDailyState, pickDailyItems, reserveDailyAttempt, recordDailyAttempt } from './services/dailyMode';
+import { DAILY_MAX_ATTEMPTS, DailyBrief, getDailyBrief, getDailyState, pickDailyItems, reserveDailyAttemptExclusive, recordDailyAttempt } from './services/dailyMode';
 import { CAMPAIGN_SECTORS, DEFAULT_BRANCH_THRESHOLDS, getTypingAccuracy, getTypingFocus, summarizeSector } from './services/gameRules';
 import { clampTraceSpeed, getComfortCreditMultiplier } from './services/riskReward';
 import { getSkillHeadline } from './services/progressAnalytics';
@@ -945,7 +945,17 @@ const App: React.FC = () => {
       setGameState(GameState.PLAYING);
   };
 
-  const initializeDailySession = () => {
+  const dailyAdmissionPendingRef = useRef(false);
+  // Read inside the admission lock: leaving the menu or switching language while
+  // waiting for another tab cancels the admission before anything is charged.
+  const gameStateRef = useRef(gameState);
+  const languageRef = useRef(language);
+  useEffect(() => { gameStateRef.current = gameState; languageRef.current = language; }, [gameState, language]);
+  const [dailyStorageBlocked, setDailyStorageBlocked] = useState(false);
+  const initializeDailySession = async () => {
+      // One admission at a time: a second click while the lock is held must
+      // not charge a second attempt.
+      if (dailyAdmissionPendingRef.current) return;
       setSessionGoal(null);
       sessionRef.current.calibrationMode = 'calibration';
       const brief = getDailyBrief();
@@ -954,8 +964,20 @@ const App: React.FC = () => {
       setDailyState(latestState);
       if (latestState.attemptsUsed >= DAILY_MAX_ATTEMPTS) return;
 
-      const admitted = reserveDailyAttempt(brief.dailyId, language);
-      if (!admitted) return;
+      dailyAdmissionPendingRef.current = true;
+      const admissionLanguage = language;
+      const admission = await reserveDailyAttemptExclusive(brief.dailyId, admissionLanguage,
+          () => gameStateRef.current === GameState.MENU && languageRef.current === admissionLanguage
+            && getDailyBrief().dailyId === brief.dailyId)
+        .finally(() => { dailyAdmissionPendingRef.current = false; });
+      if ('reason' in admission) {
+          // Without a stored count the limit cannot be kept, so Daily says so instead of starting.
+          setDailyStorageBlocked(admission.reason === 'storage');
+          if (admission.reason !== 'cancelled') setDailyState(getDailyState(brief.dailyId, admissionLanguage));
+          return;
+      }
+      setDailyStorageBlocked(false);
+      const admitted = admission.state;
       setDailyState(admitted);
       prepareSession(brief.dailyId);
       sessionRef.current.dailyBrief = brief;
@@ -1562,6 +1584,7 @@ const App: React.FC = () => {
                     activePact={activePact}
                     relaxed={!!userProfile.relaxed}
                     sessionPlan={sessionPlan}
+                    dailyStorageBlocked={dailyStorageBlocked}
                     onPlay={startPlannedSession}
                     onToggleRelaxed={() => setUserProfile(prev => ({ ...prev, relaxed: !prev.relaxed }))}
                     onTogglePactClause={handleTogglePactClause}

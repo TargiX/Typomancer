@@ -247,11 +247,54 @@ export const recordDailyAttempt = (dailyId: string, score: number, endingTitle: 
   return next;
 };
 
-/** Charge admission, including abandoned attempts; completion only updates the score. */
-export const reserveDailyAttempt = (dailyId: string, language: Language): DailyState | null => {
+export type DailyAdmission =
+  | { ok: true; state: DailyState }
+  | { ok: false; reason: 'exhausted' | 'storage' | 'cancelled' };
+
+/**
+ * Charge admission, including abandoned attempts; completion only updates the
+ * score. The limit is only as real as the stored count, so an attempt is
+ * granted only once the new count reads back from storage (the same storage
+ * every tab and the active account share).
+ */
+export const reserveDailyAttempt = (dailyId: string, language: Language): DailyAdmission => {
+  // An unreadable record is not an empty one: refuse rather than overwrite a count we cannot see.
+  try {
+    const raw = playerStorage()?.getItem(dailyKey(dailyId, language));
+    if (raw != null) JSON.parse(raw);
+  } catch {
+    return { ok: false, reason: 'storage' };
+  }
   const previous = getDailyState(dailyId, language);
-  if (previous.attemptsUsed >= DAILY_MAX_ATTEMPTS) return null;
+  if (previous.attemptsUsed >= DAILY_MAX_ATTEMPTS) return { ok: false, reason: 'exhausted' };
   const next = { ...previous, attemptsUsed: previous.attemptsUsed + 1 };
-  try { playerStorage()?.setItem(dailyKey(dailyId, language), JSON.stringify(next)); } catch { /* memory state still limits this session */ }
-  return next;
+  try {
+    const storage = playerStorage();
+    if (!storage) return { ok: false, reason: 'storage' };
+    storage.setItem(dailyKey(dailyId, language), JSON.stringify(next));
+  } catch {
+    return { ok: false, reason: 'storage' };
+  }
+  return getDailyState(dailyId, language).attemptsUsed === next.attemptsUsed
+    ? { ok: true, state: next }
+    : { ok: false, reason: 'storage' };
+};
+
+type LockManagerLike = { request: <T>(name: string, callback: () => T | Promise<T>) => Promise<T> };
+
+/**
+ * Admission across tabs: the Web Locks API serialises the read-modify-write
+ * for every tab of this origin, so two tabs cannot both take the last attempt.
+ * `stillWanted` runs inside the lock, so a player who left the Daily flow while
+ * waiting is not charged. Browsers without Web Locks use the single-tab path.
+ */
+export const reserveDailyAttemptExclusive = (
+  dailyId: string,
+  language: Language,
+  stillWanted: () => boolean = () => true
+): Promise<DailyAdmission> => {
+  const admit = (): DailyAdmission => stillWanted() ? reserveDailyAttempt(dailyId, language) : { ok: false, reason: 'cancelled' };
+  const locks = typeof navigator !== 'undefined' ? (navigator as Navigator & { locks?: LockManagerLike }).locks : undefined;
+  if (!locks?.request) return Promise.resolve(admit());
+  return locks.request(`typomancer-daily:${dailyKey(dailyId, language)}`, admit);
 };

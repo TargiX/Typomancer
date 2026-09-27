@@ -63,6 +63,8 @@ test('raw errors survive shields, pause, reload and a changed menu language', as
 });
 
 test('two sectors retain all line rewards and one cumulative run after banking and reload', async ({ page }) => {
+  // Fourteen typed lines across two sectors: ~40 s locally, close to 60 s on CI runners.
+  test.setTimeout(120_000);
   await page.goto('/');
   await page.locator('[data-hotkey="1"]').click();
   await finishSector(page);

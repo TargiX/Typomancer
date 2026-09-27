@@ -77,8 +77,9 @@ export interface PlayerProgress {
 export interface ProgressSummary {
   totalRuns: number;
   bestWpm: number;
-  averageWpm: number;
-  averageAccuracy: number;
+  /** Null when no run matches this language and conditions; the UI shows a dash, not 0. */
+  averageWpm: number | null;
+  averageAccuracy: number | null;
   wpmDelta: number;
   currentStreak: number;
   hasRunToday: boolean;
@@ -384,8 +385,8 @@ export const summarizeProgress = (progress: PlayerProgress, now = new Date(), la
   return {
     totalRuns: runs.length,
     bestWpm: runs.reduce((best, run) => Math.max(best, run.bestWpm, run.wpm), 0),
-    averageWpm: average(recentRuns.map((run) => run.wpm)),
-    averageAccuracy: runs.length > 0 ? average(recentRuns.map((run) => run.accuracy)) : 100,
+    averageWpm: recentRuns.length > 0 ? average(recentRuns.map((run) => run.wpm)) : null,
+    averageAccuracy: recentRuns.length > 0 ? average(recentRuns.map((run) => run.accuracy)) : null,
     wpmDelta: priorWindow.length > 0
       ? average(latestWindow.map((run) => run.wpm)) - average(priorWindow.map((run) => run.wpm))
       : shortBaseline.length > 0

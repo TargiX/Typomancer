@@ -32,6 +32,7 @@ interface MenuScreenProps {
     activePact: PactClauseId[];
     relaxed: boolean;
     sessionPlan: SessionPlan;
+    dailyStorageBlocked?: boolean;
     onToggleRelaxed: () => void;
     onTogglePactClause: (id: PactClauseId) => void;
     onPactOpened?: () => void;
@@ -53,7 +54,7 @@ const stripHint = (label: string) => label.replace(/^\[\d\]\s*/, '');
 const MenuScreen: React.FC<MenuScreenProps> = ({
     ui, language, incomingChallenge, isCurrentChallenge, dailyBrief, dailyGenrePack, dailyState,
     dailyAttemptsLeft, dailyAttemptsExhausted, runCheckpoint, skillHeadline, training,
-    pactRewardMultiplier, activePact, relaxed, sessionPlan, onToggleRelaxed, onTogglePactClause,
+    pactRewardMultiplier, activePact, relaxed, sessionPlan, dailyStorageBlocked = false, onToggleRelaxed, onTogglePactClause,
     onPactOpened, canInstall, onInstall, onPlay, onRelay, onInitialize, onDaily, onResume,
     onBlackMarket, onPractice, onOperatorRecord
 }) => {
@@ -161,7 +162,9 @@ const MenuScreen: React.FC<MenuScreenProps> = ({
                             />
                             {ui.daily_sector}
                         </span>
-                        {dailyAttemptsExhausted ? (
+                        {dailyStorageBlocked ? (
+                            <span className="screens-btn-sub">{ui.daily_storage_blocked}</span>
+                        ) : dailyAttemptsExhausted ? (
                             <span className="screens-btn-sub tabular-nums">
                                 {ui.daily_best}: {dailyState.bestScore} · {dailyState.bestEnding || ui.daily_severed} · {ui.daily_tomorrow}
                             </span>

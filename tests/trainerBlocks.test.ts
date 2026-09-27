@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { DEFAULT_PLAY_PREFERENCES, normalizePlayPreferences } from '../services/playPreferences.ts';
 import { freezeSessionRules, DAILY_RULESET } from '../services/sessionRules.ts';
 import { DEFAULT_MODIFIERS } from '../services/perks.ts';
-import { reserveDailyAttempt, getDailyState, recordDailyAttempt, getDailyBrief } from '../services/dailyMode.ts';
+import { reserveDailyAttempt, reserveDailyAttemptExclusive, getDailyState, recordDailyAttempt, getDailyBrief } from '../services/dailyMode.ts';
 import { parseChallenge, getChallengeVerdict, buildChallengeShareUrl } from '../services/challenge.ts';
 import challengeHandler from '../api/challenge.ts';
 import { EMPTY_TYPING_TRAINING, recordTypingSession, recentPattern, getTrainingFocusTokens, recordPatternReview, getDuePatterns, getBenchmarkDelta } from '../services/typingTraining.ts';
@@ -42,11 +42,12 @@ test('Daily reserves abandoned attempts and separates languages without deleting
   Object.defineProperty(globalThis, 'localStorage', { value: memoryStorage(), configurable: true });
   try {
     const id = 'SECTOR-20260926';
-    assert.equal(reserveDailyAttempt(id, 'en')?.attemptsUsed, 1);
+    const first = reserveDailyAttempt(id, 'en');
+    assert.equal(first.ok && first.state.attemptsUsed, 1);
     assert.equal(recordDailyAttempt(id, 300, 'done', 'en', true).attemptsUsed, 1);
     assert.equal(getDailyState(id, 'ru').attemptsUsed, 0);
     reserveDailyAttempt(id, 'en'); reserveDailyAttempt(id, 'en');
-    assert.equal(reserveDailyAttempt(id, 'en'), null);
+    assert.deepEqual(reserveDailyAttempt(id, 'en'), { ok: false, reason: 'exhausted' });
     reserveDailyAttempt(id, 'ru');
     assert.equal(getDailyState(id, 'en').bestScore, 300);
     assert.equal(getDailyState(id, 'ru').attemptsUsed, 1);
@@ -179,4 +180,44 @@ test('aggregate training windows, baselines and review schedule survive cloud sc
   assert.equal(snapshot.training.reviews?.[0].successfulDays, 1);
   assert.equal(snapshot.training.bigrams[0].recent?.[0].attempts, 8);
   assert.equal(snapshot.training.baselines?.length, 1);
+});
+test('Daily admission fails closed when storage cannot keep the count, and serialises through Web Locks', async () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  const restoreStorage = () => { if (previous) Object.defineProperty(globalThis, 'localStorage', previous); else Reflect.deleteProperty(globalThis, 'localStorage'); };
+  const failing = { ...memoryStorage(), setItem: () => { throw new Error('quota'); } };
+  Object.defineProperty(globalThis, 'localStorage', { value: failing, configurable: true });
+  try {
+    // Without a stored count the limit cannot be enforced across tabs, so nothing is granted.
+    assert.deepEqual(reserveDailyAttempt('SECTOR-20260930', 'en'), { ok: false, reason: 'storage' });
+    assert.equal(getDailyState('SECTOR-20260930', 'en').attemptsUsed, 0);
+  } finally { restoreStorage(); }
+
+  // An unreadable stored count is refused, not overwritten with a fresh 1.
+  const corrupt = memoryStorage();
+  Object.defineProperty(globalThis, 'localStorage', { value: corrupt, configurable: true });
+  try {
+    corrupt.setItem('nfDaily:SECTOR-20260929_en_daily-v2', '{not json');
+    assert.deepEqual(reserveDailyAttempt('SECTOR-20260929', 'en'), { ok: false, reason: 'storage' });
+    assert.equal(corrupt.getItem('nfDaily:SECTOR-20260929_en_daily-v2'), '{not json');
+  } finally { restoreStorage(); }
+
+  Object.defineProperty(globalThis, 'localStorage', { value: memoryStorage(), configurable: true });
+  const nav = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  let queue = Promise.resolve();
+  const locks = { request: <T>(_name: string, callback: () => T) => { const run = queue.then(callback); queue = run.then(() => undefined); return run; } };
+  Object.defineProperty(globalThis, 'navigator', { value: { locks }, configurable: true });
+  try {
+    // A player who left the Daily flow while waiting for the lock is not charged.
+    assert.deepEqual(await reserveDailyAttemptExclusive('SECTOR-20261002', 'en', () => false), { ok: false, reason: 'cancelled' });
+    assert.equal(getDailyState('SECTOR-20261002', 'en').attemptsUsed, 0);
+    // Two concurrent admissions for the last attempt: the lock lets only one through.
+    const id = 'SECTOR-20261001';
+    reserveDailyAttempt(id, 'ru'); reserveDailyAttempt(id, 'ru');
+    const results = await Promise.all([reserveDailyAttemptExclusive(id, 'ru'), reserveDailyAttemptExclusive(id, 'ru')]);
+    assert.equal(results.filter(result => result.ok).length, 1);
+    assert.equal(getDailyState(id, 'ru').attemptsUsed, 3);
+  } finally {
+    if (nav) Object.defineProperty(globalThis, 'navigator', nav); else Reflect.deleteProperty(globalThis, 'navigator');
+    restoreStorage();
+  }
 });
