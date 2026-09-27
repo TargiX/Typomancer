@@ -215,25 +215,15 @@ const cleanupOldDailyKeys = (activeKey: string): void => {
 
 const dailyKey = (dailyId: string, language?: Language) => `${DAILY_STORAGE_PREFIX}${dailyId}${language ? `_${language}_${DAILY_RULESET}` : ''}`;
 
-// Attempts charged in this tab. Storage can refuse the write (privacy modes,
-// full quota); the tab still remembers what it charged, so a failed write never
-// hands back an attempt.
-const chargedAttempts = new Map<string, number>();
-
-const withCharged = (key: string, state: DailyState): DailyState => ({
-  ...state,
-  attemptsUsed: Math.max(state.attemptsUsed, chargedAttempts.get(key) ?? 0)
-});
-
 export const getDailyState = (dailyId: string, language?: Language): DailyState => {
+  if (typeof localStorage === 'undefined') return { ...EMPTY_DAILY_STATE };
   const key = dailyKey(dailyId, language);
-  if (typeof localStorage === 'undefined') return withCharged(key, { ...EMPTY_DAILY_STATE });
   try {
     cleanupOldDailyKeys(key);
     const stored = playerStorage()?.getItem(key);
-    return withCharged(key, stored ? normalizeDailyState(JSON.parse(stored)) : { ...EMPTY_DAILY_STATE });
+    return stored ? normalizeDailyState(JSON.parse(stored)) : { ...EMPTY_DAILY_STATE };
   } catch {
-    return withCharged(key, { ...EMPTY_DAILY_STATE });
+    return { ...EMPTY_DAILY_STATE };
   }
 };
 
@@ -257,14 +247,30 @@ export const recordDailyAttempt = (dailyId: string, score: number, endingTitle: 
   return next;
 };
 
-/** Charge admission, including abandoned attempts; completion only updates the score. */
-export const reserveDailyAttempt = (dailyId: string, language: Language): DailyState | null => {
+export type DailyAdmission =
+  | { ok: true; state: DailyState }
+  | { ok: false; reason: 'exhausted' | 'storage' | 'cancelled' };
+
+/**
+ * Charge admission, including abandoned attempts; completion only updates the
+ * score. The limit is only as real as the stored count, so an attempt is
+ * granted only once the new count reads back from storage (the same storage
+ * every tab and the active account share).
+ */
+export const reserveDailyAttempt = (dailyId: string, language: Language): DailyAdmission => {
   const previous = getDailyState(dailyId, language);
-  if (previous.attemptsUsed >= DAILY_MAX_ATTEMPTS) return null;
+  if (previous.attemptsUsed >= DAILY_MAX_ATTEMPTS) return { ok: false, reason: 'exhausted' };
   const next = { ...previous, attemptsUsed: previous.attemptsUsed + 1 };
-  chargedAttempts.set(dailyKey(dailyId, language), next.attemptsUsed);
-  try { playerStorage()?.setItem(dailyKey(dailyId, language), JSON.stringify(next)); } catch { /* chargedAttempts still limits this tab */ }
-  return next;
+  try {
+    const storage = playerStorage();
+    if (!storage) return { ok: false, reason: 'storage' };
+    storage.setItem(dailyKey(dailyId, language), JSON.stringify(next));
+  } catch {
+    return { ok: false, reason: 'storage' };
+  }
+  return getDailyState(dailyId, language).attemptsUsed === next.attemptsUsed
+    ? { ok: true, state: next }
+    : { ok: false, reason: 'storage' };
 };
 
 type LockManagerLike = { request: <T>(name: string, callback: () => T | Promise<T>) => Promise<T> };
@@ -272,10 +278,16 @@ type LockManagerLike = { request: <T>(name: string, callback: () => T | Promise<
 /**
  * Admission across tabs: the Web Locks API serialises the read-modify-write
  * for every tab of this origin, so two tabs cannot both take the last attempt.
- * Browsers without it fall back to the single-tab path.
+ * `stillWanted` runs inside the lock, so a player who left the Daily flow while
+ * waiting is not charged. Browsers without Web Locks use the single-tab path.
  */
-export const reserveDailyAttemptExclusive = (dailyId: string, language: Language): Promise<DailyState | null> => {
+export const reserveDailyAttemptExclusive = (
+  dailyId: string,
+  language: Language,
+  stillWanted: () => boolean = () => true
+): Promise<DailyAdmission> => {
+  const admit = (): DailyAdmission => stillWanted() ? reserveDailyAttempt(dailyId, language) : { ok: false, reason: 'cancelled' };
   const locks = typeof navigator !== 'undefined' ? (navigator as Navigator & { locks?: LockManagerLike }).locks : undefined;
-  if (!locks?.request) return Promise.resolve(reserveDailyAttempt(dailyId, language));
-  return locks.request(`typomancer-daily:${dailyKey(dailyId, language)}`, () => reserveDailyAttempt(dailyId, language));
+  if (!locks?.request) return Promise.resolve(admit());
+  return locks.request(`typomancer-daily:${dailyKey(dailyId, language)}`, admit);
 };

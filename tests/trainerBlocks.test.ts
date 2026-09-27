@@ -42,11 +42,12 @@ test('Daily reserves abandoned attempts and separates languages without deleting
   Object.defineProperty(globalThis, 'localStorage', { value: memoryStorage(), configurable: true });
   try {
     const id = 'SECTOR-20260926';
-    assert.equal(reserveDailyAttempt(id, 'en')?.attemptsUsed, 1);
+    const first = reserveDailyAttempt(id, 'en');
+    assert.equal(first.ok && first.state.attemptsUsed, 1);
     assert.equal(recordDailyAttempt(id, 300, 'done', 'en', true).attemptsUsed, 1);
     assert.equal(getDailyState(id, 'ru').attemptsUsed, 0);
     reserveDailyAttempt(id, 'en'); reserveDailyAttempt(id, 'en');
-    assert.equal(reserveDailyAttempt(id, 'en'), null);
+    assert.deepEqual(reserveDailyAttempt(id, 'en'), { ok: false, reason: 'exhausted' });
     reserveDailyAttempt(id, 'ru');
     assert.equal(getDailyState(id, 'en').bestScore, 300);
     assert.equal(getDailyState(id, 'ru').attemptsUsed, 1);
@@ -180,34 +181,34 @@ test('aggregate training windows, baselines and review schedule survive cloud sc
   assert.equal(snapshot.training.bigrams[0].recent?.[0].attempts, 8);
   assert.equal(snapshot.training.baselines?.length, 1);
 });
-test('Daily admission survives a storage write failure and serialises through Web Locks', async () => {
+test('Daily admission fails closed when storage cannot keep the count, and serialises through Web Locks', async () => {
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  const restoreStorage = () => { if (previous) Object.defineProperty(globalThis, 'localStorage', previous); else Reflect.deleteProperty(globalThis, 'localStorage'); };
   const failing = { ...memoryStorage(), setItem: () => { throw new Error('quota'); } };
   Object.defineProperty(globalThis, 'localStorage', { value: failing, configurable: true });
   try {
-    const id = 'SECTOR-20260930';
-    // Nothing persists, yet the tab still counts what it charged.
-    assert.equal(reserveDailyAttempt(id, 'en')?.attemptsUsed, 1);
-    assert.equal(reserveDailyAttempt(id, 'en')?.attemptsUsed, 2);
-    assert.equal(reserveDailyAttempt(id, 'en')?.attemptsUsed, 3);
-    assert.equal(reserveDailyAttempt(id, 'en'), null);
-    assert.equal(getDailyState(id, 'en').attemptsUsed, 3);
-  } finally { if (previous) Object.defineProperty(globalThis, 'localStorage', previous); else Reflect.deleteProperty(globalThis, 'localStorage'); }
+    // Without a stored count the limit cannot be enforced across tabs, so nothing is granted.
+    assert.deepEqual(reserveDailyAttempt('SECTOR-20260930', 'en'), { ok: false, reason: 'storage' });
+    assert.equal(getDailyState('SECTOR-20260930', 'en').attemptsUsed, 0);
+  } finally { restoreStorage(); }
 
-  // Two concurrent admissions for the last attempt: the lock lets only one through.
   Object.defineProperty(globalThis, 'localStorage', { value: memoryStorage(), configurable: true });
   const nav = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
   let queue = Promise.resolve();
   const locks = { request: <T>(_name: string, callback: () => T) => { const run = queue.then(callback); queue = run.then(() => undefined); return run; } };
   Object.defineProperty(globalThis, 'navigator', { value: { locks }, configurable: true });
   try {
+    // A player who left the Daily flow while waiting for the lock is not charged.
+    assert.deepEqual(await reserveDailyAttemptExclusive('SECTOR-20261002', 'en', () => false), { ok: false, reason: 'cancelled' });
+    assert.equal(getDailyState('SECTOR-20261002', 'en').attemptsUsed, 0);
+    // Two concurrent admissions for the last attempt: the lock lets only one through.
     const id = 'SECTOR-20261001';
     reserveDailyAttempt(id, 'ru'); reserveDailyAttempt(id, 'ru');
     const results = await Promise.all([reserveDailyAttemptExclusive(id, 'ru'), reserveDailyAttemptExclusive(id, 'ru')]);
-    assert.equal(results.filter(Boolean).length, 1);
+    assert.equal(results.filter(result => result.ok).length, 1);
     assert.equal(getDailyState(id, 'ru').attemptsUsed, 3);
   } finally {
     if (nav) Object.defineProperty(globalThis, 'navigator', nav); else Reflect.deleteProperty(globalThis, 'navigator');
-    if (previous) Object.defineProperty(globalThis, 'localStorage', previous); else Reflect.deleteProperty(globalThis, 'localStorage');
+    restoreStorage();
   }
 });
