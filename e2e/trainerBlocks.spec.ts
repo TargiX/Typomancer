@@ -136,6 +136,8 @@ test('versioned Russian share opens in its language with a comparable challenge'
 
 
 test('practice from a sector debrief returns to the same earned perk choice', async ({ page }) => {
+  // A full typed sector plus three practice stages: past 60 s on CI runners.
+  test.setTimeout(120_000);
   await page.goto('/'); await page.locator('[data-hotkey="1"]').click();
   for (let round = 1; round <= 7; round++) {
     const text = await typeLine(page);
