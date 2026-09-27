@@ -111,6 +111,8 @@ test('Daily admission is persisted immediately, upgrades and pact do not change 
   });
   await page.reload();
   await page.locator('[data-hotkey="3"]').click();
+  // Admission is taken under a cross-tab lock; the perk screen means it was granted.
+  await expect(page.locator('.screens-perk-card').first()).toBeVisible();
   const daily = await page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('nfDaily:')).map(k => ({ key: k, ...JSON.parse(localStorage.getItem(k)!) })));
   expect(daily).toHaveLength(1);
   expect(daily[0].key).toMatch(/_en_daily-v2$/);

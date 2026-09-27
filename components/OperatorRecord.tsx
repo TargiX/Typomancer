@@ -167,8 +167,8 @@ const OperatorRecord: React.FC<OperatorRecordProps> = ({ language, progress, tra
         <div className="operator-record-stats">
           <div><strong>{summary.totalRuns}</strong><span>{ui.runs}</span></div>
           <div><strong>{summary.bestWpm}</strong><span>{ui.best}</span></div>
-          <div><strong>{Math.round(summary.averageWpm)}</strong><span>{ui.average}</span></div>
-          <div><strong>{summary.totalRuns > 0 ? `${Math.round(summary.averageAccuracy)}%` : '—'}</strong><span>{ui.accuracy}</span></div>
+          <div><strong>{summary.averageWpm === null ? '—' : Math.round(summary.averageWpm)}</strong><span>{ui.average}</span></div>
+          <div><strong>{summary.averageAccuracy === null ? '—' : `${Math.round(summary.averageAccuracy)}%`}</strong><span>{ui.accuracy}</span></div>
           <div><strong>{summary.currentStreak}</strong><span>{ui.streak}</span></div>
         </div>
 

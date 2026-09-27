@@ -214,3 +214,14 @@ test('the prologue tag survives normalisation and the cloud run schema', () => {
   assert.equal(runSchema.safeParse(makeRun({ mission: 'last_relay' })).success, true);
   assert.equal(runSchema.safeParse({ ...makeRun(), mission: 'other' }).success, false);
 });
+
+test('a summary with no comparable runs reports no averages instead of zero', () => {
+  // Runs recorded before measurement metadata, or in the other language, are not comparable.
+  const legacy = { ...EMPTY_PLAYER_PROGRESS, runs: [makeRun({ accuracy: 97, wpm: 60 })] };
+  const summary = summarizeProgress(legacy, new Date('2026-08-23T12:00:00.000Z'), 'en');
+  assert.equal(summary.totalRuns, 1);
+  assert.equal(summary.averageAccuracy, null);
+  assert.equal(summary.averageWpm, null);
+  const measured = { ...EMPTY_PLAYER_PROGRESS, runs: [makeRun({ accuracy: 97, wpm: 60, language: 'en', measurementVersion: 2 })] };
+  assert.equal(summarizeProgress(measured, new Date('2026-08-23T12:00:00.000Z'), 'en').averageAccuracy, 97);
+});

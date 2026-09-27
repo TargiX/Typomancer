@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { DEFAULT_PLAY_PREFERENCES, normalizePlayPreferences } from '../services/playPreferences.ts';
 import { freezeSessionRules, DAILY_RULESET } from '../services/sessionRules.ts';
 import { DEFAULT_MODIFIERS } from '../services/perks.ts';
-import { reserveDailyAttempt, getDailyState, recordDailyAttempt, getDailyBrief } from '../services/dailyMode.ts';
+import { reserveDailyAttempt, reserveDailyAttemptExclusive, getDailyState, recordDailyAttempt, getDailyBrief } from '../services/dailyMode.ts';
 import { parseChallenge, getChallengeVerdict, buildChallengeShareUrl } from '../services/challenge.ts';
 import challengeHandler from '../api/challenge.ts';
 import { EMPTY_TYPING_TRAINING, recordTypingSession, recentPattern, getTrainingFocusTokens, recordPatternReview, getDuePatterns, getBenchmarkDelta } from '../services/typingTraining.ts';
@@ -179,4 +179,35 @@ test('aggregate training windows, baselines and review schedule survive cloud sc
   assert.equal(snapshot.training.reviews?.[0].successfulDays, 1);
   assert.equal(snapshot.training.bigrams[0].recent?.[0].attempts, 8);
   assert.equal(snapshot.training.baselines?.length, 1);
+});
+test('Daily admission survives a storage write failure and serialises through Web Locks', async () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  const failing = { ...memoryStorage(), setItem: () => { throw new Error('quota'); } };
+  Object.defineProperty(globalThis, 'localStorage', { value: failing, configurable: true });
+  try {
+    const id = 'SECTOR-20260930';
+    // Nothing persists, yet the tab still counts what it charged.
+    assert.equal(reserveDailyAttempt(id, 'en')?.attemptsUsed, 1);
+    assert.equal(reserveDailyAttempt(id, 'en')?.attemptsUsed, 2);
+    assert.equal(reserveDailyAttempt(id, 'en')?.attemptsUsed, 3);
+    assert.equal(reserveDailyAttempt(id, 'en'), null);
+    assert.equal(getDailyState(id, 'en').attemptsUsed, 3);
+  } finally { if (previous) Object.defineProperty(globalThis, 'localStorage', previous); else Reflect.deleteProperty(globalThis, 'localStorage'); }
+
+  // Two concurrent admissions for the last attempt: the lock lets only one through.
+  Object.defineProperty(globalThis, 'localStorage', { value: memoryStorage(), configurable: true });
+  const nav = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  let queue = Promise.resolve();
+  const locks = { request: <T>(_name: string, callback: () => T) => { const run = queue.then(callback); queue = run.then(() => undefined); return run; } };
+  Object.defineProperty(globalThis, 'navigator', { value: { locks }, configurable: true });
+  try {
+    const id = 'SECTOR-20261001';
+    reserveDailyAttempt(id, 'ru'); reserveDailyAttempt(id, 'ru');
+    const results = await Promise.all([reserveDailyAttemptExclusive(id, 'ru'), reserveDailyAttemptExclusive(id, 'ru')]);
+    assert.equal(results.filter(Boolean).length, 1);
+    assert.equal(getDailyState(id, 'ru').attemptsUsed, 3);
+  } finally {
+    if (nav) Object.defineProperty(globalThis, 'navigator', nav); else Reflect.deleteProperty(globalThis, 'navigator');
+    if (previous) Object.defineProperty(globalThis, 'localStorage', previous); else Reflect.deleteProperty(globalThis, 'localStorage');
+  }
 });
