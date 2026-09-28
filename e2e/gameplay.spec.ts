@@ -131,12 +131,15 @@ test('the tracer eats the line behind a stalled player and PURGE throws it back'
   await expect(burned.first()).toHaveCSS('background-clip', 'text');
   const gradient = await burned.evaluateAll(elements => ({
     width: elements[0].parentElement?.style.getPropertyValue('--tracer-gradient-width'),
-    offsets: elements.map(element => (element as HTMLElement).style.getPropertyValue('--tracer-gradient-offset')),
+    offsets: elements.map(element => Number.parseFloat((element as HTMLElement).style.getPropertyValue('--tracer-gradient-offset'))),
+    glyphWidths: elements.map(element => element.getBoundingClientRect().width),
     frontColor: elements[0].parentElement?.style.getPropertyValue('--tracer-front-color')
   }));
-  expect(gradient.width).toBe(`${gradient.offsets.length}ch`);
-  expect(gradient.offsets[0]).toBe('0ch');
-  expect(gradient.offsets.at(-1)).toBe(`${1 - gradient.offsets.length}ch`);
+  expect(Number.parseFloat(gradient.width ?? '')).toBeCloseTo(gradient.glyphWidths.reduce((sum, width) => sum + width, 0), 1);
+  expect(gradient.offsets[0]).toBe(0);
+  gradient.offsets.slice(1).forEach((offset, index) =>
+    expect(offset).toBeCloseTo(gradient.offsets[index] - gradient.glyphWidths[index], 1)
+  );
 
   // Shortening the lead makes the same shared gradient redder at its front.
   for (let i = 0; i < 10; i++) await input.press('Backspace');

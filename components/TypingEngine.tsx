@@ -761,6 +761,29 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   }, []);
 
   useLayoutEffect(() => {
+    const active = activeRef.current;
+    if (!active) return;
+    const measure = () => {
+      const burned = active.querySelectorAll<HTMLElement>(':scope > .tracer-burned');
+      let prefixWidth = 0;
+      burned.forEach(glyph => {
+        glyph.style.setProperty('--tracer-gradient-offset', `${-prefixWidth}px`);
+        prefixWidth += glyph.getBoundingClientRect().width;
+      });
+      active.style.setProperty('--tracer-gradient-width', `${Math.max(1, prefixWidth)}px`);
+    };
+    measure();
+    // AI text may use fallback glyphs. Re-measure once the font finishes loading.
+    let cancelled = false;
+    void document.fonts.ready.then(() => { if (!cancelled) measure(); });
+    window.addEventListener('resize', measure);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('resize', measure);
+    };
+  }, [tracerBurnFront, activeSegment.text]);
+
+  useLayoutEffect(() => {
     if (activeRef.current) {
         activeRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
     } else if (textContainerRef.current) {
@@ -1573,8 +1596,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       }
 
       return (
-        <span key={index} ref={isCursor ? cursorRef : undefined} data-index={index} className={`${className} relative`}
-          style={index < burnFront ? { '--tracer-gradient-offset': `${-index}ch` } as React.CSSProperties : undefined}>
+        <span key={index} ref={isCursor ? cursorRef : undefined} data-index={index} className={`${className} relative`}>
             {char}
         </span>
       );
@@ -1994,10 +2016,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                     {seg.text}
                 </span>
             ))}
-            <span ref={activeRef} className="relative inline-block" style={{
-                '--tracer-gradient-width': `${Math.max(1, tracerBurnFront)}ch`,
-                '--tracer-front-color': tracerFrontColor
-            } as React.CSSProperties}>
+            <span ref={activeRef} className="relative inline-block" style={{ '--tracer-front-color': tracerFrontColor } as React.CSSProperties}>
                 {renderActive()}
                 {!isWaitingForAi && (
                     <span
