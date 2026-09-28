@@ -2400,6 +2400,12 @@
 .practice-correct { color: #86d6a6; }
 .practice-wrong { color: #ffb7c2; background: #612e3b; }
 .practice-caret { box-shadow: -2px 0 0 #ffb583; }
+[data-caret-style="block"] .practice-caret,
+[data-caret-style="outline"] .practice-caret,
+[data-caret-style="underline"] .practice-caret { border-radius: 2px; }
+[data-caret-style="block"] .practice-caret { background: #ffb583; color: #21120b; box-shadow: none; }
+[data-caret-style="outline"] .practice-caret { box-shadow: inset 0 0 0 2px #ffb583; }
+[data-caret-style="underline"] .practice-caret { box-shadow: inset 0 -3px 0 #ffb583; }
 .practice-input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .practice-panel .btn-cyber { padding: 12px 20px; }
 .practice-exit { color: #bdb4c4; text-decoration: underline; padding: 16px 0 0; margin-top: 16px; }

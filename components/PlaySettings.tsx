@@ -1,7 +1,7 @@
 import { GOAL_COPY, type CampaignGoal } from '../services/campaignTraining';
 import React, { useEffect, useRef, useState } from 'react';
 import type { Language } from '../types';
-import { SKILL_KEYS, keyLabel, type PlayPreferences, type SkillKey } from '../services/playPreferences';
+import { SKILL_KEYS, keyLabel, type CaretStyle, type PlayPreferences, type SkillKey } from '../services/playPreferences';
 import { audioEngine, SWITCH_PROFILES, type SwitchProfile } from '../services/audioEngine';
 import type { SkillStackAnchor } from '../services/skillStackAnchor';
 
@@ -58,6 +58,12 @@ export default function PlaySettings({ value, language, onChange, onClose, skill
     <label><input type="checkbox" checked={value.clearText} onChange={e => onChange({ ...value, clearText: e.target.checked })} /> {ru ? 'Повышенный контраст текста' : 'Higher contrast text'}</label>
     <label>{ru ? 'Размер текста' : 'Text size'} <select value={value.textSize} onChange={e => onChange({ ...value, textSize: Number(e.target.value) as PlayPreferences['textSize'] })}>
       {[20, 24, 28].map(n => <option key={n} value={n}>{n} px</option>)}
+    </select></label>
+    <label>{ru ? 'Курсор набора' : 'Typing caret'} <select value={value.caretStyle} onChange={e => onChange({ ...value, caretStyle: e.target.value as CaretStyle })}>
+      <option value="line">{ru ? 'Линия' : 'Line'}</option>
+      <option value="block">{ru ? 'Залитый блок' : 'Filled block'}</option>
+      <option value="outline">{ru ? 'Контур' : 'Outline'}</option>
+      <option value="underline">{ru ? 'Подчёркивание' : 'Underline'}</option>
     </select></label>
     <label><input type="checkbox" checked={value.reducedMotion} onChange={e => onChange({ ...value, reducedMotion: e.target.checked })} /> {ru ? 'Уменьшить движение и вспышки' : 'Reduce motion and flashes'}</label>
 

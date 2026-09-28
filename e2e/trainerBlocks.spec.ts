@@ -56,6 +56,7 @@ test('reading settings persist, remap keys, leave Tab available and fit a narrow
   await page.getByRole('button', { name: 'Настройки', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Настройки' });
   await dialog.getByLabel('Размер текста').selectOption('28');
+  await dialog.getByLabel('Курсор набора').selectOption('outline');
   await dialog.getByLabel('Уменьшить движение и вспышки').check();
   await dialog.getByLabel('Повышенный контраст текста').check();
   await dialog.getByRole('combobox', { name: 'Фокус', exact: true }).selectOption('F3');
@@ -64,6 +65,9 @@ test('reading settings persist, remap keys, leave Tab available and fit a narrow
   await page.reload();
   await page.locator('[data-hotkey="1"]').click();
   await expect(page.locator('[data-motion="reduced"]')).toHaveCount(1);
+  await expect(page.locator('[data-caret-style="outline"]')).toHaveCount(1);
+  await expect(page.locator('.engine-glide-caret')).toHaveCSS('display', 'none');
+  await expect(page.locator('.engine-caret')).toHaveCSS('box-shadow', /0px 0px 0px 2px inset/);
   await expect(page.locator('.engine-prose')).toHaveCSS('font-size', '28px');
   await expect(page.locator('.ch-todo').first()).toHaveCSS('color', 'rgb(214, 211, 220)');
   await page.getByRole('textbox').focus();
@@ -75,6 +79,23 @@ test('reading settings persist, remap keys, leave Tab available and fit a narrow
   await page.keyboard.press('F3');
   await expect(page.locator('.engine-caret--focus')).toHaveCount(1);
   expect(await page.evaluate(() => document.body.scrollWidth <= innerWidth)).toBe(true);
+});
+test('filled and underlined caret styles stay readable in play and practice', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => localStorage.setItem('typomancerPlayPreferences', JSON.stringify({ caretStyle: 'block' })));
+  await page.reload();
+  await page.locator('[data-hotkey="1"]').click();
+  await expect(line(page).locator('..')).toHaveClass(/opacity-100/);
+  const next = line(page).locator('.engine-caret');
+  await expect(next).toHaveCSS('background-color', /rgb\(/);
+  await expect(next).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(next).toHaveCSS('color', /rgb\(/);
+  await page.screenshot({ path: '.context/caret-block.png', animations: 'disabled' });
+  await page.evaluate(() => localStorage.setItem('typomancerPlayPreferences', JSON.stringify({ caretStyle: 'underline' })));
+  await page.reload();
+  await page.locator('[data-hotkey="6"]').click();
+  await page.getByRole('button', { name: 'Start stage' }).click();
+  await expect(page.locator('.practice-caret')).toHaveCSS('box-shadow', /0px -3px 0px 0px inset/);
 });
 test('typing line keeps the next glyph unfilled and upright while the caret marks its position', async ({ page }) => {
   await page.goto('/');

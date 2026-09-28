@@ -862,6 +862,21 @@ button.engine-cursor-skill:disabled {
   animation: engine-caret-blink 1.05s ease-in-out infinite;
 }
 
+[data-caret-style="block"] .engine-glide-caret,
+[data-caret-style="outline"] .engine-glide-caret,
+[data-caret-style="underline"] .engine-glide-caret { display: none; }
+
+[data-caret-style="block"] .engine-caret,
+[data-caret-style="outline"] .engine-caret,
+[data-caret-style="underline"] .engine-caret { --caret-color: var(--signal); text-shadow: none; border-radius: 2px; }
+[data-caret-style="block"] .engine-caret--focus,
+[data-caret-style="outline"] .engine-caret--focus,
+[data-caret-style="underline"] .engine-caret--focus { --caret-color: #8fe3b4; }
+[data-caret-style="block"] .engine-caret { background: var(--caret-color); color: var(--on-signal); }
+[data-caret-style="block"] .engine-caret--focus { color: #101712; }
+[data-caret-style="outline"] .engine-caret { box-shadow: inset 0 0 0 2px var(--caret-color); }
+[data-caret-style="underline"] .engine-caret { box-shadow: inset 0 -3px 0 var(--caret-color); }
+
 @media (prefers-reduced-motion: reduce) {
   .engine-glide-caret { transition: none; }
   .engine-glide-caret.is-idle { animation: none; }

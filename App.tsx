@@ -1559,7 +1559,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div data-text-preset={preferences.clearText ? 'clear' : 'atmospheric'} data-motion={preferences.reducedMotion ? 'reduced' : 'full'} style={{ '--typing-size': `${preferences.textSize}px` } as React.CSSProperties} data-colorway={inWorldColorway ? colorwayForGenre(selectedGenre) : 'ember'} className="screens-app-shell min-h-screen bg-[#0e0d10] text-slate-200 flex flex-col md:flex-row font-mono overflow-hidden">
+    <div data-text-preset={preferences.clearText ? 'clear' : 'atmospheric'} data-caret-style={preferences.caretStyle} data-motion={preferences.reducedMotion ? 'reduced' : 'full'} style={{ '--typing-size': `${preferences.textSize}px` } as React.CSSProperties} data-colorway={inWorldColorway ? colorwayForGenre(selectedGenre) : 'ember'} className="screens-app-shell min-h-screen bg-[#0e0d10] text-slate-200 flex flex-col md:flex-row font-mono overflow-hidden">
       {/* The desk the game sits on: matte grain and a warm pool of light, no
           frame brackets. The deck frame drew a second set of corners around
           every panel that already had its own. */}
