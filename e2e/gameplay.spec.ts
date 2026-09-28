@@ -106,6 +106,7 @@ test('the tracer eats the line behind a stalled player and PURGE throws it back'
   const input = page.getByRole('textbox', { name: 'Typing practice input' });
   const activeText = await page.locator('.engine-type-scroll span.relative.inline-block').innerText();
   const burned = page.locator('.tracer-burned');
+  const consumedLength = async () => (await burned.allTextContents())[0]?.length ?? 0;
 
   // Opening a line and reading it is free: the chase has not armed yet.
   await expect(burned).toHaveCount(0);
@@ -126,36 +127,32 @@ test('the tracer eats the line behind a stalled player and PURGE throws it back'
   // The burn front now marches into the lead we just built.
   await page.clock.setFixedTime(typingStartedAt + 4000);
   await expect
-    .poll(async () => burned.count(), { timeout: 20_000, message: 'tracer should consume the line behind a stalled caret' })
+    .poll(consumedLength, { timeout: 20_000, message: 'tracer should consume the line behind a stalled caret' })
     .toBeGreaterThan(4);
-  await expect(burned.first()).toHaveCSS('background-clip', 'text');
-  const gradient = await burned.evaluateAll(elements => ({
-    width: elements[0].parentElement?.style.getPropertyValue('--tracer-gradient-width'),
-    offsets: elements.map(element => Number.parseFloat((element as HTMLElement).style.getPropertyValue('--tracer-gradient-offset'))),
-    glyphWidths: elements.map(element => element.getBoundingClientRect().width),
-    frontColor: elements[0].parentElement?.style.getPropertyValue('--tracer-front-color')
-  }));
-  expect(Number.parseFloat(gradient.width ?? '')).toBeCloseTo(gradient.glyphWidths.reduce((sum, width) => sum + width, 0), 1);
-  expect(gradient.offsets[0]).toBe(0);
-  gradient.offsets.slice(1).forEach((offset, index) =>
-    expect(offset).toBeCloseTo(gradient.offsets[index] - gradient.glyphWidths[index], 1)
+  await expect(burned).toHaveCount(1);
+  await expect(burned).toHaveCSS('background-clip', 'text');
+  await expect(burned).toHaveCSS('background-size', '100% 100%');
+  const consumedText = await burned.textContent();
+  expect(consumedText).toBe(activeText.slice(0, consumedText?.length));
+  const farFront = await burned.evaluate(element =>
+    getComputedStyle(element).getPropertyValue('--tracer-front-color').trim()
   );
 
   // Shortening the lead makes the same shared gradient redder at its front.
   for (let i = 0; i < 10; i++) await input.press('Backspace');
-  const nearFront = await burned.first().evaluate(element =>
+  const nearFront = await burned.evaluate(element =>
     getComputedStyle(element).getPropertyValue('--tracer-front-color').trim()
   );
   const colorChannels = (color: string | undefined) => color?.match(/rgb\(255 (\d+) (\d+)\)/)?.slice(1).map(Number) ?? [];
-  const [farGreen, farBlue] = colorChannels(gradient.frontColor);
+  const [farGreen, farBlue] = colorChannels(farFront);
   const [nearGreen, nearBlue] = colorChannels(nearFront);
   expect(nearGreen).toBeLessThan(farGreen);
   expect(nearBlue).toBeLessThan(farBlue);
 
-  const beforePurge = await burned.count();
+  const beforePurge = await consumedLength();
   await page.keyboard.press('ArrowDown');
   await expect
-    .poll(async () => burned.count(), { timeout: 5_000, message: 'PURGE should throw the burn front back' })
+    .poll(consumedLength, { timeout: 5_000, message: 'PURGE should throw the burn front back' })
     .toBeLessThan(beforePurge);
 });
 

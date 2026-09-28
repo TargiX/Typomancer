@@ -761,29 +761,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   }, []);
 
   useLayoutEffect(() => {
-    const active = activeRef.current;
-    if (!active) return;
-    const measure = () => {
-      const burned = active.querySelectorAll<HTMLElement>(':scope > .tracer-burned');
-      let prefixWidth = 0;
-      burned.forEach(glyph => {
-        glyph.style.setProperty('--tracer-gradient-offset', `${-prefixWidth}px`);
-        prefixWidth += glyph.getBoundingClientRect().width;
-      });
-      active.style.setProperty('--tracer-gradient-width', `${Math.max(1, prefixWidth)}px`);
-    };
-    measure();
-    // AI text may use fallback glyphs. Re-measure once the font finishes loading.
-    let cancelled = false;
-    void document.fonts.ready.then(() => { if (!cancelled) measure(); });
-    window.addEventListener('resize', measure);
-    return () => {
-      cancelled = true;
-      window.removeEventListener('resize', measure);
-    };
-  }, [tracerBurnFront, activeSegment.text]);
-
-  useLayoutEffect(() => {
     if (activeRef.current) {
         activeRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
     } else if (textContainerRef.current) {
@@ -1566,9 +1543,14 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   };
 
   const renderActive = () => {
-    const burnFront = tracerBurnFront;
+    const burnFront = Math.max(0, Math.min(activeSegment.text.length, tracerBurnFront));
     const text = activeSegment.text;
-    return text.split('').map((char, index) => {
+    return <>
+      {burnFront > 0 && (
+        <span key={`burned-${burnFront}`} className="tracer-burned">{text.slice(0, burnFront)}</span>
+      )}
+      {text.slice(burnFront).split('').map((char, remainingIndex) => {
+      const index = burnFront + remainingIndex;
 
       // Focus mode = clarity: the UPCOMING text turns bright and crisp (easier to read
       // ahead), instead of dimming. Typed chars stay saturated so progress is obvious.
@@ -1582,12 +1564,9 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           className = forgivenIndicesRef.current.has(index) ? "ch-forgiven" : "ch-miss";
         }
       }
-      // The tracer eats the line from behind — it marks what you typed, the
-      // way the ledger's owners would. Burned characters replace their own
-      // styling so the damage reads at a glance, but the caret always wins:
-      // losing sight of where you are would be the one unfair outcome.
-      if (index < burnFront) className = "tracer-burned";
-      else if (index === burnFront) className = "tracer-head";
+      // The consumed prefix above owns one gradient. Its moving edge marks the
+      // next character, while the caret still wins if the tracer catches it.
+      if (index === burnFront) className = "tracer-head";
 
       // The caret is a separate bar before the next glyph. Its character keeps
       // the same untyped style so it cannot look like a completed keystroke.
@@ -1600,7 +1579,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
             {char}
         </span>
       );
-    });
+    })}
+    </>;
   };
 
   const getContainerStyles = () => {
