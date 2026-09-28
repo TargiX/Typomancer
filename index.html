@@ -358,6 +358,20 @@
           box-shadow: inset -2px 0 0 var(--signal-hi);
           animation: tracer-head-pulse 0.45s ease-in-out infinite alternate;
       }
+      /* The caret wins when both cursors meet. Keep the tracer visible beneath
+         it so the chase is legible even before the first keystroke. */
+      .engine-caret--tracer-head::after {
+          content: '';
+          position: absolute;
+          left: 0;
+          right: 0;
+          bottom: -2px;
+          height: 3px;
+          border-radius: 2px;
+          background: #ff4d6d;
+          box-shadow: 0 0 8px rgba(255, 77, 109, 0.85);
+          pointer-events: none;
+      }
       .tracer-panel-closing {
           box-shadow: inset 0 0 60px rgba(244, 63, 94, 0.14);
       }
