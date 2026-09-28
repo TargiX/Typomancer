@@ -128,6 +128,7 @@ test('the tracer eats the line behind a stalled player and PURGE throws it back'
   await expect
     .poll(async () => burned.count(), { timeout: 20_000, message: 'tracer should consume the line behind a stalled caret' })
     .toBeGreaterThan(4);
+  await expect(burned.first()).toHaveCSS('background-clip', 'text');
 
   const beforePurge = await burned.count();
   await page.keyboard.press('ArrowDown');
