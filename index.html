@@ -333,20 +333,28 @@
       /* THE TRACER — the Security Trace drawn on the line you are typing.
          Characters behind the burn front are being consumed; the gap between
          the front and your caret is your safety margin, made visible. */
-      /* Each consumed letter fills with hostile ink. The chase remains readable
-         where the player is looking instead of disappearing into the panel. */
+      /* One gradient spans the consumed prefix. Each newly claimed glyph reveals
+         its slice of that gradient; the front grows redder as the gap closes. */
       @keyframes tracer-letter-fill {
-          from { background-size: 0% 100%; }
-          to { background-size: 100% 100%; }
+          from { -webkit-mask-size: 0% 100%; mask-size: 0% 100%; }
+          to { -webkit-mask-size: 100% 100%; mask-size: 100% 100%; }
       }
       .tracer-burned {
           color: transparent;
-          background-image: linear-gradient(90deg, #ffb09a, #ff4d6d);
+          background-image: linear-gradient(90deg, #e9a697, var(--tracer-front-color));
           background-repeat: no-repeat;
-          background-position: left center;
-          background-size: 100% 100%;
+          background-position: var(--tracer-gradient-offset) center;
+          background-size: var(--tracer-gradient-width) 100%;
           -webkit-background-clip: text;
           background-clip: text;
+          -webkit-mask-image: linear-gradient(#000, #000);
+          mask-image: linear-gradient(#000, #000);
+          -webkit-mask-position: left center;
+          mask-position: left center;
+          -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
+          -webkit-mask-size: 100% 100%;
+          mask-size: 100% 100%;
           box-shadow: inset 0 -2px 0 rgba(255, 77, 109, 0.7);
           text-shadow: none;
           animation: tracer-letter-fill 0.32s ease-out both;
