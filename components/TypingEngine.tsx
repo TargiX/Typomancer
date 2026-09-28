@@ -1569,7 +1569,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       // The caret is a separate bar before the next glyph. Its character keeps
       // the same untyped style so it cannot look like a completed keystroke.
       if (isCursor) {
-        className = `${todoClass} engine-caret${isOverclockActive ? ' engine-caret--focus' : ''}`;
+        className = `${todoClass} engine-caret${isOverclockActive ? ' engine-caret--focus' : ''}${index === burnFront ? ' engine-caret--tracer-head' : ''}`;
       }
 
       return (

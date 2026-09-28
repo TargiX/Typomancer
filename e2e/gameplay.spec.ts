@@ -109,6 +109,9 @@ test('the tracer eats the line behind a stalled player and PURGE throws it back'
 
   // Opening a line and reading it is free: the chase has not armed yet.
   await expect(burned).toHaveCount(0);
+  const overlap = page.locator('.engine-caret--tracer-head');
+  await expect(overlap).toHaveCount(1);
+  expect(await overlap.evaluate(element => getComputedStyle(element, '::after').backgroundColor)).toBe('rgb(255, 77, 109)');
 
   // Build a lead, then stop dead. TRACER_GRACE_MS is 3s from the first keystroke.
   // Keep Date.now fixed while typing: a busy CI runner can take more than the
@@ -117,12 +120,15 @@ test('the tracer eats the line behind a stalled player and PURGE throws it back'
   await page.clock.setFixedTime(typingStartedAt);
   await input.pressSequentially(activeText.slice(0, 40), { delay: 5 });
   await expect(burned).toHaveCount(0);
+  await expect(overlap).toHaveCount(0);
+  await expect(page.locator('.engine-type-scroll .tracer-head')).toHaveCount(1);
 
   // The burn front now marches into the lead we just built.
   await page.clock.setFixedTime(typingStartedAt + 4000);
   await expect
     .poll(async () => burned.count(), { timeout: 20_000, message: 'tracer should consume the line behind a stalled caret' })
     .toBeGreaterThan(4);
+  await expect(burned.first()).toHaveCSS('background-clip', 'text');
 
   const beforePurge = await burned.count();
   await page.keyboard.press('ArrowDown');
