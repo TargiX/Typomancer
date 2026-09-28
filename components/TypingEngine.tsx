@@ -761,29 +761,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
   }, []);
 
   useLayoutEffect(() => {
-    const active = activeRef.current;
-    if (!active) return;
-    const measure = () => {
-      const burned = active.querySelectorAll<HTMLElement>(':scope > .tracer-burned');
-      let prefixWidth = 0;
-      burned.forEach(glyph => {
-        glyph.style.setProperty('--tracer-gradient-offset', `${-prefixWidth}px`);
-        prefixWidth += glyph.getBoundingClientRect().width;
-      });
-      active.style.setProperty('--tracer-gradient-width', `${Math.max(1, prefixWidth)}px`);
-    };
-    measure();
-    // AI text may use fallback glyphs. Re-measure once the font finishes loading.
-    let cancelled = false;
-    void document.fonts.ready.then(() => { if (!cancelled) measure(); });
-    window.addEventListener('resize', measure);
-    return () => {
-      cancelled = true;
-      window.removeEventListener('resize', measure);
-    };
-  }, [tracerBurnFront, activeSegment.text]);
-
-  useLayoutEffect(() => {
     if (activeRef.current) {
         activeRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
     } else if (textContainerRef.current) {
@@ -1565,6 +1542,11 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         onLevelComplete(stats, clamp(tracePercent + outcome.traceDelta), missionRef.current);
   };
 
+  const tracerGap = inputValue.length - tracerBurnFront;
+  const tracerDanger = clamp((18 - tracerGap) / 18, 0, 1);
+  const tracerFrontGreen = Math.round(80 - 56 * tracerDanger);
+  const tracerFrontBlue = Math.round(104 - 55 * tracerDanger);
+
   const renderActive = () => {
     const burnFront = tracerBurnFront;
     const text = activeSegment.text;
@@ -1582,10 +1564,8 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
           className = forgivenIndicesRef.current.has(index) ? "ch-forgiven" : "ch-miss";
         }
       }
-      // The tracer eats the line from behind — it marks what you typed, the
-      // way the ledger's owners would. Burned characters replace their own
-      // styling so the damage reads at a glance, but the caret always wins:
-      // losing sight of where you are would be the one unfair outcome.
+      // One solid color per glyph samples the gradient across the whole consumed
+      // prefix. This keeps the transition continuous even when a line wraps.
       if (index < burnFront) className = "tracer-burned";
       else if (index === burnFront) className = "tracer-head";
 
@@ -1595,8 +1575,13 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
         className = `${todoClass} engine-caret${isOverclockActive ? ' engine-caret--focus' : ''}${index === burnFront ? ' engine-caret--tracer-head' : ''}`;
       }
 
+      const progress = index < burnFront ? (burnFront <= 1 ? 1 : index / (burnFront - 1)) : 0;
+      const ink = index < burnFront
+        ? `rgb(${Math.round(233 + 22 * progress)} ${Math.round(166 + (tracerFrontGreen - 166) * progress)} ${Math.round(151 + (tracerFrontBlue - 151) * progress)})`
+        : undefined;
       return (
-        <span key={index} ref={isCursor ? cursorRef : undefined} data-index={index} className={`${className} relative`}>
+        <span key={index} ref={isCursor ? cursorRef : undefined} data-index={index} className={`${className} relative`}
+          style={ink ? { color: ink } : undefined}>
             {char}
         </span>
       );
@@ -1663,10 +1648,6 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
     if (activeSegment.type === SegmentType.BREACH) return "rgba(134,214,166,0.24)";
     return "rgba(14, 13, 16,0.2)";
   };
-
-  const tracerGap = inputValue.length - tracerBurnFront;
-  const tracerDanger = clamp((18 - tracerGap) / 18, 0, 1);
-  const tracerFrontColor = `rgb(255 ${Math.round(80 - 56 * tracerDanger)} ${Math.round(104 - 55 * tracerDanger)})`;
 
   // No centred 1024px column here: with the shell gone, capping the deck puts it
   // back into a page. A HUD fills the frame; the line keeps its own measure.
@@ -2016,7 +1997,7 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
                     {seg.text}
                 </span>
             ))}
-            <span ref={activeRef} className="relative inline-block" style={{ '--tracer-front-color': tracerFrontColor } as React.CSSProperties}>
+            <span ref={activeRef} className="relative inline-block">
                 {renderActive()}
                 {!isWaitingForAi && (
                     <span

@@ -128,27 +128,30 @@ test('the tracer eats the line behind a stalled player and PURGE throws it back'
   await expect
     .poll(async () => burned.count(), { timeout: 20_000, message: 'tracer should consume the line behind a stalled caret' })
     .toBeGreaterThan(4);
-  await expect(burned.first()).toHaveCSS('background-clip', 'text');
-  const gradient = await burned.evaluateAll(elements => ({
-    width: elements[0].parentElement?.style.getPropertyValue('--tracer-gradient-width'),
-    offsets: elements.map(element => Number.parseFloat((element as HTMLElement).style.getPropertyValue('--tracer-gradient-offset'))),
-    glyphWidths: elements.map(element => element.getBoundingClientRect().width),
-    frontColor: elements[0].parentElement?.style.getPropertyValue('--tracer-front-color')
-  }));
-  expect(Number.parseFloat(gradient.width ?? '')).toBeCloseTo(gradient.glyphWidths.reduce((sum, width) => sum + width, 0), 1);
-  expect(gradient.offsets[0]).toBe(0);
-  gradient.offsets.slice(1).forEach((offset, index) =>
-    expect(offset).toBeCloseTo(gradient.offsets[index] - gradient.glyphWidths[index], 1)
-  );
+  const ink = await burned.evaluateAll(elements => elements.map(element => ({
+    char: element.textContent,
+    color: getComputedStyle(element).color,
+    background: getComputedStyle(element).backgroundImage
+  })));
+  expect(ink.map(glyph => glyph.char).join('')).toBe(activeText.slice(0, ink.length));
+  expect(ink.every(glyph => glyph.background === 'none')).toBe(true);
+  const colorChannels = (color: string) => color.match(/rgb\((\d+), (\d+), (\d+)\)/)?.slice(1).map(Number) ?? [];
+  const [firstRed, firstGreen, firstBlue] = colorChannels(ink[0].color);
+  const [farRed, farGreen, farBlue] = colorChannels(ink.at(-1)!.color);
+  expect(firstRed).toBeLessThan(farRed);
+  expect(firstGreen).toBeGreaterThan(farGreen);
+  expect(firstBlue).toBeGreaterThan(farBlue);
+  ink.slice(1).forEach((glyph, index) => {
+    const [, previousGreen, previousBlue] = colorChannels(ink[index].color);
+    const [, green, blue] = colorChannels(glyph.color);
+    expect(green).toBeLessThanOrEqual(previousGreen);
+    expect(blue).toBeLessThanOrEqual(previousBlue);
+  });
 
-  // Shortening the lead makes the same shared gradient redder at its front.
+  // Shortening the lead makes the same prefix gradient redder at its front.
   for (let i = 0; i < 10; i++) await input.press('Backspace');
-  const nearFront = await burned.first().evaluate(element =>
-    getComputedStyle(element).getPropertyValue('--tracer-front-color').trim()
-  );
-  const colorChannels = (color: string | undefined) => color?.match(/rgb\(255 (\d+) (\d+)\)/)?.slice(1).map(Number) ?? [];
-  const [farGreen, farBlue] = colorChannels(gradient.frontColor);
-  const [nearGreen, nearBlue] = colorChannels(nearFront);
+  const [nearRed, nearGreen, nearBlue] = colorChannels(await burned.last().evaluate(element => getComputedStyle(element).color));
+  expect(nearRed).toBe(255);
   expect(nearGreen).toBeLessThan(farGreen);
   expect(nearBlue).toBeLessThan(farBlue);
 
