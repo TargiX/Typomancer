@@ -333,20 +333,14 @@
       /* THE TRACER — the Security Trace drawn on the line you are typing.
          Characters behind the burn front are being consumed; the gap between
          the front and your caret is your safety margin, made visible. */
-      /* The entire consumed prefix is one text element, so its gradient cannot
-         restart inside each letter. Only the newly claimed edge is revealed. */
+      /* Every claimed glyph takes one color sampled from the entire prefix's
+         gradient. No glyph contains its own gradient, and wraps stay readable. */
       @keyframes tracer-letter-fill {
-          from { -webkit-mask-size: calc(100% - 1ch) 100%; mask-size: calc(100% - 1ch) 100%; }
+          from { -webkit-mask-size: 0% 100%; mask-size: 0% 100%; }
           to { -webkit-mask-size: 100% 100%; mask-size: 100% 100%; }
       }
       .tracer-burned {
-          color: transparent;
-          background-image: linear-gradient(90deg, #e9a697, var(--tracer-front-color));
-          background-repeat: no-repeat;
-          background-position: var(--tracer-gradient-offset, 0px) center;
-          background-size: var(--tracer-gradient-width, 100%) 100%;
-          -webkit-background-clip: text;
-          background-clip: text;
+          color: #e9a697;
           -webkit-mask-image: linear-gradient(#000, #000);
           mask-image: linear-gradient(#000, #000);
           -webkit-mask-position: left center;
