@@ -2,17 +2,19 @@ import type { CampaignGoal } from './campaignTraining.ts';
 export const PLAY_PREFERENCES_KEY = 'typomancerPlayPreferences';
 export const SKILL_KEYS = ['Tab', 'F2', 'F3', 'F4', 'F6', 'F7', 'F8', 'ArrowUp', 'ArrowDown'] as const;
 export type SkillKey = typeof SKILL_KEYS[number];
+export type CaretStyle = 'line' | 'block' | 'outline' | 'underline';
 export interface PlayPreferences {
   campaignGoal: CampaignGoal;
   clearText: boolean;
   textSize: 20 | 24 | 28;
+  caretStyle: CaretStyle;
   reducedMotion: boolean;
   /** Story choices run on a 12-second fuse; off makes them untimed. Daily is always untimed. */
   timedDecisions: boolean;
   keys: { focus: SkillKey; firewall: SkillKey; purge: SkillKey };
 }
 export const DEFAULT_PLAY_PREFERENCES: PlayPreferences = {
-  campaignGoal: 'flow', clearText: false, textSize: 24, reducedMotion: false, timedDecisions: true,
+  campaignGoal: 'flow', clearText: false, textSize: 24, caretStyle: 'line', reducedMotion: false, timedDecisions: true,
   keys: { focus: 'Tab', firewall: 'ArrowUp', purge: 'ArrowDown' }
 };
 export function normalizePlayPreferences(value: unknown): PlayPreferences {
@@ -20,6 +22,7 @@ export function normalizePlayPreferences(value: unknown): PlayPreferences {
   const keys = p.keys && Object.values(p.keys);
   const valid = keys?.length === 3 && new Set(keys).size === 3 && keys.every(key => SKILL_KEYS.includes(key));
   return { campaignGoal: p.campaignGoal === 'repair' || p.campaignGoal === 'codes' ? p.campaignGoal : 'flow', clearText: p.clearText === true, textSize: p.textSize === 20 || p.textSize === 28 ? p.textSize : 24,
+    caretStyle: p.caretStyle === 'block' || p.caretStyle === 'outline' || p.caretStyle === 'underline' ? p.caretStyle : 'line',
     reducedMotion: p.reducedMotion === true, timedDecisions: p.timedDecisions !== false, keys: valid ? { ...p.keys! } : { ...DEFAULT_PLAY_PREFERENCES.keys } };
 }
 export function readPlayPreferences(): PlayPreferences {

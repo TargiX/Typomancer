@@ -169,6 +169,8 @@ test('settlement keeps raw mistakes distinct from game forgiveness and applies c
 test('invalid or duplicate skill bindings restore defaults; Tab cannot be trapped by a skill', () => {
   assert.deepEqual(normalizePlayPreferences({ keys: { focus: 'Tab', firewall: 'F2', purge: 'F2' } }).keys, DEFAULT_PLAY_PREFERENCES.keys);
   assert.equal(normalizePlayPreferences({ textSize: 900 }).textSize, 24);
+  assert.equal(normalizePlayPreferences({ caretStyle: 'other' }).caretStyle, 'line');
+  assert.equal(normalizePlayPreferences({ caretStyle: 'outline' }).caretStyle, 'outline');
 });
 test('aggregate training windows, baselines and review schedule survive cloud schema roundtrip', () => {
   const storage = memoryStorage();
