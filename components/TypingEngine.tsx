@@ -1544,20 +1544,13 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
 
   const renderActive = () => {
     const burnFront = tracerBurnFront;
-    // Speech reads as speech: characters inside quotes lean italic, and the
-    // text's own pauses (—, …) carry a breath of extra space.
     const text = activeSegment.text;
-    const quoteDepth: boolean[] = new Array(text.length).fill(false);
-    let inQuote = false;
-    for (let i = 0; i < text.length; i++) {
-      if (text[i] === '"' || text[i] === '«' || text[i] === '»') inQuote = !inQuote;
-      quoteDepth[i] = inQuote;
-    }
     return text.split('').map((char, index) => {
 
       // Focus mode = clarity: the UPCOMING text turns bright and crisp (easier to read
       // ahead), instead of dimming. Typed chars stay saturated so progress is obvious.
-      let className = isOverclockActive ? "ch-todo ch-todo--focus" : activeSegment.type === SegmentType.BREACH ? "ch-todo ch-todo--breach" : "ch-todo";
+      const todoClass = isOverclockActive ? "ch-todo ch-todo--focus" : activeSegment.type === SegmentType.BREACH ? "ch-todo ch-todo--breach" : "ch-todo";
+      let className = todoClass;
       const isCursor = index === inputValue.length;
       if (index < inputValue.length) {
         if (charsMatch(inputValue[index], char, strictCase)) {
@@ -1573,15 +1566,12 @@ const TypingEngine: React.FC<TypingEngineProps> = ({
       if (index < burnFront) className = "tracer-burned";
       else if (index === burnFront) className = "tracer-head";
 
-      // The caret itself is one gliding bar drawn over the line (see
-      // engine-glide-caret); the character under it only brightens.
+      // The caret is a separate bar before the next glyph. Its character keeps
+      // the same untyped style so it cannot look like a completed keystroke.
       if (isCursor) {
-        className = isOverclockActive ? "engine-caret engine-caret--focus" : "engine-caret";
+        className = `${todoClass} engine-caret${isOverclockActive ? ' engine-caret--focus' : ''}`;
       }
 
-      // Prose rhythm: speech leans italic, pauses carry a breath of space.
-      if (quoteDepth[index] && !preferences.clearText) className += " italic";
-      if (char === '—' || char === '…') className += " tracking-[0.35em]";
       return (
         <span key={index} ref={isCursor ? cursorRef : undefined} data-index={index} className={`${className} relative`}>
             {char}

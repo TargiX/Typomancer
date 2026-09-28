@@ -55,7 +55,7 @@ export default function PlaySettings({ value, language, onChange, onClose, skill
     </label>
 
     <h3 className="play-settings-section">{ru ? 'Чтение' : 'Reading'}</h3>
-    <label><input type="checkbox" checked={value.clearText} onChange={e => onChange({ ...value, clearText: e.target.checked })} /> {ru ? 'Чёткий текст без курсива' : 'Clear text without italics'}</label>
+    <label><input type="checkbox" checked={value.clearText} onChange={e => onChange({ ...value, clearText: e.target.checked })} /> {ru ? 'Повышенный контраст текста' : 'Higher contrast text'}</label>
     <label>{ru ? 'Размер текста' : 'Text size'} <select value={value.textSize} onChange={e => onChange({ ...value, textSize: Number(e.target.value) as PlayPreferences['textSize'] })}>
       {[20, 24, 28].map(n => <option key={n} value={n}>{n} px</option>)}
     </select></label>

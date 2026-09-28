@@ -104,7 +104,7 @@
   mask-image: linear-gradient(to bottom, transparent 0, black 72px);
 }
 
-/* DECISION — the question is narrated in the prose cursive; the two
+/* DECISION — the question uses the same upright face as the typed line; the two
    answers are wide keycaps you press with 1 or 2. */
 .engine-decision-head {
   margin-bottom: 34px;
@@ -125,7 +125,7 @@
   margin: 0 auto;
   font-family: var(--font-prose);
   font-size: clamp(22px, 1.2vw + 14px, 32px);
-  font-style: italic;
+  font-style: normal;
   font-weight: 500;
   line-height: 1.45;
   color: var(--legend);
@@ -700,7 +700,7 @@ button.engine-cursor-skill:disabled {
   margin-top: 2px;
   font-size: var(--fs-label);
   line-height: 1.45;
-  font-style: italic;
+  font-style: normal;
   color: #94a3b8;
 }
 
@@ -799,19 +799,18 @@ button.engine-cursor-skill:disabled {
   box-shadow: 0 0 18px rgb(var(--signal-rgb) / 0.25);
 }
 
-/* THE LINE — set in Victor Mono. Untyped text is a dim legend; typed text
-   is the cream ink of a finished key legend. Speech inside quotes is set in
-   the face's true cursive italic (see renderActive). */
+/* THE LINE — fixed-width, upright glyphs keep the typing rhythm stable.
+   Untyped text stays legible over scene art; completed text gets cream ink. */
 .engine-prose {
   font-size: clamp(21px, 0.9vw + 13px, 30px);
   font-weight: 500;
   line-height: 1.72;
-  letter-spacing: 0.005em;
-  font-feature-settings: 'calt' 1, 'liga' 0;
+  letter-spacing: 0;
+  font-variant-ligatures: none;
 }
 
-.ch-todo { color: #6f6a76; transition: color 90ms ease-out; }
-.ch-todo--breach { color: rgba(127, 224, 168, 0.5); }
+.ch-todo { color: #aaa3ad; transition: color 90ms ease-out; }
+.ch-todo--breach { color: #a5cbb6; }
 .ch-todo--focus { color: #fbf6ec; text-shadow: 0 0 8px rgba(127, 224, 168, 0.35); }
 .ch-done { color: var(--legend); transition: color 90ms ease-out; }
 .ch-done--breach { color: #8fe3b4; }
@@ -833,10 +832,6 @@ button.engine-cursor-skill:disabled {
   border-radius: 2px;
   box-shadow: inset 0 -2px 0 rgba(127, 224, 168, 0.8);
 }
-
-/* The character under the caret brightens so the next key reads first. */
-.engine-caret { color: #fbf6ec; }
-.engine-caret--focus { color: #fff; }
 
 .engine-glide-caret {
   position: absolute;
@@ -919,7 +914,7 @@ button.engine-cursor-skill:disabled {
 }
 
 .engine-running-head-consequence {
-  font-style: italic;
+  font-style: normal;
   color: #78736d;
 }
 
