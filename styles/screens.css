@@ -2087,7 +2087,7 @@
 }
 
 .menu-pitch em {
-  font-style: italic;
+  font-style: normal;
   color: var(--legend);
 }
 
@@ -2396,10 +2396,10 @@
 .practice-intro { padding: 24px 0; }
 .practice-readout { display: flex; gap: 22px; align-items: center; margin: 28px 0 20px; font-variant-numeric: tabular-nums; flex-wrap: wrap; }
 .practice-readout strong { color: #d9ac87; font-size: 28px; }
-.practice-transmission { font: 22px/1.9 ui-monospace, monospace; color: #dfdbe3; cursor: text; overflow-wrap: anywhere; min-height: 180px; }
+.practice-transmission { font: 500 22px/1.9 var(--font-prose); color: #dfdbe3; cursor: text; overflow-wrap: anywhere; min-height: 180px; font-variant-ligatures: none; }
 .practice-correct { color: #86d6a6; }
 .practice-wrong { color: #ffb7c2; background: #612e3b; }
-.practice-caret { border-bottom: 3px solid #ffb583; background: #49362d; color: #fff; }
+.practice-caret { box-shadow: -2px 0 0 #ffb583; }
 .practice-input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .practice-panel .btn-cyber { padding: 12px 20px; }
 .practice-exit { color: #bdb4c4; text-decoration: underline; padding: 16px 0 0; margin-top: 16px; }
@@ -2413,10 +2413,8 @@
 .practice-pause .btn-cyber { padding: 14px 24px; }
 .engine-pause-button { position: absolute; right: 8px; top: 4px; z-index: 85; color: #c5bdce; padding: 6px 10px; font-size: 12px; background: #17141be8; border: 1px solid #48414e; }
 
-/* Device preferences: preserve error/caret colors while making the source readable. */
+/* Device preferences: preserve error/caret colors while boosting contrast. */
 [data-text-preset="clear"] .ch-todo { color: #d6d3dc; }
-[data-text-preset="clear"] .ch-in-dialog { font-family: inherit; font-style: normal; }
-[data-text-preset="clear"] .engine-prose, [data-text-preset="clear"] .practice-transmission { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .engine-prose, .practice-transmission { font-size: var(--typing-size, 24px) !important; line-height: 1.65; }
 [data-motion="reduced"] *, [data-motion="reduced"] *::before, [data-motion="reduced"] *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 [data-motion="reduced"] .flash-overlay, [data-motion="reduced"] .screens-grain { display: none; }
@@ -2442,7 +2440,6 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid
 .play-settings button { min-height: 44px; min-width: 90px; padding: .5rem 1rem; }
 @media (pointer: coarse) { .hud-strip-button { min-height: 40px; } }
 
-[data-text-preset="clear"] .engine-decision-question, [data-text-preset="clear"] .engine-decision-option { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-style: normal; }
 .engine-decision-option { font-size: var(--typing-size, 24px); }
 .engine-decision-question { font-size: calc(var(--typing-size, 24px) * 1.15); }
 

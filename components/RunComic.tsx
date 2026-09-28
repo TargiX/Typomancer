@@ -125,8 +125,8 @@ const renderComic = async (
       await Promise.all([
         document.fonts.load('900 34px Unbounded'),
         document.fonts.load('800 40px Unbounded'),
-        document.fonts.load('italic 500 17px "Victor Mono"'),
-        document.fonts.load('600 14px "Victor Mono"'),
+        document.fonts.load('500 17px "IBM Plex Mono"', 'AaЖж'),
+        document.fonts.load('600 14px "IBM Plex Mono"', 'AaЖж'),
         document.fonts.load('700 11px "Martian Mono"')
       ]);
       await document.fonts.ready;
@@ -147,7 +147,7 @@ const renderComic = async (
 
   measureCtx.font = '800 40px Unbounded, sans-serif';
   const endingLines = wrapText(measureCtx, endingTitle, contentW, 2);
-  measureCtx.font = 'italic 500 17px "Victor Mono", monospace';
+  measureCtx.font = '500 17px "IBM Plex Mono", monospace';
   const taglineLines = tagline ? wrapText(measureCtx, `“${tagline}”`, contentW, 3) : [];
 
   const MAST_H = 92;
@@ -199,7 +199,7 @@ const renderComic = async (
   }
   if (taglineLines.length) {
     y += 2;
-    ctx.font = 'italic 500 17px "Victor Mono", monospace';
+    ctx.font = '500 17px "IBM Plex Mono", monospace';
     ctx.fillStyle = INK_SOFT;
     for (const line of taglineLines) {
       ctx.fillText(line, PAD, y);
@@ -247,7 +247,7 @@ const renderComic = async (
     const boxX = x + 12;
     const boxY = top + 12;
     const boxMaxW = Math.min(w - 24, 440);
-    ctx.font = '600 14px "Victor Mono", monospace';
+    ctx.font = '600 14px "IBM Plex Mono", monospace';
     const capLines = wrapText(ctx, frame.caption.trim(), boxMaxW - 24, 3);
     const lineH = 19;
     const boxW = Math.min(boxMaxW, Math.max(...capLines.map(line => ctx.measureText(line).width)) + 24);

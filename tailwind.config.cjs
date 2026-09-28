@@ -53,7 +53,7 @@ module.exports = {
       fontFamily: {
         mono: ['"Martian Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
         display: ['Unbounded', '"Martian Mono"', 'system-ui', 'sans-serif'],
-        prose: ['"Victor Mono"', '"Martian Mono"', 'ui-monospace', 'monospace']
+        prose: ['"IBM Plex Mono"', '"Martian Mono"', 'ui-monospace', 'monospace']
       }
     }
   },

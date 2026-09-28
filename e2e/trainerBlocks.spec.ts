@@ -57,7 +57,7 @@ test('reading settings persist, remap keys, leave Tab available and fit a narrow
   const dialog = page.getByRole('dialog', { name: 'Настройки' });
   await dialog.getByLabel('Размер текста').selectOption('28');
   await dialog.getByLabel('Уменьшить движение и вспышки').check();
-  await dialog.getByLabel('Чёткий текст без курсива').check();
+  await dialog.getByLabel('Повышенный контраст текста').check();
   await dialog.getByRole('combobox', { name: 'Фокус', exact: true }).selectOption('F3');
   await page.screenshot({ path: '.context/trainer-settings-mobile.png', fullPage: true });
   await dialog.getByRole('button', { name: 'Готово' }).click();
@@ -75,6 +75,48 @@ test('reading settings persist, remap keys, leave Tab available and fit a narrow
   await page.keyboard.press('F3');
   await expect(page.locator('.engine-caret--focus')).toHaveCount(1);
   expect(await page.evaluate(() => document.body.scrollWidth <= innerWidth)).toBe(true);
+});
+test('typing line keeps the next glyph unfilled and upright while the caret marks its position', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('[data-hotkey="1"]').click();
+  const source = line(page);
+  await expect(source).toBeVisible();
+  await expect(source.locator('..')).toHaveClass(/opacity-100/);
+  await expect(source).toHaveCSS('font-family', /IBM Plex Mono/);
+  expect(await page.evaluate(async () => {
+    const faces = await document.fonts.load('500 24px "IBM Plex Mono"', 'AaЖж');
+    return faces.length >= 2 && document.fonts.check('500 24px "IBM Plex Mono"', 'AaЖж');
+  })).toBe(true);
+  const next = source.locator('.engine-caret');
+  await expect(next).toHaveCount(1);
+  await expect(next).toHaveCSS('font-style', 'normal');
+  await expect(next).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  const initial = await next.evaluate(element => ({
+    color: getComputedStyle(element).color,
+    following: getComputedStyle(element.nextElementSibling!).color
+  }));
+  expect(initial.color).toBe(initial.following);
+  await expect(page.locator('.engine-glide-caret')).toHaveCSS('opacity', '1');
+  const first = (await source.innerText())[0];
+  await input(page).press(first);
+  await expect(next).toHaveAttribute('data-index', '1');
+  const after = await next.evaluate(element => ({
+    color: getComputedStyle(element).color,
+    following: getComputedStyle(element.nextElementSibling!).color
+  }));
+  expect(after.color).toBe(after.following);
+});
+test('practice uses the same upright typing face and an unfilled next glyph', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('[data-hotkey="6"]').click();
+  await page.getByRole('button', { name: 'Start stage' }).click();
+  const passage = page.locator('.practice-transmission');
+  await expect(passage).toHaveCSS('font-family', /IBM Plex Mono/);
+  const next = passage.locator('.practice-caret');
+  await expect(next).toHaveCount(1);
+  await expect(next).toHaveCSS('font-style', 'normal');
+  await expect(next).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(next).toHaveCSS('box-shadow', /rgb\(255, 181, 131\)/);
 });
 test('repair mode waits for correction and preserves physical mistakes after sending', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('typomancerPlayPreferences', JSON.stringify({ campaignGoal: 'repair' })));
