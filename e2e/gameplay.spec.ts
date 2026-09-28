@@ -115,10 +115,10 @@ test('the tracer eats the line behind a stalled player and PURGE throws it back'
 
   // Build a lead, then stop dead. TRACER_GRACE_MS is 3s from the first keystroke.
   // Keep Date.now fixed while typing: a busy CI runner can take more than the
-  // grace period to deliver 40 key events. Animation frames still run normally.
+  // grace period to deliver 30 key events. Animation frames still run normally.
   const typingStartedAt = Date.now();
   await page.clock.setFixedTime(typingStartedAt);
-  await input.pressSequentially(activeText.slice(0, 40), { delay: 5 });
+  await input.pressSequentially(activeText.slice(0, 30), { delay: 5 });
   await expect(burned).toHaveCount(0);
   await expect(overlap).toHaveCount(0);
   await expect(page.locator('.engine-type-scroll .tracer-head')).toHaveCount(1);
@@ -129,6 +129,28 @@ test('the tracer eats the line behind a stalled player and PURGE throws it back'
     .poll(async () => burned.count(), { timeout: 20_000, message: 'tracer should consume the line behind a stalled caret' })
     .toBeGreaterThan(4);
   await expect(burned.first()).toHaveCSS('background-clip', 'text');
+  const gradient = await burned.evaluateAll(elements => ({
+    width: elements[0].parentElement?.style.getPropertyValue('--tracer-gradient-width'),
+    offsets: elements.map(element => Number.parseFloat((element as HTMLElement).style.getPropertyValue('--tracer-gradient-offset'))),
+    glyphWidths: elements.map(element => element.getBoundingClientRect().width),
+    frontColor: elements[0].parentElement?.style.getPropertyValue('--tracer-front-color')
+  }));
+  expect(Number.parseFloat(gradient.width ?? '')).toBeCloseTo(gradient.glyphWidths.reduce((sum, width) => sum + width, 0), 1);
+  expect(gradient.offsets[0]).toBe(0);
+  gradient.offsets.slice(1).forEach((offset, index) =>
+    expect(offset).toBeCloseTo(gradient.offsets[index] - gradient.glyphWidths[index], 1)
+  );
+
+  // Shortening the lead makes the same shared gradient redder at its front.
+  for (let i = 0; i < 10; i++) await input.press('Backspace');
+  const nearFront = await burned.first().evaluate(element =>
+    getComputedStyle(element).getPropertyValue('--tracer-front-color').trim()
+  );
+  const colorChannels = (color: string | undefined) => color?.match(/rgb\(255 (\d+) (\d+)\)/)?.slice(1).map(Number) ?? [];
+  const [farGreen, farBlue] = colorChannels(gradient.frontColor);
+  const [nearGreen, nearBlue] = colorChannels(nearFront);
+  expect(nearGreen).toBeLessThan(farGreen);
+  expect(nearBlue).toBeLessThan(farBlue);
 
   const beforePurge = await burned.count();
   await page.keyboard.press('ArrowDown');
