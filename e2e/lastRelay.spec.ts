@@ -27,6 +27,9 @@ for (const path of [
   { name: 'rescue Mira but damage the upload', rescue: true, redact: false, spotted: false, fragment: true, resume: false, ending: 'A surviving fragment' }
 ]) {
   test(`last relay: ${path.name}`, async ({ page }) => {
+    // This full two-sector journey takes nearly two minutes on CI even when it
+    // passes; leave headroom for runner load while keeping a finite hang limit.
+    test.setTimeout(180_000);
     let textRequests = 0;
     let imageRequests = 0;
     page.on('request', request => {
